@@ -1,0 +1,35 @@
+model AiConversation {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  title      String?
+  // preset/contextRef exist now so a future aiPrompt-launched, module-aware
+  // conversation needs no schema change later — always null in Phase A,
+  // since no module has a real preset yet (the header "Ask AI" trigger is
+  // the only real entry point this phase).
+  preset     String?
+  contextRef Json?     @map("context_ref")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  messages AiMessage[]
+
+  @@index([tenantId, userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  conversation   AiConversation @relation(fields: [conversationId], references: [id])
+  // "user" | "assistant" — no "tool" role until real tool-calling ships.
+  role           String
+  content        String
+  usage          Json?
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  @@index([tenantId, conversationId, createdAt])
+  @@map("ai_messages")
+}

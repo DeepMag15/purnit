@@ -1,0 +1,11 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  // Connection URL is supplied entirely by prisma.config.ts (see that file for why).
+  extensions = [vector]
+}

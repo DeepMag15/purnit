@@ -1,0 +1,42 @@
+// Phase B (AI Assistant RAG). `embedding` is Unsupported("vector(3072)") — Prisma
+// has no native pgvector type, so this column is excluded from the generated
+// client entirely; all reads/writes go through raw SQL (see RetrievalService /
+// embedding-ingestion.ts). 3072 = gemini-embedding-001's full, untruncated
+// output (Matryoshka truncation to 768/1536 requires manual re-normalization
+// to stay correct — not worth the risk for a first implementation).
+model Embedding {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  sourceType  String   @map("source_type")
+  sourceId    String   @map("source_id") @db.Uuid
+  chunkIndex  Int      @map("chunk_index")
+  content     String
+  contentHash String   @map("content_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, sourceType, sourceId, chunkIndex])
+  @@index([tenantId, sourceType, sourceId])
+  @@map("embeddings")
+}
+
+// Outbox pattern: document mutations enqueue a job instead of embedding inline
+// (embedding calls are external I/O and must never run inside a mutation's
+// transaction). EmbeddingJobProcessorService polls this table.
+model EmbeddingJob {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  sourceType  String   @map("source_type")
+  sourceId    String   @map("source_id") @db.Uuid
+  status      String   @default("pending")
+  attempts    Int      @default(0)
+  lastError   String?  @map("last_error")
+  availableAt DateTime @default(now()) @map("available_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, status, availableAt])
+  @@map("embedding_jobs")
+}

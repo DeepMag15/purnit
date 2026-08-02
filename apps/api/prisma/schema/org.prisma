@@ -1,0 +1,38 @@
+model Department {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  name      String
+  // Tenant-configurable, not a DB enum (same "app invariant, not DB
+  // constraint" treatment as Task.status) — drives job-title/bonus-
+  // permission lookups per ORG_HIERARCHY.md §3-4. Nullable: existing
+  // departments predate this field and stay untyped until an Admin sets it.
+  type      String?
+  parentId  String?      @map("parent_id") @db.Uuid
+  parent    Department?  @relation("DeptParent", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptParent")
+  teams     Team[]
+  createdAt DateTime     @default(now()) @map("created_at")
+  // Reversible "hide from active use" — unlike Project.deletedAt, archiving
+  // never breaks referential integrity: an archived department stays fully
+  // real and still referenced (see Organization Lifecycle, hr.mutations.ts).
+  // Excluded from default listings/pickers only; department-subtree scope
+  // resolution (rbac/department-subtree.ts) deliberately ignores this field.
+  archivedAt DateTime?    @map("archived_at")
+
+  @@index([tenantId])
+  @@map("departments")
+}
+
+model Team {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  departmentId String     @map("department_id") @db.Uuid
+  department   Department @relation(fields: [departmentId], references: [id])
+  name         String
+  createdAt    DateTime   @default(now()) @map("created_at")
+  // Same treatment as Department.archivedAt above.
+  archivedAt   DateTime?  @map("archived_at")
+
+  @@index([tenantId])
+  @@map("teams")
+}

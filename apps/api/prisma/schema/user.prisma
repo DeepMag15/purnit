@@ -1,0 +1,36 @@
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  authUserId       String    @unique @map("auth_user_id") @db.Uuid
+  email            String
+  displayName      String    @map("display_name")
+  departmentId     String?   @map("department_id") @db.Uuid
+  teamId           String?   @map("team_id") @db.Uuid
+  // The reports-to relationship — independent of role/department, and never
+  // silently derived from either. The one mechanism every future approval
+  // workflow (leave, performance review, ...) routes through. See
+  // ORG_HIERARCHY.md §9. Self-referential; no relation fields declared
+  // (mirrors Department.parentId's own plain-FK-only treatment) since
+  // nothing needs a typed "reports" collection yet.
+  managerId        String?   @map("manager_id") @db.Uuid
+  status           String    @default("active")
+  // HR module fields — free-text UI vocabulary (employmentStatus), not DB
+  // enums, same pattern as Task.status. Nullable: existing users have none
+  // of these set until an Admin fills them in via the HR page.
+  jobTitle         String?   @map("job_title")
+  employmentStatus String?   @default("active") @map("employment_status")
+  startDate        DateTime? @map("start_date")
+  // Set true only by user.invite (an Admin-generated temporary password).
+  // Defaults false so self-serve signup admins (who set their own real
+  // password) and every pre-existing user are unaffected. Cleared by
+  // AuthService.completeFirstLogin once the user has changed their password
+  // via Supabase Auth directly — see CONTEXT.md onboarding section.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  @@index([tenantId])
+  @@index([tenantId, departmentId])
+  @@map("users")
+}

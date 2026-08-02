@@ -1,0 +1,21 @@
+// Platform-level, NOT tenant-scoped.
+model Plan {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key          String @unique
+  name         String
+  // string[] of entitlement keys unlocked by this plan.
+  entitlements Json
+
+  @@map("plans")
+}
+
+model FeatureFlag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  key       String
+  enabled   Boolean
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, key])
+  @@map("feature_flags")
+}

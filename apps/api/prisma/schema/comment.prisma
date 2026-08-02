@@ -1,0 +1,35 @@
+model Comment {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  // "project" | "task" — free-text vocabulary, not a DB enum, same
+  // treatment as Task.status/Project.status.
+  entityType String    @map("entity_type")
+  // No FK — a polymorphic target (can point at either Project or Task, so a
+  // literal FK isn't possible), same no-FK treatment already accepted for
+  // User.departmentId/teamId/managerId. Scope is enforced at the application
+  // layer (assertCommentTargetInScope), not the DB.
+  entityId   String    @map("entity_id") @db.Uuid
+  authorId   String    @map("author_id") @db.Uuid
+  body       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  mentions CommentMention[]
+
+  @@index([tenantId, entityType, entityId])
+  @@map("comments")
+}
+
+model CommentMention {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  commentId String   @map("comment_id") @db.Uuid
+  comment   Comment  @relation(fields: [commentId], references: [id])
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([commentId, userId])
+  @@index([tenantId, userId])
+  @@map("comment_mentions")
+}

@@ -1,0 +1,54 @@
+model Role {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  label                 String
+  extendsRoleId         String?  @map("extends_role_id") @db.Uuid
+  sourceBlueprintRoleId String?  @map("source_blueprint_role_id")
+  // Resolved string[] of "resource:action:scope" — materialized at provisioning time,
+  // not re-derived from blueprint JSON on every permission check (see ARCHITECTURE.md §8.1).
+  permissions           Json
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  assignments RoleAssignment[]
+
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model RoleAssignment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  role         Role     @relation(fields: [roleId], references: [id])
+  // Scope this grant applies to (may be broader than the user's own department/team).
+  departmentId String?  @map("department_id") @db.Uuid
+  teamId       String?  @map("team_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, roleId, departmentId, teamId])
+  @@index([tenantId, userId])
+  @@map("role_assignments")
+}
+
+/** Materialized form of a blueprint's `departmentTypes[].tierLabels`/
+ * `roleOverrides` (ORG_HIERARCHY.md §3-4) — same "materialize once at
+ * provisioning/reseed time, never live-derive from blueprint JSON at
+ * request time" discipline this project already applies to `Role.label`/
+ * `permissions` (see `materializeBlueprintRoles`'s own doc comment).
+ * `overrideRoleId` is only set for the rare tier where a department type
+ * grants genuinely different permissions, not just a different label (today:
+ * HR's Manager tier -> `role.hr-manager`) — most rows have a label only. */
+model DepartmentTypeRoleLabel {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  departmentType        String   @map("department_type")
+  sourceBlueprintRoleId String   @map("source_blueprint_role_id")
+  label                 String
+  overrideRoleId        String?  @map("override_role_id") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, departmentType, sourceBlueprintRoleId])
+  @@index([tenantId])
+  @@map("department_type_role_labels")
+}

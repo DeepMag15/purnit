@@ -1,0 +1,51 @@
+model Conversation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  // "channel" | "dm" — free-text vocabulary, same treatment as Task.status.
+  // A dm is just a private, unnamed conversation; unifying both under one
+  // model avoids two parallel schemas for what's structurally the same thing.
+  type        String
+  name        String?   @map("name") // null for "dm"; required for "channel"
+  isPrivate   Boolean   @default(false) @map("is_private") // channels only; dm is implicitly private
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  // Reversible exclusion from default listings, same precedent as
+  // Department/Team.archivedAt (Company Administration, Submodule C).
+  archivedAt  DateTime? @map("archived_at")
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@index([tenantId, type])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  userId         String       @map("user_id") @db.Uuid
+  // Unread-count basis — same shape as Notification.readAt.
+  lastReadAt     DateTime?    @map("last_read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([conversationId, userId])
+  @@index([tenantId, userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  authorId       String       @map("author_id") @db.Uuid
+  body           String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  // Soft-delete, matching Comment/Project/Task.
+  deletedAt      DateTime?    @map("deleted_at")
+
+  @@index([tenantId, conversationId, createdAt])
+  @@map("messages")
+}

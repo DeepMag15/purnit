@@ -1,0 +1,12 @@
+// Platform-level, NOT tenant-scoped: root data owned by the platform, not any org.
+model Blueprint {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  industry   String
+  version    Int
+  definition Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([industry, version])
+  @@map("blueprints")
+}

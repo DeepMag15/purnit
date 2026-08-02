@@ -1,0 +1,27 @@
+model Tenant {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  // Human-readable, unique, entered at login to confirm which tenant an
+  // email belongs to (see AuthService.verifyWorkspace). Nullable at the DB
+  // level rather than NOT NULL — the "always populated" invariant is
+  // enforced by application code (AuthService.signup always generates one),
+  // same app-enforced-not-DB-enforced treatment as Task.status. A unique
+  // index still allows multiple NULLs in Postgres, which is fine since
+  // nothing is ever left unpopulated going forward.
+  workspaceId      String?  @unique @map("workspace_id")
+  industry         String
+  blueprintVersion Int      @map("blueprint_version")
+  planId           String?  @map("plan_id") @db.Uuid
+  branding         Json     @default("{}")
+  // Informational company-profile data (description, website, contactEmail,
+  // address, timezone, businessHours) — same untyped-JSON-bag treatment as
+  // `branding`, for the same reason: purely descriptive, edited via a
+  // settings form, not blueprint-shaped config, so it doesn't belong in
+  // `TenantConfig.overrides`. See settings.mutations.ts's `mergeTenantProfile`.
+  profile          Json     @default("{}")
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("tenants")
+}

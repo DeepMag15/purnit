@@ -1,0 +1,14 @@
+model TenantConfig {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  version      Int
+  blueprintRef String   @map("blueprint_ref")
+  overrides    Json
+  // Enforced to be unique-per-tenant-when-true via a partial index added by raw SQL
+  // in the migration (Prisma's schema DSL has no partial/filtered unique constraint).
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, isActive])
+  @@map("tenant_configs")
+}

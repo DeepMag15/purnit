@@ -1,0 +1,16 @@
+-- Real bug caught during this submodule's own live verification: subscribing
+-- to postgres_changes on `messages` failed with
+-- "ERROR P0001 (raise_exception) invalid column for filter conversation_id"
+-- even after the realtime_membership RLS policy was fixed. Root cause: every
+-- table in this project has only ever been GRANTed to our own custom
+-- `app_runtime` role (see 20260714145938_rls_and_app_role) — never to
+-- Supabase's built-in `authenticated` role. RLS controls row visibility, but
+-- Postgres also requires table/column-level privilege before a role can
+-- query a table at all; Realtime evaluates a subscribing user's
+-- postgres_changes filter as the `authenticated` role (mirroring how
+-- PostgREST does it), and with zero privileges there, Realtime's own
+-- column-privilege check surfaces as this generic "invalid column" error
+-- rather than a permissions error. Every prior table never needed this,
+-- since nothing before this submodule ever subscribed to Realtime — this is
+-- the first table where it matters.
+GRANT SELECT ON conversations, conversation_members, messages TO authenticated;

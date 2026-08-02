@@ -1,0 +1,67 @@
+model Document {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  projectId    String    @map("project_id") @db.Uuid
+  project      Project   @relation(fields: [projectId], references: [id])
+  name         String
+  // Current version's live data — always reflects the latest version, never
+  // a historical one (those live in DocumentVersion, snapshotted at replace
+  // time). No FK on storagePath; it's a bucket-relative key in the private
+  // "documents" bucket — every read goes through document.getFileUrl's
+  // authorization check, every time.
+  storagePath    String    @map("storage_path")
+  mimeType       String    @map("mime_type")
+  sizeBytes      Int       @map("size_bytes")
+  version        Int       @default(1)
+  // null = no approval requested/needed | "pending" | "approved" | "rejected".
+  // Free-text vocabulary, same treatment as Task.status/Project.status.
+  approvalStatus String?   @map("approval_status")
+  uploadedById   String    @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  versions   DocumentVersion[]
+  activities DocumentActivity[]
+
+  @@index([tenantId])
+  @@index([tenantId, projectId])
+  @@map("documents")
+}
+
+/// One row per REPLACED (no-longer-current) version — created by
+/// document.replace snapshotting the document's pre-replace state before
+/// overwriting it. The current version never has a row here; combine with
+/// Document's own live fields to render a full version list.
+model DocumentVersion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  documentId  String   @map("document_id") @db.Uuid
+  document    Document @relation(fields: [documentId], references: [id])
+  version     Int
+  storagePath String   @map("storage_path")
+  mimeType    String   @map("mime_type")
+  sizeBytes   Int      @map("size_bytes")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, documentId])
+  @@map("document_versions")
+}
+
+/// Lightweight lifecycle log — upload/replace/rename/approval-status-change/
+/// delete. Deliberately excludes comments (Comments already has its own
+/// list/UI, per the existing Projects/Tasks precedent — not duplicated here).
+model DocumentActivity {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id])
+  actorId    String   @map("actor_id") @db.Uuid
+  type       String
+  detail     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, documentId])
+  @@map("document_activities")
+}

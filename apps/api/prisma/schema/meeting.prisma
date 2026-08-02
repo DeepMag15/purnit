@@ -1,0 +1,45 @@
+model Meeting {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  title          String
+  description    String?
+  organizerId    String    @map("organizer_id") @db.Uuid
+  // Nullable, same treatment as Project.departmentId — used purely for
+  // meeting:read:<scope> visibility widening (§3 of the Meetings plan),
+  // never a hard gate: the participant floor in meetingsWhere always wins.
+  departmentId   String?   @map("department_id") @db.Uuid
+  scheduledStart DateTime  @map("scheduled_start")
+  scheduledEnd   DateTime  @map("scheduled_end")
+  // Vendor-neutral by design (no "URL" field) — the video vendor was
+  // Daily.co, is now self-hosted Jitsi, and is expected to change again once
+  // the platform integrates a real long-term choice. A join "URL" is always
+  // computable as {domain}/{roomName} from a single shared env var, so only
+  // the room name itself needs to be persisted per meeting.
+  videoRoomName  String    @map("video_room_name")
+  // Binary state only — a real Meeting has no other v1 lifecycle transition,
+  // same reasoning as Conversation.archivedAt (not a free-text status).
+  cancelledAt    DateTime? @map("cancelled_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  participants MeetingParticipant[]
+
+  @@index([tenantId])
+  @@index([tenantId, organizerId])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, scheduledStart])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  meetingId String   @map("meeting_id") @db.Uuid
+  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([meetingId, userId])
+  @@index([tenantId, userId])
+  @@map("meeting_participants")
+}

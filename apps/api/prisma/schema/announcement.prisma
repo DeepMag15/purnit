@@ -1,0 +1,22 @@
+model Announcement {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  authorId     String    @map("author_id") @db.Uuid
+  // Nullable = tenant-wide (Company Admin/HR Manager only). Non-null =
+  // targets this department plus its full descendant subtree. No FK — same
+  // no-FK-for-app-layer-scoped-target treatment as Meeting.departmentId;
+  // scope is enforced at the application layer (announcement.create's
+  // isRowInScope check), not the DB.
+  departmentId String?   @map("department_id") @db.Uuid
+  title        String
+  body         String
+  // Soft-delete, author-only — same precedent as Comment/Message.
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, authorId])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, createdAt])
+  @@map("announcements")
+}
