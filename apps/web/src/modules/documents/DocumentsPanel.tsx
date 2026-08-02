@@ -1,0 +1,341 @@
+"use client";
+
+import { useRef, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRenderContext } from "../../sdui/render-context";
+import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
+import { supabase } from "../../lib/supabase-client";
+import { Button } from "../../ui/Button";
+import { Icon } from "../../ui/Icon";
+import { Badge } from "../../ui/Badge";
+import { Select } from "../../ui/Select";
+import { Input } from "../../ui/Input";
+import { SkeletonRows } from "../../ui/Skeleton";
+import { useToast } from "../../ui/Toast";
+import { EmptyStateView } from "../../sdui/primitives/EmptyState";
+import { CommentThread } from "../comments/CommentThread";
+
+const DOCUMENTS_BUCKET = "documents";
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  uploaded: "uploaded this document",
+  replaced: "uploaded a new version",
+  renamed: "renamed this document",
+  approval_status_changed: "changed the approval status",
+  deleted: "deleted this document",
+};
+
+interface DocumentRow {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  version: number;
+  approvalStatus: string | null;
+  uploadedById: string;
+  uploadedByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface MentionCandidate {
+  id: string;
+  displayName: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/**
+ * Project Documents (Core Workspace Phase 2, Submodule 1) — a plain shared
+ * component, not blueprint-registered, same "mounted per-row behind an
+ * expand toggle" precedent as CommentThread. Permission gating comes from
+ * `ProjectBoard`'s own `actions` array (document.create/update/delete),
+ * passed down as booleans rather than re-deriving from render context here.
+ */
+export function DocumentsPanel({
+  projectId,
+  canCreate,
+  canUpdate,
+  canDelete,
+  mentionCandidates,
+}: {
+  projectId: string;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+  mentionCandidates: MentionCandidate[];
+}) {
+  const { user, tenant, callMutation, aiAvailable, openAiPanel } = useRenderContext();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const replaceTargetId = useRef<string | null>(null);
+
+  const params = { projectId, search: search || undefined };
+  const { data, isPending } = useDataSourceQuery<DocumentRow[]>("documents.list", params);
+  const documents = Array.isArray(data) ? data : [];
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: dataSourceQueryKey("documents.list", params, tenant.id, user.id) });
+  }
+
+  async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.show("File exceeds the 25MB limit", "danger");
+      return;
+    }
+    setUploading(true);
+    try {
+      const mimeType = file.type || "application/octet-stream";
+      const { path, token } = (await callMutation("document.createUploadUrl", { projectId, fileName: file.name, mimeType, sizeBytes: file.size })) as {
+        path: string;
+        token: string;
+      };
+      const { error } = await supabase.storage.from(DOCUMENTS_BUCKET).uploadToSignedUrl(path, token, file);
+      if (error) throw new Error(error.message);
+      await callMutation("document.create", { projectId, storagePath: path, name: file.name, mimeType, sizeBytes: file.size });
+      toast.show(`"${file.name}" uploaded`);
+      invalidate();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't upload document", "danger");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleReplace(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    const id = replaceTargetId.current;
+    replaceTargetId.current = null;
+    if (!file || !id) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.show("File exceeds the 25MB limit", "danger");
+      return;
+    }
+    setUploading(true);
+    try {
+      const mimeType = file.type || "application/octet-stream";
+      const { path, token } = (await callMutation("document.createReplaceUploadUrl", { id, fileName: file.name, mimeType, sizeBytes: file.size })) as {
+        path: string;
+        token: string;
+      };
+      const { error } = await supabase.storage.from(DOCUMENTS_BUCKET).uploadToSignedUrl(path, token, file);
+      if (error) throw new Error(error.message);
+      await callMutation("document.finalizeReplace", { id, storagePath: path, mimeType, sizeBytes: file.size });
+      toast.show("New version uploaded");
+      invalidate();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't replace document", "danger");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleOpen(id: string, mode: "view" | "download") {
+    try {
+      const { signedUrl } = (await callMutation("document.getFileUrl", { id, mode })) as { signedUrl: string };
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't open document", "danger");
+    }
+  }
+
+  async function handleApprovalChange(id: string, status: string) {
+    try {
+      await callMutation("document.setApprovalStatus", { id, status });
+      invalidate();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't update approval status", "danger");
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await callMutation("document.delete", { id });
+      invalidate();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't delete document", "danger");
+    }
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface/50 p-2">
+      <div className="flex items-center gap-2">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search documents…" className="h-7 flex-1 text-xs" />
+        {canCreate && (
+          <>
+            <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <Icon name="upload_file" size={13} />
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+            <input ref={fileInputRef} type="file" onChange={handleUpload} className="hidden" disabled={uploading} />
+          </>
+        )}
+      </div>
+
+      {isPending && <SkeletonRows />}
+      {!isPending && documents.length === 0 && <EmptyStateView message="No documents yet." />}
+
+      {!isPending && documents.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {documents.map((d) => (
+            <div key={d.id} className="rounded-md border border-border bg-surface p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <button type="button" onClick={() => handleOpen(d.id, "view")} className="truncate text-left text-sm font-medium text-text hover:underline">
+                    {d.name}
+                  </button>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
+                    <span>v{d.version}</span>
+                    <span>·</span>
+                    <span>{formatBytes(d.sizeBytes)}</span>
+                    <span>·</span>
+                    <span>{d.uploadedByName}</span>
+                    <span>·</span>
+                    <span>{formatRelativeTime(d.updatedAt)}</span>
+                    {d.approvalStatus && (
+                      <Badge tone={d.approvalStatus === "approved" ? "success" : d.approvalStatus === "rejected" ? "danger" : "accent"}>{d.approvalStatus}</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {aiAvailable && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openAiPanel("documents.summarize", { sourceType: "document", sourceId: d.id })}
+                        title="Summarize with AI"
+                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                      >
+                        <Icon name="summarize" size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAiPanel("documents.qa", { sourceType: "document", sourceId: d.id })}
+                        title="Ask AI about this document"
+                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                      >
+                        <Icon name="auto_awesome" size={14} />
+                      </button>
+                    </>
+                  )}
+                  <button type="button" onClick={() => handleOpen(d.id, "download")} title="Download" className="text-text-muted transition-colors duration-150 hover:text-text">
+                    <Icon name="download" size={14} />
+                  </button>
+                  {canUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        replaceTargetId.current = d.id;
+                        replaceInputRef.current?.click();
+                      }}
+                      title="Replace"
+                      className="text-text-muted transition-colors duration-150 hover:text-text"
+                    >
+                      <Icon name="publish" size={14} />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => toggleExpanded(d.id)} title="Comments & history" className="text-text-muted transition-colors duration-150 hover:text-text">
+                    <Icon name="chat_bubble" size={14} />
+                  </button>
+                  {canDelete && (
+                    <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-150 hover:text-danger">
+                      <Icon name="delete" size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {canUpdate && (
+                <div className="mt-1.5">
+                  {d.approvalStatus === null ? (
+                    <button type="button" onClick={() => handleApprovalChange(d.id, "pending")} className="text-xs text-accent hover:underline">
+                      Request approval
+                    </button>
+                  ) : (
+                    <Select value={d.approvalStatus} onChange={(e) => handleApprovalChange(d.id, e.target.value)} className="h-6 py-0 text-xs">
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </Select>
+                  )}
+                </div>
+              )}
+
+              {expandedIds.has(d.id) && (
+                <div className="mt-2 flex flex-col gap-2">
+                  <DocumentActivityFeed documentId={d.id} />
+                  <CommentThread entityType="document" entityId={d.id} mentionCandidates={mentionCandidates} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input ref={replaceInputRef} type="file" onChange={handleReplace} className="hidden" disabled={uploading} />
+    </div>
+  );
+}
+
+/** Mounted only while a document row is expanded — same "don't fetch what
+ * nobody's looking at" discipline as CommentThread's own mount timing. */
+function DocumentActivityFeed({ documentId }: { documentId: string }) {
+  const { data } = useDataSourceQuery<{
+    versions: { id: string; version: number; sizeBytes: number; createdByName: string; createdAt: string }[];
+    activities: { id: string; type: string; detail: string | null; actorName: string; createdAt: string }[];
+  }>("document.detail", { id: documentId });
+
+  if (!data) return null;
+
+  return (
+    <div className="rounded-md border border-border bg-bg p-2 text-xs text-text-muted">
+      {data.activities.length === 0 ? (
+        <div>No activity yet.</div>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {data.activities.map((a) => (
+            <li key={a.id}>
+              <span className="text-text">{a.actorName}</span> {ACTIVITY_LABELS[a.type] ?? a.type}
+              {a.detail ? ` (${a.detail})` : ""} — {formatRelativeTime(a.createdAt)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,105 @@
+@import "tailwindcss";
+/* Self-hosted (bundler-resolved, not a runtime Google Fonts <link>) — ships
+ * its own @font-face (relative woff2 URL) and the base `.material-symbols-
+ * outlined` class (font-family, size, ligature feature settings); the
+ * font-variation-settings override below layers on top of it. */
+@import "material-symbols/outlined.css";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* Design-system migration (UI_DESIGN.html reference) — replaces Tailwind's
+   * default radius scale so every existing `rounded-lg`/`rounded-xl` class
+   * already used throughout the ui/ kit picks up the new values with no
+   * per-component changes. */
+  --radius: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  --spacing-sidebar-width: 240px;
+  --spacing-sidebar-collapsed: 64px;
+}
+
+/* Light theme (also the fallback before next-themes hydrates) — unchanged
+ * from before the obsidian migration; the reference design is dark-only, so
+ * this variant was designed in the same spirit rather than copied. */
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-hover: #f4f4f5;
+  --border: #e4e4e7;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-fg: #ffffff;
+  --danger: #dc2626;
+  --success: #059669;
+  --warning: #d97706;
+  --info: #0891b2;
+}
+
+/* Dark theme — "obsidian," per UI_DESIGN.html. The primary/default mode (see
+ * layout.tsx's ThemeProvider defaultTheme). */
+.dark {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-hover: #1a1a1a;
+  --border: #262626;
+  --text: #ededed;
+  --text-muted: #a1a1aa;
+  --accent: #0070f3;
+  --accent-hover: #0061d5;
+  --accent-fg: #ffffff;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --info: #22d3ee;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+/* Overrides the imported package's default rendering with the exact
+ * font-variation-settings UI_DESIGN.html specifies (outlined, weight 300, no
+ * fill) so every <Icon> instance is visually consistent by default — the
+ * ligature font renders whatever text sits inside the span as its matching
+ * icon glyph. */
+.material-symbols-outlined {
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 300,
+    "GRAD" 0,
+    "opsz" 20;
+  user-select: none;
+}
+
+/* Shared glass/blur panel — consolidates what was previously two separate,
+ * duplicated ad hoc utility combos (CommandPalette's overlay/panel, the
+ * workspace header). Matches UI_DESIGN.html's .glass-header. */
+.glass-panel {
+  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+}

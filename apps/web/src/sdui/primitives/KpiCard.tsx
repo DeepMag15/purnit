@@ -1,0 +1,57 @@
+import { z } from "zod";
+import type { CommonRenderProps } from "../registry";
+import { useDataBinding } from "../use-data-binding";
+import { Card } from "../../ui/Card";
+import { Skeleton } from "../../ui/Skeleton";
+
+export const KpiCardSchema = z.object({
+  label: z.string(),
+  // Optional static trend line (e.g. [12, 18, 15, 22, 30]) — purely
+  // presentational, not data-bound. No data source in this system exposes
+  // historical time-series data to back a real one yet; a blueprint should
+  // omit this rather than a future author fabricating numbers just to fill
+  // the visual slot.
+  trend: z.array(z.number()).optional(),
+  trendTone: z.enum(["success", "danger", "accent"]).optional(),
+});
+type Props = z.infer<typeof KpiCardSchema>;
+
+/** Plain inline SVG, not Recharts — a 64×24px trend line doesn't warrant
+ * pulling in a charting library (see Chart.tsx for the one case that does).
+ * Colors follow the same `var(--color-*)` pattern Chart.tsx already
+ * established, so the line stays theme-reactive for free. */
+function Sparkline({ values, tone }: { values: number[]; tone: "success" | "danger" | "accent" }) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * 100;
+      const y = 30 - ((v - min) / range) * 26;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <svg viewBox="0 0 100 32" className="h-6 w-16 shrink-0" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={points} fill="none" stroke={`var(--color-${tone})`} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function KpiCard({ label, bind, trend, trendTone }: Props & CommonRenderProps) {
+  const { data, loading, error } = useDataBinding(bind);
+  const showTrend = !loading && !error && trend && trend.length > 1;
+
+  return (
+    <Card className="p-4">
+      <div className="text-xs font-medium text-text-muted">{label}</div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-3">
+        <div className="font-mono text-2xl font-semibold text-text">
+          {loading ? <Skeleton className="h-7 w-16" /> : error ? <span className="text-sm text-danger">—</span> : String(data ?? "—")}
+        </div>
+        {showTrend && <Sparkline values={trend} tone={trendTone ?? "accent"} />}
+      </div>
+    </Card>
+  );
+}
