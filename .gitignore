@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.next/
+.env
+.env.local
+*.log
+*.tsbuildinfo
+.turbo/
+coverage/
+
+# Prisma-generated client (regenerated from schema, not source)
+apps/api/src/generated/
+
+# Third-party, downloaded (not authored here) — see infra/jitsi/README.md
+infra/jitsi/docker-jitsi-meet/

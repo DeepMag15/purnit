@@ -1,0 +1,39 @@
+{
+  "name": "antigravity",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.13.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "volta": {
+    "node": "22.11.0",
+    "pnpm": "11.13.0"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev:web": "pnpm --filter @antigravity/web run dev",
+    "dev:api": "pnpm --filter @antigravity/api run dev",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r --if-present run test",
+    "setup": "node scripts/setup.mjs",
+    "db:buckets": "node scripts/create-storage-buckets.mjs",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.12",
+    "@supabase/cli-windows-x64": "^2.111.0",
+    "@supabase/supabase-js": "^2.110.3",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "pg": "^8.22.0",
+    "supabase": "^2.111.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.65.0"
+  }
+}
