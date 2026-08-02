@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Purnit Command Center</title>
+<!-- Google Fonts: Inter & JetBrains Mono -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "obsidian": "#0A0A0A",
+                        "obsidian-light": "#141414",
+                        "obsidian-border": "#262626",
+                        "on-background": "#EDEDED",
+                        "primary": "#FFFFFF",
+                        "secondary": "#A1A1AA",
+                        "action-blue": "#0070F3",
+                        "success": "#10B981",
+                        "warning": "#F59E0B",
+                        "error": "#EF4444",
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.375rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                    },
+                    "spacing": {
+                        "sidebar-width": "240px",
+                        "sidebar-collapsed": "64px",
+                        "max-width": "1280px"
+                    },
+                    "fontFamily": {
+                        "body": ["Inter", "sans-serif"],
+                        "code": ["JetBrains Mono", "monospace"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+            font-size: 20px;
+        }
+        body {
+            background-color: #0A0A0A;
+            color: #EDEDED;
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-header {
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: saturate(180%) blur(8px);
+            border-bottom: 1px solid #262626;
+        }
+        .card-obsidian {
+            background: #141414;
+            border: 1px solid #262626;
+            transition: border-color 0.2s ease;
+        }
+        .card-obsidian:hover {
+            border-color: #404040;
+        }
+        .sidebar-item-active {
+            background: rgba(255, 255, 255, 0.05);
+            color: #FFFFFF;
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; }
+        .sidebar-transition { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body class="antialiased">
+<div class="flex min-h-screen">
+<!-- Collapsible Sidebar -->
+<aside class="sidebar-transition fixed left-0 top-0 h-full w-sidebar-width bg-obsidian border-r border-obsidian-border z-50 flex flex-col overflow-hidden" id="sidebar">
+<div class="h-16 flex items-center px-6 border-b border-obsidian-border shrink-0">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 bg-white rounded-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-obsidian text-sm">filter_vintage</span>
+</div>
+<span class="font-semibold text-sm tracking-tight sidebar-content">Purnit</span>
+</div>
+</div>
+<nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+<button class="w-full flex items-center gap-3 px-3 py-2 sidebar-item-active rounded-md transition-all">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm font-medium sidebar-content">Command</span>
+</button>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-secondary hover:text-white hover:bg-white/5 rounded-md transition-all">
+<span class="material-symbols-outlined">layers</span>
+<span class="text-sm font-medium sidebar-content">Projects</span>
+</button>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-secondary hover:text-white hover:bg-white/5 rounded-md transition-all">
+<span class="material-symbols-outlined">task_alt</span>
+<span class="text-sm font-medium sidebar-content">Tasks</span>
+</button>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-secondary hover:text-white hover:bg-white/5 rounded-md transition-all">
+<span class="material-symbols-outlined">bolt</span>
+<span class="text-sm font-medium sidebar-content">Automations</span>
+</button>
+<div class="pt-4 pb-2">
+<p class="px-3 text-[10px] font-bold text-secondary uppercase tracking-widest sidebar-content">Team</p>
+</div>
+<button class="w-full flex items-center gap-3 px-3 py-2 text-secondary hover:text-white hover:bg-white/5 rounded-md transition-all">
+<span class="material-symbols-outlined">group</span>
+<span class="text-sm font-medium sidebar-content">Directory</span>
+</button>
+</nav>
+<div class="p-4 border-t border-obsidian-border space-y-4">
+<div class="flex items-center gap-3 px-2 sidebar-content">
+<div class="w-8 h-8 rounded-full bg-obsidian-border overflow-hidden">
+<img alt="User" src="https://lh3.googleusercontent.com/aida-public/AB6AXuArkC6UufuAs2IbjeMsQCG9TIE-ZHsCv5EtiTBC4zFjSUeYqCg5K_Hsqv2AunOh6zbt_Gc7n0espPcnfQ-0prp68zzRjoM3qIXXlvN1qZyddL6So4KR9oDZNwb5owKP5K1_Qv5CzOu-66sJ8oxSyvCRFN3XmVrxeMtAGYBsAoNaGZ4tXseVtmJxdmDqfYpnL1RWg-klilPT1SPLtydZbMVYS7SKKSlzRNc_vD7lhbbmD7EnrLp0TOGHFQGcfjiSUAjX7zamLARUXig"/>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-xs font-medium text-white truncate">Alex Riviera</p>
+<p class="text-[10px] text-secondary truncate">Engineering</p>
+</div>
+</div>
+<button class="w-full flex items-center justify-center h-8 text-secondary hover:text-white border border-obsidian-border rounded hover:bg-white/5 transition-all" onclick="toggleSidebar()">
+<span class="material-symbols-outlined" id="toggle-icon">keyboard_double_arrow_left</span>
+</button>
+</div>
+</aside>
+<!-- Main Wrapper -->
+<main class="flex-1 ml-[240px] sidebar-transition min-h-screen flex flex-col" id="main-content">
+<!-- Top Nav -->
+<header class="glass-header h-16 sticky top-0 z-40 flex items-center justify-between px-8">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary group-focus-within:text-white transition-colors">search</span>
+<input class="w-full bg-obsidian border border-obsidian-border rounded-lg pl-10 pr-4 py-1.5 text-sm focus:ring-1 focus:ring-white/20 focus:border-white/30 transition-all placeholder:text-secondary/50" placeholder="Search or ask AI (Cmd+K)" type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<span class="inline-flex h-2 w-2 rounded-full bg-success"></span>
+<span class="text-[11px] font-medium text-secondary">System: Normal</span>
+</div>
+<div class="h-4 w-px bg-obsidian-border"></div>
+<button class="relative text-secondary hover:text-white transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="bg-white text-obsidian px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-zinc-200 transition-colors">
+                    Deploy
+                </button>
+</div>
+</header>
+<!-- Command Center Content -->
+<div class="p-8 max-w-max-width mx-auto w-full space-y-8">
+<!-- Hero -->
+<div class="flex flex-col gap-1">
+<h1 class="text-2xl font-semibold tracking-tight text-white">Good Morning, Alex.</h1>
+<p class="text-secondary text-sm">You have <span class="text-white font-medium">4 critical priorities</span> to address today.</p>
+</div>
+<!-- Dashboard Grid -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Center Column: Key Metrics & AI -->
+<div class="col-span-12 lg:col-span-8 space-y-6">
+<!-- KPI Row -->
+<div class="grid grid-cols-3 gap-4">
+<div class="card-obsidian p-4 rounded-lg">
+<p class="text-[11px] font-medium text-secondary uppercase tracking-wider mb-1">Revenue</p>
+<div class="flex items-baseline justify-between">
+<h3 class="text-lg font-semibold text-white">$142.8k</h3>
+<div class="h-6 w-16 bg-white/5 rounded relative overflow-hidden">
+<svg class="absolute inset-0 h-full w-full stroke-success fill-none stroke-2" viewbox="0 0 100 40">
+<path d="M0 35 L20 30 L40 32 L60 20 L80 15 L100 5"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="card-obsidian p-4 rounded-lg">
+<p class="text-[11px] font-medium text-secondary uppercase tracking-wider mb-1">Leads</p>
+<div class="flex items-baseline justify-between">
+<h3 class="text-lg font-semibold text-white">1,240</h3>
+<div class="h-6 w-16 bg-white/5 rounded relative overflow-hidden">
+<svg class="absolute inset-0 h-full w-full stroke-white fill-none stroke-2" viewbox="0 0 100 40">
+<path d="M0 25 L25 28 L50 20 L75 22 L100 18"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="card-obsidian p-4 rounded-lg">
+<p class="text-[11px] font-medium text-secondary uppercase tracking-wider mb-1">Success Rate</p>
+<div class="flex items-baseline justify-between">
+<h3 class="text-lg font-semibold text-white">99.4%</h3>
+<div class="h-6 w-16 bg-white/5 rounded relative overflow-hidden">
+<svg class="absolute inset-0 h-full w-full stroke-action-blue fill-none stroke-2" viewbox="0 0 100 40">
+<path d="M0 35 L50 35 L100 35"></path>
+</svg>
+</div>
+</div>
+</div>
+</div>
+<!-- Task List -->
+<section class="card-obsidian rounded-lg overflow-hidden">
+<div class="px-5 py-4 border-b border-obsidian-border flex items-center justify-between">
+<h2 class="text-sm font-semibold text-white">Critical Task View</h2>
+<button class="text-xs text-secondary hover:text-white flex items-center gap-1">
+                                Filter <span class="material-symbols-outlined text-xs">filter_list</span>
+</button>
+</div>
+<div class="divide-y divide-obsidian-border">
+<!-- Task Item -->
+<div class="px-5 py-3 flex items-center gap-4 group hover:bg-white/[0.02] cursor-pointer">
+<div class="w-4 h-4 rounded-sm border border-obsidian-border flex items-center justify-center shrink-0 group-hover:border-secondary"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-0.5">
+<span class="text-xs font-medium text-white truncate">Refactor authentication middleware for OAuth2.1 flow</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-error/10 text-error border border-error/20">Critical</span>
+</div>
+<p class="text-[11px] text-secondary">NEX-402 • Today • Alex R.</p>
+</div>
+<div class="flex items-center gap-3 shrink-0">
+<span class="material-symbols-outlined text-secondary opacity-0 group-hover:opacity-100 transition-opacity">more_horiz</span>
+<div class="w-2 h-2 rounded-full bg-error"></div>
+</div>
+</div>
+<!-- Task Item -->
+<div class="px-5 py-3 flex items-center gap-4 group hover:bg-white/[0.02] cursor-pointer">
+<div class="w-4 h-4 rounded-sm border border-obsidian-border flex items-center justify-center shrink-0"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-0.5">
+<span class="text-xs font-medium text-white truncate">API Rate Limiter Implementation (Tier 2)</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/20">High</span>
+</div>
+<p class="text-[11px] text-secondary">NEX-415 • Tomorrow • Sarah M.</p>
+</div>
+<div class="flex items-center gap-3 shrink-0">
+<span class="material-symbols-outlined text-secondary opacity-0 group-hover:opacity-100 transition-opacity">more_horiz</span>
+<div class="w-2 h-2 rounded-full bg-warning"></div>
+</div>
+</div>
+<!-- Task Item -->
+<div class="px-5 py-3 flex items-center gap-4 group hover:bg-white/[0.02] cursor-pointer">
+<div class="w-4 h-4 rounded-sm border border-obsidian-border flex items-center justify-center shrink-0"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-0.5">
+<span class="text-xs font-medium text-white truncate">Internal developer documentation update</span>
+<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-secondary border border-obsidian-border">Standard</span>
+</div>
+<p class="text-[11px] text-secondary">NEX-398 • Oct 12 • Alex R.</p>
+</div>
+<div class="flex items-center gap-3 shrink-0">
+<span class="material-symbols-outlined text-secondary opacity-0 group-hover:opacity-100 transition-opacity">more_horiz</span>
+<div class="w-2 h-2 rounded-full bg-obsidian-border"></div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 bg-obsidian-light/50 border-t border-obsidian-border">
+<button class="text-[11px] font-medium text-secondary hover:text-white transition-colors">Show all 24 tasks</button>
+</div>
+</section>
+</div>
+<!-- Right Column: AI & Actions -->
+<div class="col-span-12 lg:col-span-4 space-y-6">
+<!-- AI Assistant Section -->
+<section class="card-obsidian rounded-lg p-5 bg-gradient-to-br from-obsidian-light to-obsidian">
+<div class="flex items-center gap-2 mb-4">
+<div class="w-5 h-5 bg-action-blue rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-[12px] text-white">auto_awesome</span>
+</div>
+<h2 class="text-sm font-semibold text-white">Smart Insights</h2>
+</div>
+<div class="space-y-4">
+<div class="p-3 bg-white/[0.03] border border-obsidian-border rounded-md">
+<p class="text-xs text-white mb-1">Project Phoenix is at risk of delay</p>
+<p class="text-[11px] text-secondary leading-relaxed">QA testing phase is taking 40% longer than expected. Consider reallocating resources from Backlog.</p>
+</div>
+<div class="p-3 bg-white/[0.03] border border-obsidian-border rounded-md">
+<p class="text-xs text-white mb-1">Unusual spike in API latency</p>
+<p class="text-[11px] text-secondary leading-relaxed">Cluster us-east-1a is showing 120ms p99 latency since 04:00 UTC.</p>
+</div>
+</div>
+<button class="w-full mt-4 py-2 text-xs font-medium text-secondary hover:text-white border border-obsidian-border rounded transition-colors">
+                            Full AI Report
+                        </button>
+</section>
+<!-- Quick Actions Grid -->
+<section class="card-obsidian rounded-lg p-5">
+<h2 class="text-[11px] font-bold text-secondary uppercase tracking-widest mb-4">Quick Actions</h2>
+<div class="grid grid-cols-2 gap-2">
+<button class="flex flex-col items-center justify-center gap-2 p-4 border border-obsidian-border rounded-lg hover:bg-white/[0.03] transition-colors">
+<span class="material-symbols-outlined text-secondary">add_box</span>
+<span class="text-[11px] font-medium text-secondary">New Project</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 border border-obsidian-border rounded-lg hover:bg-white/[0.03] transition-colors">
+<span class="material-symbols-outlined text-secondary">person_add</span>
+<span class="text-[11px] font-medium text-secondary">Assign Task</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 border border-obsidian-border rounded-lg hover:bg-white/[0.03] transition-colors">
+<span class="material-symbols-outlined text-secondary">analytics</span>
+<span class="text-[11px] font-medium text-secondary">Run Report</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 border border-obsidian-border rounded-lg hover:bg-white/[0.03] transition-colors">
+<span class="material-symbols-outlined text-secondary">settings_suggest</span>
+<span class="text-[11px] font-medium text-secondary">Automation</span>
+</button>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script>
+    let sidebarCollapsed = false;
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    const toggleIcon = document.getElementById('toggle-icon');
+    const sidebarContents = document.querySelectorAll('.sidebar-content');
+
+    function toggleSidebar() {
+        sidebarCollapsed = !sidebarCollapsed;
+        if (sidebarCollapsed) {
+            sidebar.style.width = '64px';
+            mainContent.style.marginLeft = '64px';
+            toggleIcon.innerText = 'keyboard_double_arrow_right';
+            sidebarContents.forEach(el => el.classList.add('hidden'));
+        } else {
+            sidebar.style.width = '240px';
+            mainContent.style.marginLeft = '240px';
+            toggleIcon.innerText = 'keyboard_double_arrow_left';
+            sidebarContents.forEach(el => el.classList.remove('hidden'));
+        }
+    }
+
+    // Command + K focus search
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            document.querySelector('input[type="text"]').focus();
+        }
+    });
+</script>
+</body></html>
