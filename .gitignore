@@ -9,6 +9,9 @@ build/
 .turbo/
 coverage/
 
+# Claude Code local runtime state — machine/session-specific, not project source
+.claude/scheduled_tasks.lock
+
 # Prisma-generated client (regenerated from schema, not source)
 apps/api/src/generated/
 
