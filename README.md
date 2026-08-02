@@ -13,7 +13,7 @@ A config-driven, multi-tenant workspace platform: a NestJS API compiles a per-us
 
 ## Quick start
 
-Prerequisites: [Node 22](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)/[Volta](https://volta.sh) — both pick up this repo's pinned version automatically), [Docker Desktop](https://www.docker.com/products/docker-desktop/), and [Corepack](https://nodejs.org/api/corepack.html) (ships with Node, provides the pinned `pnpm` with no separate install).
+Prerequisites: [Volta](https://volta.sh) (recommended — auto-switches to this repo's pinned Node/pnpm the moment you `cd` in; [nvm](https://github.com/nvm-sh/nvm) also works, via `nvm use`) and [Docker Desktop](https://www.docker.com/products/docker-desktop/). Nothing else gets installed globally — see [Environment isolation](docs/DEVELOPMENT.md#environment-isolation) for exactly what stays inside this repo.
 
 ```bash
 git clone https://github.com/DeepMag15/purnit.git

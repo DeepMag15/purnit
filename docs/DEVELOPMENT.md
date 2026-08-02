@@ -4,10 +4,22 @@ This is the full guide. For the fast path, see the [root README](../README.md#qu
 
 ## Prerequisites
 
-- **Node 22** — this repo pins an exact version via `.nvmrc` and a `volta` field in the root `package.json`. If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the repo root. If you use [Volta](https://volta.sh), it switches automatically the moment you `cd` into the repo — nothing to run. Either way, you never need a global Node install matching this project specifically.
-- **pnpm** — provided by [Corepack](https://nodejs.org/api/corepack.html), which ships with Node 22. The exact version is pinned via `packageManager` in the root `package.json`; Corepack reads it automatically. No separate global `pnpm install -g` needed.
-- **Docker Desktop** — the local Supabase stack (Postgres, Auth, Storage, Studio) runs entirely in Docker. Make sure it's running before `pnpm run setup`.
+- **Node 22.11.0** — pinned via `.nvmrc` and the `volta` field in the root `package.json`, and enforced by `.npmrc` (`engine-strict=true` fails `pnpm install` outright on the wrong major version instead of breaking later). With [Volta](https://volta.sh) installed, `cd`-ing into the repo switches your active Node automatically — nothing to run, nothing global changes, and it switches back the moment you `cd` out. With [nvm](https://github.com/nvm-sh/nvm) instead, run `nvm use` in the repo root. Either way, you never need a global Node install matching this project specifically.
+- **pnpm 11.13.0** — never installed globally. Pinned via `packageManager` in the root `package.json`; resolved automatically by [Corepack](https://nodejs.org/api/corepack.html) (ships with Node 22) — Volta's own `pnpm` shim defers to that same mechanism. No `npm install -g pnpm` anywhere in this project's own tooling.
+- **Docker Desktop** — the local Supabase stack (Postgres, Auth, Storage, Studio) and self-hosted Jitsi run entirely in containers. Make sure it's running before `pnpm run setup`. Nothing project-specific gets installed on the host directly.
 - **Python**: none. This is a 100% TypeScript/Node stack — no venv, no `requirements.txt`, nothing to set up here.
+
+## Environment isolation
+
+Cloning this repo and working in it shouldn't touch anything outside its own directory, beyond the handful of general-purpose tools above that any Node/Docker project needs installed somewhere on the machine once:
+
+- **Node & pnpm** are exact-pinned (previous section) and never installed globally — both live in this repo's own `node_modules/` or are resolved per-directory by Volta/Corepack.
+- **Every dependency** lives in this repo's `node_modules/` (gitignored, recreated by `pnpm install`). pnpm's default layout is strict (symlinked, non-hoisted): a package can't silently import something it didn't declare as its own dependency.
+- **Database/Auth/Storage/Meetings** run in Docker containers, never installed on the host directly — see "Local Supabase" and "Meetings / Jitsi" below.
+- **Secrets/config** live only in `.env` (gitignored, machine-local, created by `pnpm run setup` from `.env.example`). Nothing is baked into source or committed config.
+- **Python** — not applicable (see above); nothing to isolate.
+
+Deleting the cloned folder afterward leaves nothing behind beyond what Volta/Docker/git persist as general-purpose tools — no project-specific global packages, PATH entries, or config.
 
 ## One-command setup
 
