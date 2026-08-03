@@ -14,6 +14,7 @@ import { TasksModule } from "./modules/tasks/tasks.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { UsersModule } from "./modules/users/users.module";
 import { HrModule } from "./modules/hr/hr.module";
+import { RolesModule } from "./modules/roles/roles.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { CommentsModule } from "./modules/comments/comments.module";
 import { ChatModule } from "./modules/chat/chat.module";
@@ -41,6 +42,7 @@ import { MeController } from "./me/me.controller";
     NotificationsModule,
     UsersModule,
     HrModule,
+    RolesModule,
     SettingsModule,
     CommentsModule,
     ChatModule,

@@ -1172,14 +1172,32 @@ const IT_BLUEPRINT_V1 = {
         { id: "company-empty", type: "EmptyState", version: 1, props: { message: "Company settings are coming soon." } },
       ],
     },
+    // Roles & Permissions Management (Core Workspace Modules, Phase 3,
+    // priority insert ahead of Leave Management). Real module now — was a
+    // placeholder EmptyState stub, replaced in place, same transition
+    // page.attendance made above.
     "page.roles-permissions": {
       id: "page.roles-permissions",
       type: "Page",
       version: 1,
       requiredPermission: "role:manage",
       children: [
-        { id: "roles-permissions-heading", type: "Heading", version: 1, props: { text: "Roles & Permissions" } },
-        { id: "roles-permissions-empty", type: "EmptyState", version: 1, props: { message: "Roles & Permissions is coming soon." } },
+        {
+          id: "roles-permissions-workspace",
+          type: "RolesPermissionsWorkspace",
+          version: 1,
+          actions: [
+            // ⚠️ requiredPermission mirrors each mutation's own gate — same
+            // note as page.attendance's actions above. role:manage is held
+            // only by role.admin today, so these all prune to nothing for
+            // every other tier (deliberate — see the module's design notes
+            // on why role management is Admin-only in v1).
+            { kind: "mutation", mutation: "role.createCustom", input: { ref: "form.newRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+          ],
+        },
       ],
     },
     "page.analytics": {

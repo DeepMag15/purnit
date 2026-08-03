@@ -10,6 +10,7 @@ import { MeetingsWorkspace, MeetingsWorkspaceSchema } from "../modules/meetings/
 import { AnnouncementsWorkspace, AnnouncementsWorkspaceSchema } from "../modules/announcements/AnnouncementsWorkspace";
 import { CalendarWorkspace, CalendarWorkspaceSchema } from "../modules/calendar/CalendarWorkspace";
 import { AttendanceWorkspace, AttendanceWorkspaceSchema } from "../modules/attendance/AttendanceWorkspace";
+import { RolesPermissionsWorkspace, RolesPermissionsWorkspaceSchema } from "../modules/roles/RolesPermissionsWorkspace";
 
 let registered = false;
 
@@ -29,4 +30,5 @@ export function registerAllComponents(): void {
   registerPrimitive("AnnouncementsWorkspace", 1, AnnouncementsWorkspaceSchema, AnnouncementsWorkspace);
   registerPrimitive("CalendarWorkspace", 1, CalendarWorkspaceSchema, CalendarWorkspace);
   registerPrimitive("AttendanceWorkspace", 1, AttendanceWorkspaceSchema, AttendanceWorkspace);
+  registerPrimitive("RolesPermissionsWorkspace", 1, RolesPermissionsWorkspaceSchema, RolesPermissionsWorkspace);
 }
