@@ -40,7 +40,11 @@ const IT_BLUEPRINT_V1 = {
       // "remind me about my own stuff" being core to what makes a calendar
       // module valuable. Broadcast-visibility tiers escalate below, same
       // shape as announcement:create.
-      permissions: ["task:read:own", "task:update:own", "calendarEvent:create:own"],
+      // attendance:create:own/attendance:read:own — Attendance (Core
+      // Workspace Phase 3): universal floor, same "granted at the ladder's
+      // root" mechanism as calendarEvent:create:own — self-marking your own
+      // daily attendance is available to literally everyone.
+      permissions: ["task:read:own", "task:update:own", "calendarEvent:create:own", "attendance:create:own", "attendance:read:own"],
     },
     {
       // Was "Employee" — relabeled to match ORG_HIERARCHY.md's universal
@@ -132,6 +136,15 @@ const IT_BLUEPRINT_V1 = {
         "+announcement:create:department",
         "+document:delete:department",
         "+calendarEvent:create:department",
+        // attendance:update — Attendance (Core Workspace Phase 3):
+        // deliberately starts at "department", never "own" — an
+        // attendance:update:own grant would be a silent no-op, since the
+        // correction path's subject is another User row (ownerId always
+        // null for a User-shaped subject, see attendance.mutations.ts's
+        // own comment) — isRowInScope's "own" branch can never match that.
+        // Self-correction is special-cased before this check ever runs.
+        "+attendance:read:department",
+        "+attendance:update:department",
       ],
     },
     {
@@ -164,6 +177,8 @@ const IT_BLUEPRINT_V1 = {
         "+document:update:department-subtree",
         "+document:delete:department-subtree",
         "+calendarEvent:create:department-subtree",
+        "+attendance:read:department-subtree",
+        "+attendance:update:department-subtree",
       ],
     },
     {
@@ -183,7 +198,18 @@ const IT_BLUEPRINT_V1 = {
       // HR broadcasts (policy updates, holidays) are exactly its use case,
       // even though the generic tier floor for Announcements otherwise
       // starts at Department Head.
-      permissions: ["+user:manage:tenant", "+department:manage:tenant", "+announcement:create:tenant", "+calendarEvent:create:tenant"],
+      permissions: [
+        "+user:manage:tenant",
+        "+department:manage:tenant",
+        "+announcement:create:tenant",
+        "+calendarEvent:create:tenant",
+        // attendance:read/update:tenant — Attendance (Core Workspace Phase
+        // 3): HR Manager is the natural tenant-wide attendance authority,
+        // same bonus-grant channel as its other HR-flavored tenant grants
+        // above.
+        "+attendance:read:tenant",
+        "+attendance:update:tenant",
+      ],
     },
     {
       id: "role.admin",
@@ -210,6 +236,9 @@ const IT_BLUEPRINT_V1 = {
         "document:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
+        "attendance:create:tenant",
+        "attendance:read:tenant",
+        "attendance:update:tenant",
       ],
     },
   ],
@@ -442,7 +471,14 @@ const IT_BLUEPRINT_V1 = {
         // existing HR-tier signal) rather than inventing dedicated
         // permissions ahead of real functionality.
         { id: "nav.recruitment", label: "Recruitment", icon: "recruitment", pageId: "page.recruitment", requiredPermission: "user:manage" },
-        { id: "nav.attendance", label: "Attendance", icon: "attendance", pageId: "page.attendance", requiredPermission: "user:manage" },
+        // Core Workspace Modules, Phase 3, Submodule 2: Attendance —
+        // real module now, no longer a placeholder. requiredPermission
+        // changed from the placeholder's generic user:manage to
+        // attendance's own real triple — attendance:read:own is a
+        // universal floor (see role.intern above), so this is never
+        // pruned for anyone, same "always reachable" shape as
+        // calendarEvent:create:own's nav entry.
+        { id: "nav.attendance", label: "Attendance", icon: "attendance", pageId: "page.attendance", requiredPermission: "attendance:read" },
         { id: "nav.reviews", label: "Reviews", icon: "reviews", pageId: "page.reviews", requiredPermission: "user:manage" },
         { id: "nav.insights", label: "Insights", icon: "insights", pageId: "page.insights", requiredPermission: "user:manage" },
       ],
@@ -1053,6 +1089,32 @@ const IT_BLUEPRINT_V1 = {
         },
       ],
     },
+    // Core Workspace Modules, Phase 3, Submodule 2: Attendance. Real
+    // module now — was a placeholder EmptyState stub, replaced in place.
+    "page.attendance": {
+      id: "page.attendance",
+      type: "Page",
+      version: 1,
+      requiredPermission: "attendance:read",
+      children: [
+        {
+          id: "attendance-workspace",
+          type: "AttendanceWorkspace",
+          version: 1,
+          actions: [
+            // ⚠️ requiredPermission mirrors the mutation's own gate — same
+            // note as page.calendar's calendarEvent.create entry above.
+            // Survives pruning for EVERY tier, since every role holds at
+            // least attendance:create:own (see role.intern above).
+            { kind: "mutation", mutation: "attendance.mark", input: { ref: "form.markAttendance" }, requiredPermission: "attendance:create" },
+            // Only present for Department Head+ — attendance:update starts
+            // at "department" scope, never "own" (see role.department-head
+            // above for why).
+            { kind: "mutation", mutation: "attendance.correct", input: { ref: "form.correctAttendance" }, requiredPermission: "attendance:update" },
+          ],
+        },
+      ],
+    },
     // Placeholder pages below (Sidebar Navigation Phase 1) — each is
     // deliberately just a Heading + EmptyState "coming soon" message, no
     // real data source or mutation. Their `requiredPermission` mirrors the
@@ -1078,16 +1140,6 @@ const IT_BLUEPRINT_V1 = {
       children: [
         { id: "recruitment-heading", type: "Heading", version: 1, props: { text: "Recruitment" } },
         { id: "recruitment-empty", type: "EmptyState", version: 1, props: { message: "Recruitment is coming soon." } },
-      ],
-    },
-    "page.attendance": {
-      id: "page.attendance",
-      type: "Page",
-      version: 1,
-      requiredPermission: "user:manage",
-      children: [
-        { id: "attendance-heading", type: "Heading", version: 1, props: { text: "Attendance" } },
-        { id: "attendance-empty", type: "EmptyState", version: 1, props: { message: "Attendance is coming soon." } },
       ],
     },
     "page.reviews": {
