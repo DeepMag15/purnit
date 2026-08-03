@@ -8,6 +8,7 @@ import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import type { JitsiService } from "../../integrations/jitsi.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { enqueueReminders } from "../calendar/reminder-outbox";
 
 /** Confirms a meeting exists (tenant-scoped, not cancelled) and the actor is
  * one of its participants — exact mirror of `assertConversationMember`:
@@ -83,6 +84,9 @@ const CreateInputSchema = z.object({
   scheduledEnd: z.coerce.date(),
   departmentId: z.string().optional(),
   participantIds: z.array(z.string()).optional(),
+  // Calendar & Scheduling (Core Workspace Phase 3) — optional, enqueues one
+  // CalendarReminder row per participant via enqueueReminders below.
+  reminderMinutesBefore: z.number().int().positive().max(10_080).optional(),
 }).refine((data) => data.scheduledEnd > data.scheduledStart, { message: "scheduledEnd must be after scheduledStart", path: ["scheduledEnd"] });
 
 /** A plain constant again, not a factory — unlike Daily, self-hosted Jitsi
@@ -125,6 +129,7 @@ export const meetingCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
       await tx.meetingParticipant.create({ data: { tenantId: ctx.tenantId, meetingId: meeting.id, userId } });
     }
     await notifyInvitees(tx, ctx.tenantId, meeting.id, meeting.title, ctx.userId, participantIds);
+    await enqueueReminders(tx, ctx.tenantId, "meeting", meeting.id, meeting.scheduledStart, input.reminderMinutesBefore, participantIds);
 
     return meeting;
   },

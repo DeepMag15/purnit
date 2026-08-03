@@ -14,6 +14,7 @@ const ICONS: Record<string, string> = {
   settings: "settings",
   meetings: "event",
   announcements: "campaign",
+  calendar: "calendar_month",
   "team-management": "supervisor_account",
   "hr-group": "diversity_3",
   recruitment: "person_search",

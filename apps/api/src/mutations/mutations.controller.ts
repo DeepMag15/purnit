@@ -1,4 +1,5 @@
-import { Body, Controller, ForbiddenException, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { ZodError } from "zod";
 import { JwtAuthGuard } from "../tenancy/jwt-auth.guard";
 import { CurrentUserService } from "../tenancy/current-user.service";
 import { assertPasswordChanged } from "../tenancy/assert-password-changed";
@@ -33,7 +34,22 @@ export class MutationsController {
     const { tenantId, authUserId } = this.tenantContext.getOrThrow();
 
     // Parsing never touches `tx` — safe to do before preResolve/the transaction.
-    const input = def.inputSchema.parse(body ?? {});
+    // ⚠️ Pre-existing gap found and fixed during Calendar & Scheduling's own
+    // live verification (unrelated to Calendar itself, same class as the
+    // ERR_HTTP_HEADERS_SENT fix during Announcements' verification,
+    // CONTEXT.md §54): this used to be a bare `.parse()` call, so EVERY
+    // mutation across the whole app returned a raw 500 on invalid input
+    // instead of a 400 — only auth.controller.ts caught ZodError. Mirrors
+    // that controller's exact catch/rethrow shape.
+    let input;
+    try {
+      input = def.inputSchema.parse(body ?? {});
+    } catch (err) {
+      if (err instanceof ZodError) {
+        throw new BadRequestException(err.issues);
+      }
+      throw err;
+    }
 
     // Originally built for Meetings' Daily.co room creation (now unused —
     // self-hosted Jitsi, its replacement, has no equivalent step) — kept as

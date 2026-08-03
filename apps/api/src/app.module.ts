@@ -19,6 +19,7 @@ import { CommentsModule } from "./modules/comments/comments.module";
 import { ChatModule } from "./modules/chat/chat.module";
 import { MeetingsModule } from "./modules/meetings/meetings.module";
 import { AnnouncementsModule } from "./modules/announcements/announcements.module";
+import { CalendarModule } from "./modules/calendar/calendar.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { AiModule } from "./ai/ai.module";
 import { AiAssistantModule } from "./modules/ai-assistant/ai-assistant.module";
@@ -44,6 +45,7 @@ import { MeController } from "./me/me.controller";
     ChatModule,
     MeetingsModule,
     AnnouncementsModule,
+    CalendarModule,
     DocumentsModule,
     AiModule,
     AiAssistantModule,

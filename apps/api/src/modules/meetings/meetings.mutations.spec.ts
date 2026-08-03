@@ -106,6 +106,29 @@ describe("meeting.create", () => {
     expect(mocks.notification.create).toHaveBeenCalledTimes(1);
     expect(mocks.notification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: "u2", type: "meeting.invited" }) }));
   });
+
+  it("enqueues one CalendarReminder row per participant (organizer + invitees) when reminderMinutesBefore is set", async () => {
+    const scheduledStart = new Date("2026-08-10T09:00:00Z");
+    const tx = {
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "u2", departmentId: "d1" }]) },
+      meeting: { create: jest.fn().mockResolvedValue({ id: "m1", title: "Standup", scheduledStart }) },
+      meetingParticipant: { create: jest.fn().mockResolvedValue({}) },
+      notification: { create: jest.fn().mockResolvedValue({}) },
+      calendarReminder: { createMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    await meetingCreateMutation.resolve(
+      { title: "Standup", scheduledStart, scheduledEnd: new Date(scheduledStart.getTime() + 1800_000), participantIds: ["u2"], reminderMinutesBefore: 15 },
+      context(["meeting:create:team"], "d1"),
+      tx,
+    );
+
+    const mocks = tx as unknown as { calendarReminder: { createMany: jest.Mock } };
+    expect(mocks.calendarReminder.createMany).toHaveBeenCalledTimes(1);
+    const call = mocks.calendarReminder.createMany.mock.calls[0][0];
+    expect(call.data.map((d: { recipientUserId: string }) => d.recipientUserId).sort()).toEqual(["u1", "u2"]);
+    expect(call.data[0].availableAt).toEqual(new Date(scheduledStart.getTime() - 15 * 60_000));
+  });
 });
 
 describe("meeting.cancel", () => {

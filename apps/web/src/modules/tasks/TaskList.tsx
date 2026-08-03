@@ -29,6 +29,7 @@ interface TaskRow {
   priority: string;
   projectId: string;
   assigneeId: string | null;
+  dueDate: string | null;
 }
 
 interface MemberOption {
@@ -50,6 +51,16 @@ const STATUS_TONE: Record<string, "neutral" | "info" | "success"> = { todo: "neu
 // DB-level enum either (see tasks.prisma).
 const PRIORITY_TONE: Record<string, "danger" | "warning" | "neutral"> = { high: "danger", medium: "warning", low: "neutral" };
 
+// Calendar & Scheduling (Core Workspace Phase 3) — fixed frontend-only
+// vocabulary, same treatment as STATUSES/PRIORITY_TONE. Only offered once a
+// due date is actually chosen (see the create form below).
+const REMINDER_PRESETS = [
+  { value: "15", label: "15 minutes before" },
+  { value: "30", label: "30 minutes before" },
+  { value: "60", label: "1 hour before" },
+  { value: "1440", label: "1 day before" },
+];
+
 export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch, queryKey } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
@@ -68,6 +79,8 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
   const [newTitle, setNewTitle] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newReminderMinutes, setNewReminderMinutes] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -106,9 +119,13 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
         projectId: selectedProjectId,
         title: newTitle.trim(),
         ...(selectedAssigneeId ? { assigneeId: selectedAssigneeId } : {}),
+        ...(newDueDate ? { dueDate: newDueDate } : {}),
+        ...(newDueDate && newReminderMinutes ? { reminderMinutesBefore: Number(newReminderMinutes) } : {}),
       });
       toast.show(`Task "${newTitle.trim()}" created`);
       setNewTitle("");
+      setNewDueDate("");
+      setNewReminderMinutes("");
       refetch();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Couldn't create task");
@@ -184,6 +201,23 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
               placeholder="New task title"
               className="flex-1"
             />
+            <Input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => {
+                setNewDueDate(e.target.value);
+                if (!e.target.value) setNewReminderMinutes("");
+              }}
+              className="w-36"
+            />
+            <Select value={newReminderMinutes} onChange={(e) => setNewReminderMinutes(e.target.value)} disabled={!newDueDate}>
+              <option value="">No reminder</option>
+              {REMINDER_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
             <Button onClick={handleCreate} disabled={creating || !newTitle.trim() || !selectedProjectId}>
               <Icon name="add" size={14} />
               {creating ? "Adding…" : "New Task"}
@@ -207,6 +241,11 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-sm text-text">{task.title}</span>
                       {task.priority && <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>}
+                      {task.dueDate && (
+                        <Badge tone={new Date(task.dueDate) < new Date() && task.status !== "done" ? "danger" : "neutral"}>
+                          {new Date(task.dueDate).toLocaleDateString()}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <button

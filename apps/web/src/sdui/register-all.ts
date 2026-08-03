@@ -8,6 +8,7 @@ import { WorkspaceSettings, WorkspaceSettingsSchema } from "../modules/settings/
 import { ChatWorkspace, ChatWorkspaceSchema } from "../modules/chat/ChatWorkspace";
 import { MeetingsWorkspace, MeetingsWorkspaceSchema } from "../modules/meetings/MeetingsWorkspace";
 import { AnnouncementsWorkspace, AnnouncementsWorkspaceSchema } from "../modules/announcements/AnnouncementsWorkspace";
+import { CalendarWorkspace, CalendarWorkspaceSchema } from "../modules/calendar/CalendarWorkspace";
 
 let registered = false;
 
@@ -25,4 +26,5 @@ export function registerAllComponents(): void {
   registerPrimitive("ChatWorkspace", 1, ChatWorkspaceSchema, ChatWorkspace);
   registerPrimitive("MeetingsWorkspace", 1, MeetingsWorkspaceSchema, MeetingsWorkspace);
   registerPrimitive("AnnouncementsWorkspace", 1, AnnouncementsWorkspaceSchema, AnnouncementsWorkspace);
+  registerPrimitive("CalendarWorkspace", 1, CalendarWorkspaceSchema, CalendarWorkspace);
 }

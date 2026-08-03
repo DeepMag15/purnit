@@ -33,7 +33,14 @@ const IT_BLUEPRINT_V1 = {
     {
       id: "role.intern",
       label: "Intern",
-      permissions: ["task:read:own", "task:update:own"],
+      // calendarEvent:create:own — Calendar & Scheduling (Core Workspace
+      // Phase 3): a universal floor, deliberately granted at the ladder's
+      // root so every tier inherits it via `extends` — personal calendar
+      // entries (own scope) are available to literally everyone, matching
+      // "remind me about my own stuff" being core to what makes a calendar
+      // module valuable. Broadcast-visibility tiers escalate below, same
+      // shape as announcement:create.
+      permissions: ["task:read:own", "task:update:own", "calendarEvent:create:own"],
     },
     {
       // Was "Employee" — relabeled to match ORG_HIERARCHY.md's universal
@@ -124,6 +131,7 @@ const IT_BLUEPRINT_V1 = {
         "+user:manage:own",
         "+announcement:create:department",
         "+document:delete:department",
+        "+calendarEvent:create:department",
       ],
     },
     {
@@ -155,6 +163,7 @@ const IT_BLUEPRINT_V1 = {
         "+document:create:department-subtree",
         "+document:update:department-subtree",
         "+document:delete:department-subtree",
+        "+calendarEvent:create:department-subtree",
       ],
     },
     {
@@ -174,7 +183,7 @@ const IT_BLUEPRINT_V1 = {
       // HR broadcasts (policy updates, holidays) are exactly its use case,
       // even though the generic tier floor for Announcements otherwise
       // starts at Department Head.
-      permissions: ["+user:manage:tenant", "+department:manage:tenant", "+announcement:create:tenant"],
+      permissions: ["+user:manage:tenant", "+department:manage:tenant", "+announcement:create:tenant", "+calendarEvent:create:tenant"],
     },
     {
       id: "role.admin",
@@ -197,6 +206,7 @@ const IT_BLUEPRINT_V1 = {
         "meeting:create:tenant",
         "meeting:read:tenant",
         "announcement:create:tenant",
+        "calendarEvent:create:tenant",
         "document:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
@@ -385,6 +395,18 @@ const IT_BLUEPRINT_V1 = {
       label: "Announcements",
       icon: "announcements",
       pageId: "page.announcements",
+    },
+    {
+      // Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling —
+      // no requiredPermission, same "visible to every tenant member"
+      // treatment as nav.meetings/nav.announcements; creation authority
+      // (calendarEvent:create:<scope>) is enforced at calendarEvent.create.
+      // Every tier holds at least :own (see role.intern below), so this is
+      // never pruned for anyone.
+      id: "nav.calendar",
+      label: "Calendar",
+      icon: "calendar",
+      pageId: "page.calendar",
     },
     {
       // Placeholder module. Gated on project:create rather than a new
@@ -1000,6 +1022,33 @@ const IT_BLUEPRINT_V1 = {
             // No requiredPermission — ownership-only, matching
             // comment.delete/message.delete's precedent.
             { kind: "mutation", mutation: "announcement.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    // Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling.
+    // No requiredPermission on the page itself — core collaboration tooling,
+    // same treatment as page.chat/page.meetings/page.announcements.
+    "page.calendar": {
+      id: "page.calendar",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "calendar-workspace",
+          type: "CalendarWorkspace",
+          version: 1,
+          actions: [
+            // ⚠️ requiredPermission mirrors the mutation's own gate — same
+            // note as page.announcements' announcement.create entry above.
+            // Note this action survives pruning for EVERY tier, since every
+            // role holds at least calendarEvent:create:own (see
+            // role.intern above) — intentional, not a bug: it's what makes
+            // personal calendar entries universally reachable.
+            { kind: "mutation", mutation: "calendarEvent.create", input: { ref: "form.newCalendarEvent" }, requiredPermission: "calendarEvent:create" },
+            // No requiredPermission — ownership-only, matching
+            // announcement.delete's precedent.
+            { kind: "mutation", mutation: "calendarEvent.delete", input: { ref: "row.id" } },
           ],
         },
       ],

@@ -5,6 +5,7 @@ import type { MutationDefinition } from "../../mutations/mutation-registry.servi
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { enqueueReminders } from "../calendar/reminder-outbox";
 
 /** Who (if anyone) should be notified of an assignee-affecting task change.
  * `null` covers both "no assignee" and "the actor is the assignee" —
@@ -57,14 +58,24 @@ async function requireTaskInScope(tx: PrismaTx, ctx: { tenantId: string; userId:
   return existing;
 }
 
-const CreateInputSchema = z.object({
-  projectId: z.string(),
-  title: z.string().min(1),
-  description: z.string().optional(),
-  assigneeId: z.string().optional(),
-  priority: z.string().optional(),
-  dueDate: z.string().optional(), // ISO date string
-});
+const CreateInputSchema = z
+  .object({
+    projectId: z.string(),
+    title: z.string().min(1),
+    description: z.string().optional(),
+    assigneeId: z.string().optional(),
+    priority: z.string().optional(),
+    dueDate: z.string().optional(), // ISO date string
+    // Calendar & Scheduling (Core Workspace Phase 3) — only settable at
+    // create time (Task has no post-creation dueDate-editing mutation; see
+    // CHANGELOG's disclosed limitation). Enqueues one CalendarReminder row
+    // targeting the assignee.
+    reminderMinutesBefore: z.number().int().positive().max(10_080).optional(),
+  })
+  .refine((data) => !data.reminderMinutesBefore || !!data.dueDate, {
+    message: "reminderMinutesBefore requires a dueDate",
+    path: ["reminderMinutesBefore"],
+  });
 
 export const taskCreateMutation: MutationDefinition<z.infer<typeof CreateInputSchema>> = {
   name: "task.create",
@@ -105,6 +116,10 @@ export const taskCreateMutation: MutationDefinition<z.infer<typeof CreateInputSc
           data: { taskId: task.id, projectId: task.projectId },
         },
       });
+    }
+
+    if (task.dueDate) {
+      await enqueueReminders(tx, ctx.tenantId, "task", task.id, task.dueDate, input.reminderMinutesBefore, [assigneeId]);
     }
 
     return task;

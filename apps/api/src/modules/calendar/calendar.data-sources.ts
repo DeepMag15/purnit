@@ -1,0 +1,110 @@
+import { z } from "zod";
+import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
+import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { getDepartmentAncestorIds } from "../../rbac/department-ancestors";
+import { meetingsWhere } from "../meetings/meetings.data-sources";
+import { tasksWhere } from "../tasks/tasks.data-sources";
+
+/**
+ * Mirrors `announcementsWhere` exactly: resolves the reader's own ancestor
+ * chain once, then `OR`s broadcast rows targeting the tenant (departmentId
+ * null) or any ancestor of the reader's department. The `authorId` branch is
+ * an always-on floor — same "ownership is a floor, not exclusive" precedent
+ * as `meetingsWhere`'s participant floor — so an author always sees their
+ * own private entries plus anything they've broadcast, regardless of their
+ * current department. Never returns `null` — `calendarEvent:create:own` is a
+ * universal grant (see seed.ts's `role.intern`), so every tenant member can
+ * always at least see their own entries.
+ */
+export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, from: Date, to: Date): Promise<Record<string, unknown>> {
+  const ancestorIds = ctx.userDepartmentId ? await getDepartmentAncestorIds(tx, ctx.tenantId, ctx.userDepartmentId) : [];
+  return {
+    tenantId: ctx.tenantId,
+    deletedAt: null,
+    startAt: { gte: from, lte: to },
+    OR: [
+      { authorId: ctx.userId },
+      { isPrivate: false, departmentId: null },
+      ...(ancestorIds.length > 0 ? [{ isPrivate: false, departmentId: { in: ancestorIds } }] : []),
+    ],
+  };
+}
+
+interface CalendarItem {
+  id: string;
+  itemType: "meeting" | "calendarEvent" | "task";
+  title: string;
+  start: Date;
+  end: Date | null;
+  meta: Record<string, unknown>;
+}
+
+const CalendarListParamsSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+
+/**
+ * The unified Calendar view — aggregates Meetings, CalendarEvents, and
+ * Task due-dates for a bounded date range, tagged by `itemType`. No
+ * `requiredPermission` (an ungated aggregator, same shape as
+ * `meetingsWhere`/`tasksWhere` being callable from other data sources) —
+ * each underlying source enforces its own visibility.
+ *
+ * Deliberately sequential, never `Promise.all` — concurrent queries against
+ * one shared transactional `tx` are unsafe (every data-source file in this
+ * codebase carries this same warning; see CONTEXT.md §9).
+ */
+export const calendarListDataSource: DataSourceDefinition<z.infer<typeof CalendarListParamsSchema>> = {
+  name: "calendar.list",
+  paramsSchema: CalendarListParamsSchema,
+  async resolve(params, ctx, tx) {
+    const { from, to } = params;
+    const items: CalendarItem[] = [];
+
+    const meetingsWhereClause = await meetingsWhere(tx, ctx, { scheduledStart: { gte: from, lte: to } });
+    const meetings = await tx.meeting.findMany({ where: meetingsWhereClause });
+    for (const m of meetings) {
+      items.push({
+        id: m.id,
+        itemType: "meeting",
+        title: m.title,
+        start: m.scheduledStart,
+        end: m.scheduledEnd,
+        meta: { organizerId: m.organizerId, cancelledAt: m.cancelledAt },
+      });
+    }
+
+    const eventsWhereClause = await calendarEventsWhere(tx, ctx, from, to);
+    const events = await tx.calendarEvent.findMany({ where: eventsWhereClause });
+    for (const e of events) {
+      items.push({
+        id: e.id,
+        itemType: "calendarEvent",
+        title: e.title,
+        start: e.startAt,
+        end: e.endAt,
+        meta: { authorId: e.authorId, isPrivate: e.isPrivate, departmentId: e.departmentId },
+      });
+    }
+
+    // Returns null when the actor has no task:read grant at all — skipped,
+    // not an error, same "gracefully absent" shape as an unresolved scope
+    // anywhere else in this codebase.
+    const tasksWhereClause = await tasksWhere(tx, ctx, {});
+    if (tasksWhereClause) {
+      const tasks = await tx.task.findMany({ where: { ...tasksWhereClause, dueDate: { gte: from, lte: to } } });
+      for (const t of tasks) {
+        if (!t.dueDate) continue;
+        items.push({
+          id: t.id,
+          itemType: "task",
+          title: t.title,
+          start: t.dueDate,
+          end: null,
+          meta: { assigneeId: t.assigneeId, status: t.status, priority: t.priority },
+        });
+      }
+    }
+
+    items.sort((a, b) => a.start.getTime() - b.start.getTime());
+    return items;
+  },
+};

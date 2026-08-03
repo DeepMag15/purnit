@@ -11,6 +11,14 @@ export interface InviteEmailInput {
   loginUrl: string;
 }
 
+export interface ReminderEmailInput {
+  to: string;
+  recipientName: string;
+  itemTitle: string;
+  itemType: string; // "meeting" | "calendarEvent" | "task" — free-text, matches CalendarReminder.sourceType
+  startAt: Date;
+}
+
 /**
  * Thin wrapper around Resend — deliberately its own module rather than
  * folded into `auth/`, since ARCHITECTURE §12 already designates email as a
@@ -51,6 +59,43 @@ export class EmailService {
       return false;
     }
   }
+
+  /** Never throws — same "delivery failure must never fail the operation"
+   * shape as sendInviteEmail. Called by CalendarReminderProcessorService
+   * after its own in-app Notification write already succeeded, so a `false`
+   * return here is logged, not treated as a job failure. */
+  async sendReminderEmail(input: ReminderEmailInput): Promise<boolean> {
+    try {
+      const { error } = await this.resend.emails.send({
+        from: `Antigravity <${process.env.EMAIL_FROM}>`,
+        to: input.to,
+        subject: `Reminder: ${input.itemTitle}`,
+        html: renderReminderEmail(input),
+      });
+      if (error) throw new Error(error.message);
+      return true;
+    } catch (err) {
+      this.logger.warn(`Reminder email to ${input.to} failed: ${err instanceof Error ? err.message : err}`);
+      return false;
+    }
+  }
+}
+
+const REMINDER_ITEM_LABELS: Record<string, string> = {
+  meeting: "Meeting",
+  calendarEvent: "Calendar event",
+  task: "Task due",
+};
+
+function renderReminderEmail(input: ReminderEmailInput): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const label = REMINDER_ITEM_LABELS[input.itemType] ?? "Reminder";
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; color: #1a1a1a;">
+      <h2 style="margin-bottom: 4px;">${esc(label)}: ${esc(input.itemTitle)}</h2>
+      <p style="color: #555;">Hi ${esc(input.recipientName)}, this is a reminder that "${esc(input.itemTitle)}" is coming up at <strong>${esc(input.startAt.toLocaleString())}</strong>.</p>
+    </div>
+  `.trim();
 }
 
 function renderInviteEmail(input: InviteEmailInput): string {

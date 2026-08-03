@@ -1,5 +1,5 @@
-import { Body, Controller, ForbiddenException, HttpCode, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
-import { z } from "zod";
+import { BadRequestException, Body, Controller, ForbiddenException, HttpCode, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { z, ZodError } from "zod";
 import { JwtAuthGuard } from "../tenancy/jwt-auth.guard";
 import { CurrentUserService } from "../tenancy/current-user.service";
 import { assertPasswordChanged } from "../tenancy/assert-password-changed";
@@ -11,6 +11,24 @@ import { DataSourceRegistry, type DataSourceContext } from "./data-source-regist
 const BatchRequestSchema = z.object({
   requests: z.array(z.object({ source: z.string(), params: z.unknown().optional() })).max(20),
 });
+
+/** ⚠️ Pre-existing gap found and fixed during Calendar & Scheduling's own
+ * live verification (unrelated to Calendar itself, same class as the
+ * ERR_HTTP_HEADERS_SENT fix during Announcements' verification, CONTEXT.md
+ * §54): every one of this controller's `.parse()` calls used to be bare, so
+ * invalid input returned a raw 500 instead of a 400 — only auth.controller.ts
+ * caught ZodError anywhere in the app. Shared here since this controller has
+ * three call sites, unlike mutations.controller.ts's one. */
+function parseOrBadRequest<T>(schema: z.ZodType<T>, value: unknown): T {
+  try {
+    return schema.parse(value);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      throw new BadRequestException(err.issues);
+    }
+    throw err;
+  }
+}
 
 @Controller("api/data")
 @UseGuards(JwtAuthGuard)
@@ -40,7 +58,7 @@ export class DataSourcesController {
   @Post("batch")
   @HttpCode(200)
   async resolveBatch(@Body() body: unknown) {
-    const { requests } = BatchRequestSchema.parse(body);
+    const { requests } = parseOrBadRequest(BatchRequestSchema, body);
     const { tenantId, authUserId } = this.tenantContext.getOrThrow();
 
     const results = await this.tenantPrisma.run(tenantId, async (tx) => {
@@ -62,7 +80,7 @@ export class DataSourcesController {
             continue;
           }
         }
-        const params = def.paramsSchema.parse(rawParams ?? {});
+        const params = parseOrBadRequest(def.paramsSchema, rawParams ?? {});
         const ctx: DataSourceContext = { tenantId, userId: user.id, userDepartmentId: user.departmentId, effective };
         out.push({ data: await def.resolve(params, ctx, tx) });
       }
@@ -99,7 +117,7 @@ export class DataSourcesController {
         }
       }
 
-      const params = def.paramsSchema.parse(body ?? {});
+      const params = parseOrBadRequest(def.paramsSchema, body ?? {});
       const ctx: DataSourceContext = {
         tenantId,
         userId: user.id,
