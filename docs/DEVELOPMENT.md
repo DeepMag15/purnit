@@ -21,6 +21,39 @@ Cloning this repo and working in it shouldn't touch anything outside its own dir
 
 Deleting the cloned folder afterward leaves nothing behind beyond what Volta/Docker/git persist as general-purpose tools — no project-specific global packages, PATH entries, or config.
 
+## Docker storage location (Windows)
+
+Docker Desktop's WSL2 backend and this project's own package-manager caches default to the Windows system drive (`C:`) and grow unboundedly as images/containers/build cache/dependencies accumulate — on a machine with a small or shared `C:`, this is a real, recurring way to run out of system-drive space (this project hit it for real: a disk-full `overlayfs` write during container creation silently truncated several cached Jitsi image binaries to 0 bytes — see `infra/jitsi/README.md`'s "Known friction areas"). If you have a roomier secondary drive, it's worth relocating this project's Docker/tooling storage there once, up front:
+
+- **Docker Desktop's data (images, containers, volumes, build cache)** all live inside one file, `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` (plus a small VM-OS disk at `wsl\main\ext4.vhdx`) — there is no in-app "Disk image location" setting exposed in this Docker Desktop version's containerd-snapshotter backend (checked `settings-store.json`, the `docker desktop` CLI, and the registry — none exposed it). The reliable, Docker-Desktop-agnostic fix is an **NTFS junction**: physically move the `wsl` folder to the target drive, then leave a junction at the original path so Docker Desktop keeps reading/writing the same logical location, unaware anything moved.
+
+  ```powershell
+  # 1. Fully stop Docker Desktop and WSL first — do not copy a live vhdx.
+  docker desktop stop
+  wsl --shutdown
+
+  # 2. Copy (not move yet — verify first), e.g. to D:\DockerData\wsl
+  robocopy "$env:LOCALAPPDATA\Docker\wsl" "D:\DockerData\wsl" /E /COPY:DAT /MT:4
+
+  # 3. Verify byte-for-byte size match on both vhdx files before deleting anything, e.g.:
+  #    (Get-Item "$env:LOCALAPPDATA\Docker\wsl\disk\docker_data.vhdx").Length
+  #    (Get-Item "D:\DockerData\wsl\disk\docker_data.vhdx").Length
+
+  # 4. Only once verified: remove the original, then junction the old path to the new one
+  Remove-Item "$env:LOCALAPPDATA\Docker\wsl" -Recurse -Force
+  New-Item -ItemType Junction -Path "$env:LOCALAPPDATA\Docker\wsl" -Target "D:\DockerData\wsl"
+
+  # 5. Start Docker Desktop again and confirm `docker images`/`docker ps -a` still show everything
+  ```
+
+  This project's own dev machine has this applied: Docker's data lives at `D:\DockerData\wsl`, junctioned from the default path. Nothing about `docker compose`/`docker` commands changes — this is transparent at the filesystem level.
+
+- **npm's cache** (`%LOCALAPPDATA%\npm-cache`, unrelated to pnpm's own cache below — some tooling shells out to npm/npx directly) is relocated the supported way: `npm config set cache "D:\npm-cache" --global`.
+- **pnpm's cache-dir** (a small metadata/registry-response cache, separate from its main content-addressable store) is set via a `cache-dir=D:\.pnpm-cache` line in the user-level `~/.npmrc` rather than `pnpm config set --global` — the latter currently fails in this environment (`configured global bin directory ... is not in PATH`), an unrelated pre-existing quirk of pnpm being resolved through Volta rather than pnpm's own installer, not something this migration caused. `.npmrc` is read the same way regardless.
+- **pnpm's main store** (the actual large content-addressable package store) needs no manual config — pnpm computes its default **per-drive** on Windows (hardlinks can't cross drives), so it already lives at `D:\.pnpm-store` simply because this repo lives on `D:`. Confirm with `pnpm store path`.
+
+None of the above is repo state — it's machine-local configuration, nothing to commit. A fresh clone / new machine starts back at the C: defaults until this section is followed again.
+
 ## One-command setup
 
 ```bash
