@@ -2,7 +2,9 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { JitsiService } from "../../integrations/jitsi.service";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
+import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { meetingsListDataSource, meetingsInviteCandidatesDataSource } from "./meetings.data-sources";
+import { meetingsHeldThisWeekMetric, meetingsTimelineMetric } from "./meetings.metrics";
 import {
   meetingCreateMutation,
   meetingCancelMutation,
@@ -18,6 +20,7 @@ class MeetingsRegistrar implements OnModuleInit {
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
     private readonly jitsi: JitsiService,
+    private readonly metrics: MetricRegistry,
   ) {}
 
   onModuleInit() {
@@ -28,6 +31,8 @@ class MeetingsRegistrar implements OnModuleInit {
     this.mutations.register(meetingAddParticipantMutation);
     this.mutations.register(meetingRemoveParticipantMutation);
     this.mutations.register(createMeetingGetJoinInfoMutation(this.jitsi));
+    this.metrics.register(meetingsHeldThisWeekMetric);
+    this.metrics.register(meetingsTimelineMetric);
   }
 }
 

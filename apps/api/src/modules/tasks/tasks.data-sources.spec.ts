@@ -94,4 +94,33 @@ describe("tasksWhere", () => {
     const where = await tasksWhere(tx, context(["task:read:tenant"]), { assigneeId: "teammate-1" });
     expect(where!.assigneeId).toBe("teammate-1");
   });
+
+  // Phase B (Analytics filters): departmentId/projectId are applied before
+  // scope branching, so every scope path inherits them — including the
+  // early "own"/"tenant" returns, which a naive implementation could easily
+  // miss since they return before the OR-scope block runs.
+  it("a departmentId filter narrows tenant scope via the owning project's departmentId", async () => {
+    const where = await tasksWhere(tx, context(["task:read:tenant"]), { departmentId: "d9" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, project: { departmentId: "d9" } });
+  });
+
+  it("a departmentId filter is still applied under own scope, layered alongside the assigneeId floor", async () => {
+    const where = await tasksWhere(tx, context(["task:read:own"]), { departmentId: "d9" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1", project: { departmentId: "d9" } });
+  });
+
+  it("a departmentId filter is AND-ed alongside department/team scope's own OR condition, never replacing it", async () => {
+    const where = await tasksWhere(tx, context(["task:read:department"], "d1"), { departmentId: "d9" });
+    expect(where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      project: { departmentId: "d9" },
+      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+    });
+  });
+
+  it("a projectId filter is honored as a direct passthrough regardless of scope", async () => {
+    const where = await tasksWhere(tx, context(["task:read:tenant"]), { projectId: "p1" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, projectId: "p1" });
+  });
 });

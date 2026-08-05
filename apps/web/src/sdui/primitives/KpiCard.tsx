@@ -6,11 +6,12 @@ import { Skeleton } from "../../ui/Skeleton";
 
 export const KpiCardSchema = z.object({
   label: z.string(),
-  // Optional static trend line (e.g. [12, 18, 15, 22, 30]) — purely
-  // presentational, not data-bound. No data source in this system exposes
-  // historical time-series data to back a real one yet; a blueprint should
-  // omit this rather than a future author fabricating numbers just to fill
-  // the visual slot.
+  // Optional trend line (e.g. [12, 18, 15, 22, 30]) — still a plain prop,
+  // not a data binding of its own: AnalyticsWidgetCard (Core Workspace
+  // Modules, Phase 4) is the real producer, passing real daily values read
+  // from AnalyticsSnapshot history for metrics that opt into it. Any other
+  // caller should still omit this rather than fabricate numbers to fill the
+  // visual slot.
   trend: z.array(z.number()).optional(),
   trendTone: z.enum(["success", "danger", "accent"]).optional(),
 });

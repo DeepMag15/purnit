@@ -33,7 +33,7 @@ import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 export async function tasksWhere(
   tx: PrismaTx,
   ctx: DataSourceContext,
-  params: { status?: string; assigneeId?: string; overdue?: boolean },
+  params: { status?: string; assigneeId?: string; overdue?: boolean; departmentId?: string; projectId?: string },
 ): Promise<Record<string, unknown> | null> {
   const scope = ctx.effective.has("task", "read");
   if (!scope) return null;
@@ -44,6 +44,12 @@ export async function tasksWhere(
     where.status = { not: "done" };
   }
   if (params.status) where.status = params.status; // explicit status wins over overdue's implied one
+  // Applied uniformly, before scope branching, so every scope path
+  // (including the early "own"/"tenant" returns below) inherits the same
+  // narrowing — a filter can only ever narrow further, never widen past
+  // whatever the scope branch below already permits.
+  if (params.projectId) where.projectId = params.projectId;
+  if (params.departmentId) where.project = { departmentId: params.departmentId };
 
   if (scope === "own") {
     where.assigneeId = ctx.userId;

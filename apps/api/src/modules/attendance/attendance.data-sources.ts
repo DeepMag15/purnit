@@ -15,7 +15,7 @@ import { isRowInScope } from "../../rbac/scope-check";
  * Returns `null` for `"own"` — the caller then knows this is self-only, no
  * roster. Always includes the actor's own id, even if departmentless.
  */
-async function resolveScopedRosterUserIds(tx: PrismaTx, ctx: DataSourceContext, scope: Scope): Promise<string[] | null> {
+export async function resolveScopedRosterUserIds(tx: PrismaTx, ctx: DataSourceContext, scope: Scope): Promise<string[] | null> {
   if (scope === "own") return null;
   if (scope === "tenant") {
     const users = await tx.user.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null }, select: { id: true } });

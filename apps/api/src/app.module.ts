@@ -9,6 +9,7 @@ import { ConfigEngineModule } from "./config-engine/config-engine.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { DataSourcesModule } from "./data-sources/data-sources.module";
 import { MutationsModule } from "./mutations/mutations.module";
+import { MetricsModule } from "./metrics/metrics.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { TasksModule } from "./modules/tasks/tasks.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
@@ -25,6 +26,7 @@ import { AttendanceModule } from "./modules/attendance/attendance.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { AiModule } from "./ai/ai.module";
 import { AiAssistantModule } from "./modules/ai-assistant/ai-assistant.module";
+import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -37,6 +39,7 @@ import { MeController } from "./me/me.controller";
     WorkspaceModule,
     DataSourcesModule,
     MutationsModule,
+    MetricsModule,
     ProjectsModule,
     TasksModule,
     NotificationsModule,
@@ -53,6 +56,7 @@ import { MeController } from "./me/me.controller";
     DocumentsModule,
     AiModule,
     AiAssistantModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController, MeController],
 })

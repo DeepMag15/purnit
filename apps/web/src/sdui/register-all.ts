@@ -11,6 +11,7 @@ import { AnnouncementsWorkspace, AnnouncementsWorkspaceSchema } from "../modules
 import { CalendarWorkspace, CalendarWorkspaceSchema } from "../modules/calendar/CalendarWorkspace";
 import { AttendanceWorkspace, AttendanceWorkspaceSchema } from "../modules/attendance/AttendanceWorkspace";
 import { RolesPermissionsWorkspace, RolesPermissionsWorkspaceSchema } from "../modules/roles/RolesPermissionsWorkspace";
+import { AnalyticsDashboard, AnalyticsDashboardSchema } from "../modules/analytics/AnalyticsDashboard";
 
 let registered = false;
 
@@ -31,4 +32,5 @@ export function registerAllComponents(): void {
   registerPrimitive("CalendarWorkspace", 1, CalendarWorkspaceSchema, CalendarWorkspace);
   registerPrimitive("AttendanceWorkspace", 1, AttendanceWorkspaceSchema, AttendanceWorkspace);
   registerPrimitive("RolesPermissionsWorkspace", 1, RolesPermissionsWorkspaceSchema, RolesPermissionsWorkspace);
+  registerPrimitive("AnalyticsDashboard", 1, AnalyticsDashboardSchema, AnalyticsDashboard);
 }

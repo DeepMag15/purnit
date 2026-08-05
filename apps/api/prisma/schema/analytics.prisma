@@ -1,0 +1,38 @@
+/** Pre-aggregated per-day metric values, written by
+ * AnalyticsSnapshotProcessorService — the "expensive/historical" half of the
+ * Analytics engine (the "cheap/live" half is computed fresh per request by
+ * each MetricDefinition's own computeLive, never stored here).
+ *
+ * Deliberately no DB-level unique constraint on (tenantId, metricKey,
+ * departmentId, periodStart) — a departmentId-inclusive compound unique
+ * index hits Postgres's "NULL is distinct from NULL" semantics, so multiple
+ * departmentId IS NULL rows for the same metric+period would NOT be
+ * rejected by one. Idempotency is enforced operationally instead: the
+ * processor deletes-then-reinserts *today's* rows for a metric on every
+ * tick. Rows for days before "today" are never touched once written —
+ * closed periods, immutable history.
+ */
+model AnalyticsSnapshot {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  // Matches the owning MetricDefinition.key ("module.verb", e.g.
+  // "tasks.completionRate") — free-text, not a DB enum, same treatment as
+  // every other status/key-shaped column in this schema.
+  metricKey String @map("metric_key")
+  // null = tenant-wide row. Non-null = scoped to one department. Phase A's
+  // processor always writes null; the column exists now so a future
+  // per-department rollup is an additive data change, not a migration.
+  departmentId String?  @map("department_id") @db.Uuid
+  value        Float
+  // UTC-midnight anchor of the bucket this row represents.
+  periodStart DateTime @map("period_start")
+  // "day" | "week" | "month" — free-text vocabulary, same treatment as
+  // Task.status/AttendanceRecord.status, not a DB enum. Phase A only ever
+  // writes "day".
+  granularity String   @default("day")
+  computedAt  DateTime @default(now()) @map("computed_at")
+
+  @@index([tenantId, metricKey, periodStart])
+  @@index([tenantId, metricKey, departmentId, periodStart])
+  @@map("analytics_snapshots")
+}

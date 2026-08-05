@@ -480,7 +480,8 @@ const IT_BLUEPRINT_V1 = {
         // calendarEvent:create:own's nav entry.
         { id: "nav.attendance", label: "Attendance", icon: "attendance", pageId: "page.attendance", requiredPermission: "attendance:read" },
         { id: "nav.reviews", label: "Reviews", icon: "reviews", pageId: "page.reviews", requiredPermission: "user:manage" },
-        { id: "nav.insights", label: "Insights", icon: "insights", pageId: "page.insights", requiredPermission: "user:manage" },
+        // nav.insights retired — consolidated into nav.analytics (Core
+        // Workspace Modules, Phase 4: Analytics & Insights).
       ],
     },
     {
@@ -527,12 +528,17 @@ const IT_BLUEPRINT_V1 = {
       // to non-admins, regressing its existing universal visibility.
     },
     {
-      // Placeholder module — Admin-only, same reasoning as nav.company.
+      // Core Workspace Modules, Phase 4: Analytics & Insights — real module
+      // now (was two separate dead placeholders, nav.insights/nav.analytics;
+      // consolidated into this one). Broad visibility, no page-level gate —
+      // every widget inside AnalyticsDashboard is independently gated by its
+      // own metric's requiredPermission (analytics.dashboard's resolve
+      // loop), same "prune per-widget, not the whole page" treatment
+      // nav.dashboard/nav.chat already get.
       id: "nav.analytics",
       label: "Analytics",
       icon: "analytics",
       pageId: "page.analytics",
-      requiredPermission: "settings:manage",
     },
     {
       // Placeholder module — a personal account page, visible to everyone,
@@ -1152,16 +1158,8 @@ const IT_BLUEPRINT_V1 = {
         { id: "reviews-empty", type: "EmptyState", version: 1, props: { message: "Reviews is coming soon." } },
       ],
     },
-    "page.insights": {
-      id: "page.insights",
-      type: "Page",
-      version: 1,
-      requiredPermission: "user:manage",
-      children: [
-        { id: "insights-heading", type: "Heading", version: 1, props: { text: "Insights" } },
-        { id: "insights-empty", type: "EmptyState", version: 1, props: { message: "Insights is coming soon." } },
-      ],
-    },
+    // page.insights retired — consolidated into page.analytics (Core
+    // Workspace Modules, Phase 4: Analytics & Insights).
     "page.company": {
       id: "page.company",
       type: "Page",
@@ -1206,14 +1204,33 @@ const IT_BLUEPRINT_V1 = {
         },
       ],
     },
+    // Core Workspace Modules, Phase 4: Analytics & Insights — real module
+    // now, replacing the two dead EmptyState placeholders (page.insights,
+    // consolidated in; page.analytics itself). No requiredPermission on the
+    // page — broad visibility, matching nav.analytics above. Every widget
+    // inside AnalyticsDashboard is independently gated by its own metric's
+    // requiredPermission (analytics.dashboard's resolve loop) — genuinely
+    // new widget-level pruning territory, not the page/action-level pruning
+    // every other module here relies on.
     "page.analytics": {
       id: "page.analytics",
       type: "Page",
       version: 1,
-      requiredPermission: "settings:manage",
       children: [
-        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics" } },
-        { id: "analytics-empty", type: "EmptyState", version: 1, props: { message: "Analytics is coming soon." } },
+        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
+        // Phase C (Visual & Widget-Type Depth) — a "Core Widget (Always
+        // Available)" per the request's own example list. Bound directly to
+        // notifications.list (own-scoped, no requiredPermission), not routed
+        // through analytics.dashboard's widget array — Notification rows are
+        // per-user personal data, not a cross-tenant MetricRegistry concept.
+        {
+          id: "analytics-activity",
+          type: "ActivityFeed",
+          version: 1,
+          props: { title: "Recent Activity", limit: 10 },
+          bind: { source: "notifications.list" },
+        },
+        { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
       ],
     },
     "page.account": {
