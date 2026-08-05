@@ -8,6 +8,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+> 🏁 **Milestone — 2026-08-04, stable development checkpoint.** Commit `14338ca` on `develop` (pushed, in sync with `origin/develop`). Everything through **Delegation** is shipped, tested, and live-verified: Core Workspace Modules Phase 3 in full (Calendar & Scheduling, Attendance, Roles & Permissions Management, Delegation), plus the Jitsi local-dev protocol fix and the Docker/npm/pnpm storage relocation off `C:`. Full monorepo `typecheck`/`test` (398 backend + 9 frontend)/`build` all clean, working tree clean. See `CONTEXT.md`'s status table for the same marker. The reference point before starting **Leave Management** next.
+
 ### Session 1 — 2026-07-14 — Discovery & Architecture
 
 **Phase:** Requirements gathering + architecture design (no application code yet).
