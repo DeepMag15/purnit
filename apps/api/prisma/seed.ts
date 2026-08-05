@@ -1196,6 +1196,12 @@ const IT_BLUEPRINT_V1 = {
             { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
             { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
             { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+            // Delegation — per-user permission override, same role:manage
+            // gate. input.ref is vestigial like the four above:
+            // RolesPermissionsWorkspace calls callMutation imperatively from
+            // component state, never through the declarative binding.
+            { kind: "mutation", mutation: "delegation.grant", input: { ref: "form.grantDelegation" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.revoke", input: { ref: "row.id" }, requiredPermission: "role:manage" },
           ],
         },
       ],

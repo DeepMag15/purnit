@@ -31,6 +31,37 @@ model RoleAssignment {
   @@map("role_assignments")
 }
 
+/** Delegation — a per-USER permission override, distinct from RoleAssignment
+ * (which always points at a shared Role). Grants ONE "resource:action:scope"
+ * triple to ONE individual on top of whatever role(s) they hold, without
+ * touching the role or affecting anyone else who holds it (confirmed design
+ * decision: per-user override, not role-wide — role-wide grants are already
+ * covered by clone-role -> edit -> reassign). One row per triple, not a Json
+ * array like Role.permissions, so each grant gets independent revocation.
+ *
+ * Soft-revoke only (revokedAt/revokedById) — same audit-trail convention as
+ * Announcement/Comment soft-delete, never a hard row delete. No expiry field
+ * anywhere (confirmed: permanent until explicitly revoked, no poller
+ * implied). Re-granting the same triple after a revoke inserts a fresh row
+ * rather than reactivating the old one.
+ *
+ * No `user`/`grantedBy`/`revokedBy` Prisma relations — same no-FK treatment
+ * as Announcement.authorId/RoleAssignment.userId; tenant isolation is RLS's
+ * job, not a Postgres FK's. */
+model PermissionDelegation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  permission  String
+  grantedById String    @map("granted_by_id") @db.Uuid
+  revokedById String?   @map("revoked_by_id") @db.Uuid
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@map("permission_delegations")
+}
+
 /** Materialized form of a blueprint's `departmentTypes[].tierLabels`/
  * `roleOverrides` (ORG_HIERARCHY.md §3-4) — same "materialize once at
  * provisioning/reseed time, never live-derive from blueprint JSON at

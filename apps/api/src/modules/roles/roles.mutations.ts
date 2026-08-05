@@ -9,7 +9,7 @@ import { describeDeleteBlockers } from "../hr/hr.mutations";
  * from `assertPermissionsGrantableByActor` (escalation) since the two are
  * different failure modes: an unknown permission is a 400 (malformed
  * request), an ungranted-by-the-actor permission is a 403 (authorization). */
-function assertKnownPermissions(permissions: readonly string[]): void {
+export function assertKnownPermissions(permissions: readonly string[]): void {
   for (const raw of permissions) {
     const [resource, action] = raw.split(":");
     if (!resource || !action || !isKnownPermission(resource, action)) {

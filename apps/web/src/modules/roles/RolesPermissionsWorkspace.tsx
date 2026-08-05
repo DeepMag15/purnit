@@ -47,6 +47,14 @@ interface EffectivePermissionsResult {
   roles: { id: string; label: string; sourceBlueprintRoleId: string | null }[];
 }
 
+interface DelegationRow {
+  id: string;
+  permission: string;
+  grantedById: string;
+  grantedByName: string;
+  createdAt: string;
+}
+
 // Narrowest to broadest — same order as rbac/scope.ts's SCOPE_RANK, fixed
 // frontend-only vocabulary (same treatment as AttendanceWorkspace's
 // ATTENDANCE_STATUSES; the shared enum lives server-side and has no
@@ -87,6 +95,7 @@ export function RolesPermissionsWorkspace({ actions }: Props & CommonRenderProps
   const toast = useToast();
 
   const canManageRoles = actions?.some((a) => a.kind === "mutation" && a.mutation === "role.createCustom") ?? false;
+  const canDelegate = actions?.some((a) => a.kind === "mutation" && a.mutation === "delegation.grant") ?? false;
 
   const { data: rolesData, refetch: refetchRoles } = useDataSourceQuery<RoleDetailed[]>("roles.listDetailed");
   const roles = rolesData ?? [];
@@ -149,7 +158,7 @@ export function RolesPermissionsWorkspace({ actions }: Props & CommonRenderProps
 
       {cloningSource && <ClonePicker source={cloningSource} onCancel={() => setCloningSourceId(null)} onCloned={afterMutation} />}
 
-      <UserPermissionViewer catalog={catalog} enabled={canManageRoles} />
+      <UserPermissionViewer catalog={catalog} enabled={canManageRoles} actorScopeMap={actorScopeMap} canDelegate={canDelegate} />
     </div>
   );
 }
@@ -374,7 +383,17 @@ function ClonePicker({ source, onCancel, onCloned }: { source: RoleDetailed; onC
   );
 }
 
-function UserPermissionViewer({ catalog, enabled }: { catalog: CatalogModule[]; enabled: boolean }) {
+function UserPermissionViewer({
+  catalog,
+  enabled,
+  actorScopeMap,
+  canDelegate,
+}: {
+  catalog: CatalogModule[];
+  enabled: boolean;
+  actorScopeMap: Map<string, string>;
+  canDelegate: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
@@ -384,7 +403,7 @@ function UserPermissionViewer({ catalog, enabled }: { catalog: CatalogModule[]; 
     ? users.filter((u) => u.displayName.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()))
     : users;
 
-  const { data: effective, isPending } = useDataSourceQuery<EffectivePermissionsResult>(
+  const { data: effective, isPending, refetch: refetchEffective } = useDataSourceQuery<EffectivePermissionsResult>(
     "users.effectivePermissions",
     { userId: selectedUserId ?? "" },
     { enabled: enabled && !!selectedUserId },
@@ -441,7 +460,180 @@ function UserPermissionViewer({ catalog, enabled }: { catalog: CatalogModule[]; 
             })}
           </div>
         )}
+
+        {selectedUserId && canDelegate && (
+          <div className="flex flex-col gap-3 border-t border-border pt-3">
+            <ActiveDelegationsList
+              userId={selectedUserId}
+              onChanged={() => {
+                refetchEffective();
+              }}
+            />
+            <DelegationGrantEditor
+              userId={selectedUserId}
+              catalog={catalog}
+              actorScopeMap={actorScopeMap}
+              heldKeys={heldKeys}
+              onGranted={() => {
+                refetchEffective();
+              }}
+            />
+          </div>
+        )}
       </CardBody>
     </Card>
+  );
+}
+
+/** Mirrors RoleEditorPanel's checkbox-per-catalog-entry + scope <Select>
+ * loop exactly, same actorScopeMap-driven graying-out of ungrantable
+ * entries — the only differences are the target (a specific user, not a
+ * role) and the mutation called. Entries already held via the target's
+ * current role(s) get an "already held" badge — UX only, not a backend
+ * block, since a redundant delegation is harmless. */
+function DelegationGrantEditor({
+  userId,
+  catalog,
+  actorScopeMap,
+  heldKeys,
+  onGranted,
+}: {
+  userId: string;
+  catalog: CatalogModule[];
+  actorScopeMap: Map<string, string>;
+  heldKeys: Set<string>;
+  onGranted: () => void;
+}) {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const [selected, setSelected] = useState<Map<string, string>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(resource: string, action: string) {
+    const key = permKey(resource, action);
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        const actorScope = actorScopeMap.get(key);
+        next.set(key, actorScope ?? "own");
+      }
+      return next;
+    });
+  }
+
+  function setScope(resource: string, action: string, scope: string) {
+    const key = permKey(resource, action);
+    setSelected((prev) => new Map(prev).set(key, scope));
+  }
+
+  async function handleGrant() {
+    if (selected.size === 0) return;
+    setSaving(true);
+    setError(null);
+    const permissions = [...selected.entries()].map(([key, scope]) => `${key}:${scope}`);
+    try {
+      await callMutation("delegation.grant", { userId, permissions });
+      toast.show(`Granted ${permissions.length} permission(s)`);
+      setSelected(new Map());
+      onGranted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't grant permission");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Delegate an extra permission</div>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="flex flex-col gap-3">
+        {catalog.map((mod) => (
+          <div key={mod.module}>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{mod.module}</div>
+            <div className="flex flex-col gap-1">
+              {mod.entries.map((entry) => {
+                const key = permKey(entry.resource, entry.action);
+                const checked = selected.has(key);
+                const actorScope = actorScopeMap.get(key);
+                const grantable = actorScope !== undefined;
+                const allowedScopes = SCOPES.filter((s) => !grantable || scopeRank(s) <= scopeRank(actorScope!));
+                const alreadyHeld = heldKeys.has(key);
+                return (
+                  <label key={key} className="flex items-center gap-2 py-0.5 text-sm text-text">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!grantable}
+                      onChange={() => toggle(entry.resource, entry.action)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className={grantable ? undefined : "text-text-muted line-through"}>{entry.label}</span>
+                    {alreadyHeld && <Badge tone="neutral">already held via role</Badge>}
+                    {checked && (
+                      <Select
+                        value={selected.get(key) ?? "own"}
+                        onChange={(e) => setScope(entry.resource, entry.action, e.target.value)}
+                        className="h-7 w-40 text-xs"
+                      >
+                        {allowedScopes.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <Button size="sm" onClick={handleGrant} disabled={saving || selected.size === 0}>
+          {saving ? "Granting…" : "Grant"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ActiveDelegationsList({ userId, onChanged }: { userId: string; onChanged: () => void }) {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const { data, refetch } = useDataSourceQuery<DelegationRow[]>("delegations.list", { userId }, { enabled: !!userId });
+  const delegations = data ?? [];
+
+  async function handleRevoke(row: DelegationRow) {
+    try {
+      await callMutation("delegation.revoke", { delegationId: row.id });
+      toast.show(`Revoked "${row.permission}"`);
+      refetch();
+      onChanged();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't revoke delegation", "danger");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Delegated permissions</div>
+      {delegations.length === 0 && <div className="text-sm text-text-muted">None active.</div>}
+      {delegations.map((row) => (
+        <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{row.permission}</span>
+          <span className="text-xs text-text-muted">
+            granted by {row.grantedByName} · {new Date(row.createdAt).toLocaleDateString()}
+          </span>
+          <Button size="sm" variant="danger" onClick={() => handleRevoke(row)}>
+            Revoke
+          </Button>
+        </div>
+      ))}
+    </div>
   );
 }

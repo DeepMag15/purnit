@@ -4,6 +4,8 @@ import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { PermissionResolverService } from "../../rbac/permission-resolver.service";
 import { rolesListDetailedDataSource, permissionsCatalogDataSource, createUsersEffectivePermissionsDataSource } from "./roles.data-sources";
 import { roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation } from "./roles.mutations";
+import { delegationsListDataSource } from "./delegation.data-sources";
+import { delegationGrantMutation, delegationRevokeMutation } from "./delegation.mutations";
 
 /** Same registrar pattern as every other module (see attendance.module.ts).
  * `RbacModule` is `@Global()`, so `PermissionResolverService` needs no
@@ -20,10 +22,13 @@ class RolesRegistrar implements OnModuleInit {
     this.dataSources.register(rolesListDetailedDataSource);
     this.dataSources.register(permissionsCatalogDataSource);
     this.dataSources.register(createUsersEffectivePermissionsDataSource(this.permissionResolver));
+    this.dataSources.register(delegationsListDataSource);
     this.mutations.register(roleCreateCustomMutation);
     this.mutations.register(roleUpdateCustomMutation);
     this.mutations.register(roleCloneMutation);
     this.mutations.register(roleDeleteMutation);
+    this.mutations.register(delegationGrantMutation);
+    this.mutations.register(delegationRevokeMutation);
   }
 }
 
