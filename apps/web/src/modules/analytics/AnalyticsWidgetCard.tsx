@@ -64,6 +64,10 @@ const BREAKDOWN_RENDER_KIND: Record<string, BreakdownRenderKind> = {
   "tasks.assigneeWorkload": "scatter",
   "attendance.statusByDepartment": "heatmap",
   "meetings.timeline": "timeline",
+  // Analytics Phase D — permission-controlled widgets, reusing Phase C's
+  // already-built Leaderboard primitive, zero new frontend component.
+  "department.performanceLeaderboard": "leaderboard",
+  "tasks.productivityLeaderboard": "leaderboard",
 };
 const CHART_NATIVE_KINDS = new Set<BreakdownRenderKind>(["donut", "bar", "stacked-bar", "scatter", "radial"]);
 // Only tasks.byProjectStatus needs this — its stage columns can't be

@@ -4,7 +4,12 @@ import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { attendanceListDataSource, attendanceRosterDataSource } from "./attendance.data-sources";
 import { attendanceMarkMutation, attendanceCorrectMutation } from "./attendance.mutations";
-import { attendanceRateThisMonthMetric, attendanceRateByDepartmentMetric, attendanceStatusByDepartmentMetric } from "./attendance.metrics";
+import {
+  attendanceRateThisMonthMetric,
+  attendanceRateByDepartmentMetric,
+  attendanceStatusByDepartmentMetric,
+  attendanceDepartmentLeaderboardMetric,
+} from "./attendance.metrics";
 
 /** Same registrar pattern as every other module — see calendar.module.ts.
  * No factory/injected service needed — no external dependency, no outbox,
@@ -25,6 +30,7 @@ class AttendanceRegistrar implements OnModuleInit {
     this.metrics.register(attendanceRateThisMonthMetric);
     this.metrics.register(attendanceRateByDepartmentMetric);
     this.metrics.register(attendanceStatusByDepartmentMetric);
+    this.metrics.register(attendanceDepartmentLeaderboardMetric);
   }
 }
 

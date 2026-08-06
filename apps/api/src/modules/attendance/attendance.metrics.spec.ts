@@ -1,5 +1,10 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { attendanceRateThisMonthMetric, attendanceRateByDepartmentMetric, attendanceStatusByDepartmentMetric } from "./attendance.metrics";
+import {
+  attendanceRateThisMonthMetric,
+  attendanceRateByDepartmentMetric,
+  attendanceStatusByDepartmentMetric,
+  attendanceDepartmentLeaderboardMetric,
+} from "./attendance.metrics";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -159,5 +164,44 @@ describe("attendance metrics", () => {
       ]),
     );
     expect(rows).toHaveLength(3);
+  });
+
+  it("attendanceDepartmentLeaderboardMetric requires analytics:departmentPerformance, not attendance:read", () => {
+    expect(attendanceDepartmentLeaderboardMetric.requiredPermission).toBe("analytics:departmentPerformance");
+  });
+
+  it("attendanceDepartmentLeaderboardMetric.computeLive returns real tenant-wide data for a caller with ZERO attendance:read grant — the deliberate scope exception", async () => {
+    const tx = {
+      attendanceRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { userId: "u1", status: "present" },
+          { userId: "u2", status: "present" },
+          { userId: "u2", status: "absent" },
+          { userId: "u3", status: "present" },
+        ]),
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "u1", departmentId: "d1" },
+          { id: "u2", departmentId: "d1" },
+          { id: "u3", departmentId: "d2" },
+        ]),
+      },
+      department: { findMany: jest.fn().mockResolvedValue([{ id: "d1", name: "Engineering" }, { id: "d2", name: "Sales" }]) },
+    } as unknown as PrismaTx;
+    // No attendance:read at all — only the new permission is checked by
+    // isPermissionGranted at the dashboard layer; computeLive itself must
+    // still return real data since it never calls scopedUserIds.
+    // Engineering: u1 (1 present) + u2 (1 present, 1 absent) = 2/3 present = 66.7%.
+    const rows = await attendanceDepartmentLeaderboardMetric.computeLive(context([]), tx);
+    expect(rows).toEqual([
+      { department: "Sales", rate: 100 },
+      { department: "Engineering", rate: 66.7 },
+    ]);
+  });
+
+  it("attendanceDepartmentLeaderboardMetric.computeLive returns [] with zero records this month, no crash", async () => {
+    const tx = { attendanceRecord: { findMany: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
+    expect(await attendanceDepartmentLeaderboardMetric.computeLive(context([]), tx)).toEqual([]);
   });
 });

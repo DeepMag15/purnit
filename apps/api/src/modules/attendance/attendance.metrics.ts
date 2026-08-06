@@ -189,3 +189,54 @@ export const attendanceStatusByDepartmentMetric: BreakdownMetricDefinition = {
     });
   },
 };
+
+// Analytics Phase D (Permission-Controlled Widget Catalog) — deliberately
+// does NOT call scopedUserIds/resolveScopedRosterUserIds. Every other
+// breakdown metric in this file reuses the caller's own attendance:read
+// scope; this one is gated by analytics:departmentPerformance instead, and
+// that new permission IS the scope — tenant-wide, every department, by
+// design, regardless of what attendance:read scope (if any) the caller also
+// holds. Safe specifically because analytics:departmentPerformance is a
+// brand-new permission nobody holds by default except Company Admin (see
+// permission-catalog.ts/seed.ts) — never apply this "ignore the module's own
+// *Where() scope" pattern to a metric gated by an existing, already-relied-
+// upon permission.
+export const attendanceDepartmentLeaderboardMetric: BreakdownMetricDefinition = {
+  kind: "breakdown",
+  key: "department.performanceLeaderboard",
+  module: "Department Performance",
+  label: "Department Performance Leaderboard",
+  requiredPermission: "analytics:departmentPerformance",
+  nameKey: "department",
+  valueKey: "rate",
+  async computeLive(ctx, tx) {
+    const now = new Date();
+    const monthStart = startOfUtcMonth(now);
+    const records = await tx.attendanceRecord.findMany({
+      where: { tenantId: ctx.tenantId, date: { gte: monthStart, lte: now } },
+      select: { userId: true, status: true },
+    });
+    if (records.length === 0) return [];
+
+    const userIds = [...new Set(records.map((r) => r.userId))];
+    const users = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, departmentId: true } });
+    const deptByUser = new Map(users.map((u) => [u.id, u.departmentId]));
+    const deptIds = [...new Set(users.map((u) => u.departmentId).filter((id): id is string => !!id))];
+    const departments = deptIds.length > 0 ? await tx.department.findMany({ where: { id: { in: deptIds } }, select: { id: true, name: true } }) : [];
+    const deptNameById = new Map(departments.map((d) => [d.id, d.name]));
+
+    const totals = new Map<string, { total: number; present: number }>();
+    for (const r of records) {
+      const deptId = deptByUser.get(r.userId);
+      if (!deptId) continue;
+      const bucket = totals.get(deptId) ?? { total: 0, present: 0 };
+      bucket.total += 1;
+      if (r.status === "present") bucket.present += 1;
+      totals.set(deptId, bucket);
+    }
+
+    return [...totals.entries()]
+      .map(([deptId, { total, present }]) => ({ department: deptNameById.get(deptId) ?? "Unknown", rate: total > 0 ? Math.round((present / total) * 1000) / 10 : 0 }))
+      .sort((a, b) => b.rate - a.rate);
+  },
+};

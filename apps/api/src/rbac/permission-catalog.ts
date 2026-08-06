@@ -108,6 +108,19 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "role", action: "manage", label: "Create & edit roles" },
     ],
   },
+  {
+    // Analytics Phase D — permission-controlled widgets. Each entry gates a
+    // widget that deliberately does NOT reuse its owning module's own scope
+    // builder (attendance:read/task:read) — the permission itself IS the
+    // scope, always tenant-wide when granted, same presence-only shape as
+    // settings:manage/role:manage. See the metric files' own doc comments.
+    module: "Analytics",
+    entries: [
+      { resource: "analytics", action: "departmentPerformance", label: "View cross-department performance comparisons" },
+      { resource: "analytics", action: "productivity", label: "View cross-employee productivity comparisons" },
+      { resource: "analytics", action: "aiUsage", label: "View AI usage analytics" },
+    ],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));

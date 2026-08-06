@@ -242,3 +242,49 @@ export const tasksAssigneeWorkloadMetric: BreakdownMetricDefinition = {
     });
   },
 };
+
+// Analytics Phase D (Permission-Controlled Widget Catalog) — deliberately
+// does NOT call tasksWhere. Every other metric in this file reuses the
+// caller's own task:read scope; this one is gated by analytics:productivity
+// instead, and that new permission IS the scope — every employee, tenant-
+// wide, by design, regardless of what task:read scope (if any) the caller
+// also holds. Safe specifically because analytics:productivity is a
+// brand-new permission nobody holds by default except Company Admin (see
+// permission-catalog.ts/seed.ts) — never apply this "ignore the module's own
+// *Where() scope" pattern to a metric gated by an existing, already-relied-
+// upon permission.
+export const tasksProductivityLeaderboardMetric: BreakdownMetricDefinition = {
+  kind: "breakdown",
+  key: "tasks.productivityLeaderboard",
+  module: "Employee Productivity",
+  label: "Employee Productivity Leaderboard",
+  requiredPermission: "analytics:productivity",
+  nameKey: "assignee",
+  valueKey: "rate",
+  async computeLive(ctx, tx) {
+    const totalGroups = await tx.task.groupBy({
+      by: ["assigneeId"],
+      where: { tenantId: ctx.tenantId, deletedAt: null, assigneeId: { not: null } },
+      _count: { _all: true },
+    });
+    if (totalGroups.length === 0) return [];
+    const doneGroups = await tx.task.groupBy({
+      by: ["assigneeId"],
+      where: { tenantId: ctx.tenantId, deletedAt: null, assigneeId: { not: null }, status: "done" },
+      _count: { _all: true },
+    });
+    const doneByAssignee = new Map(doneGroups.map((g) => [g.assigneeId, g._count._all]));
+
+    const assigneeIds = totalGroups.map((g) => g.assigneeId!);
+    const users = await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, displayName: true } });
+    const nameByUser = new Map(users.map((u) => [u.id, u.displayName]));
+
+    return totalGroups
+      .map((g) => {
+        const taskCount = g._count._all;
+        const done = doneByAssignee.get(g.assigneeId) ?? 0;
+        return { assignee: nameByUser.get(g.assigneeId!) ?? "Unknown", rate: taskCount > 0 ? Math.round((done / taskCount) * 1000) / 10 : 0 };
+      })
+      .sort((a, b) => b.rate - a.rate);
+  },
+};

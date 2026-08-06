@@ -239,6 +239,12 @@ const IT_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // Analytics Phase D — permission-controlled widgets. Only Company
+        // Admin holds these by default; every other role starts with zero,
+        // grantable via Roles & Permissions/Delegation like everything else.
+        "analytics:departmentPerformance:tenant",
+        "analytics:productivity:tenant",
+        "analytics:aiUsage:tenant",
       ],
     },
   ],

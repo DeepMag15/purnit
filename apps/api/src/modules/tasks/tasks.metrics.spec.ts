@@ -8,6 +8,7 @@ import {
   tasksStatusFunnelMetric,
   tasksCompletionLeaderboardMetric,
   tasksAssigneeWorkloadMetric,
+  tasksProductivityLeaderboardMetric,
 } from "./tasks.metrics";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -187,5 +188,40 @@ describe("tasks metrics", () => {
         { assignee: "Bob", x: 2, y: 0 },
       ]),
     );
+  });
+
+  it("tasksProductivityLeaderboardMetric requires analytics:productivity, not task:read", () => {
+    expect(tasksProductivityLeaderboardMetric.requiredPermission).toBe("analytics:productivity");
+  });
+
+  it("tasksProductivityLeaderboardMetric.computeLive returns real tenant-wide data for a caller with ZERO task:read grant — the deliberate scope exception, desc-sorted", async () => {
+    const tx = {
+      task: {
+        groupBy: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { assigneeId: "u1", _count: { _all: 4 } },
+            { assigneeId: "u2", _count: { _all: 2 } },
+          ])
+          .mockResolvedValueOnce([
+            { assigneeId: "u1", _count: { _all: 1 } },
+            { assigneeId: "u2", _count: { _all: 2 } },
+          ]),
+      },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "u1", displayName: "Alice" }, { id: "u2", displayName: "Bob" }]) },
+    } as unknown as PrismaTx;
+    // No task:read at all — computeLive never calls tasksWhere.
+    const rows = await tasksProductivityLeaderboardMetric.computeLive(context([]), tx);
+    expect(rows).toEqual([
+      { assignee: "Bob", rate: 100 },
+      { assignee: "Alice", rate: 25 },
+    ]);
+    const call = (tx as unknown as { task: { groupBy: jest.Mock } }).task.groupBy.mock.calls[0][0];
+    expect(call.where).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: { not: null } });
+  });
+
+  it("tasksProductivityLeaderboardMetric.computeLive returns [] with zero tasks, no crash", async () => {
+    const tx = { task: { groupBy: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
+    expect(await tasksProductivityLeaderboardMetric.computeLive(context([]), tx)).toEqual([]);
   });
 });

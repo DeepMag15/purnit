@@ -32,7 +32,7 @@ export function AnalyticsDashboard(_props: Props & CommonRenderProps) {
 
 function AnalyticsDashboardContent() {
   const filters = useAnalyticsFilters();
-  const { data, isPending, error } = useDataSourceQuery<{ widgets: AnalyticsWidget[] }>("analytics.dashboard", {
+  const { data, isPending, error } = useDataSourceQuery<{ widgets: AnalyticsWidget[]; sectionOrder?: string[] }>("analytics.dashboard", {
     from: filters.from,
     to: filters.to,
     departmentId: filters.departmentId,
@@ -50,6 +50,18 @@ function AnalyticsDashboardContent() {
     const list = byModule.get(widget.module) ?? [];
     list.push(widget);
     byModule.set(widget.module, list);
+  }
+
+  // Analytics Phase D — the caller's role-level DashboardLayout default, if
+  // one exists (absent for a tenant provisioned before this phase, or for a
+  // module not named in it — both fall back to insertion order, never
+  // hidden). Purely a display order: every section here is already
+  // permission-pruned server-side regardless of where this list puts it.
+  const sectionOrder = data?.sectionOrder;
+  const moduleEntries = [...byModule.entries()];
+  if (sectionOrder) {
+    const rank = new Map(sectionOrder.map((name, i) => [name, i]));
+    moduleEntries.sort((a, b) => (rank.get(a[0]) ?? sectionOrder.length) - (rank.get(b[0]) ?? sectionOrder.length));
   }
 
   return (
@@ -70,7 +82,7 @@ function AnalyticsDashboardContent() {
       {!isPending && !error && widgets.length === 0 && <EmptyStateView message="No analytics available for your role yet." />}
       {!isPending &&
         !error &&
-        [...byModule.entries()].map(([module, moduleWidgets]) => (
+        moduleEntries.map(([module, moduleWidgets]) => (
           <div key={module} className="flex flex-col gap-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">{module}</div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,6 +1,7 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
+import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { TenantPrismaService } from "../../tenancy/tenant-prisma.service";
 import { AiProviderService } from "../../ai/provider/ai-provider.service";
 import { EmbeddingProviderService } from "../../ai/embeddings/embedding-provider.service";
@@ -8,6 +9,7 @@ import { RetrievalService } from "../../ai/retrieval/retrieval.service";
 import { PermissionResolverService } from "../../rbac/permission-resolver.service";
 import { aiConversationsListDataSource, aiConversationMessagesDataSource } from "./ai-assistant.data-sources";
 import { aiConversationCreateMutation, aiConversationArchiveMutation, createAiMessageSendMutation } from "./ai-assistant.mutations";
+import { aiUsageSummaryMetric } from "./ai-assistant.metrics";
 
 /** Same registrar pattern as every other module — see meetings.module.ts.
  * `AiProviderService`/`EmbeddingProviderService`/`RetrievalService` are
@@ -24,6 +26,7 @@ class AiAssistantRegistrar implements OnModuleInit {
     private readonly embeddingProvider: EmbeddingProviderService,
     private readonly retrievalService: RetrievalService,
     private readonly permissionResolver: PermissionResolverService,
+    private readonly metrics: MetricRegistry,
   ) {}
 
   onModuleInit() {
@@ -34,6 +37,7 @@ class AiAssistantRegistrar implements OnModuleInit {
     this.mutations.register(
       createAiMessageSendMutation(this.aiProvider, this.tenantPrisma, this.embeddingProvider, this.retrievalService, this.permissionResolver),
     );
+    this.metrics.register(aiUsageSummaryMetric);
   }
 }
 

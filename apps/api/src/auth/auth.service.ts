@@ -6,6 +6,24 @@ import { generateUniqueWorkspaceId } from "./workspace-id";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "./materialize-roles";
 import type { SignupInput } from "./signup.schema";
 
+// Analytics Phase D — initial section order per role's default dashboard.
+// Purely a display preference (order of already-permitted module sections,
+// see AnalyticsDashboard.tsx) — never grants visibility a role's real
+// permissions wouldn't already permit; a section a role can't see is simply
+// absent from the response regardless of where this list would have placed
+// it. Company Admin/Executive/HR Manager lead with "Department Performance"
+// (the one section they hold analytics:departmentPerformance for by
+// default); everyone else leads with the modules most of their day-to-day
+// work lives in.
+const DEFAULT_DASHBOARD_SECTIONS: { blueprintRoleId: string; sections: string[] }[] = [
+  { blueprintRoleId: "role.admin", sections: ["Department Performance", "Employee Productivity", "AI Usage", "Tasks", "Attendance", "Projects", "Meetings"] },
+  { blueprintRoleId: "role.executive", sections: ["Department Performance", "Employee Productivity", "Projects", "Tasks", "Attendance", "Meetings"] },
+  { blueprintRoleId: "role.hr-manager", sections: ["Department Performance", "Employee Productivity", "Attendance", "Tasks", "Meetings"] },
+  { blueprintRoleId: "role.department-head", sections: ["Tasks", "Attendance", "Projects", "Meetings"] },
+  { blueprintRoleId: "role.project-manager", sections: ["Tasks", "Projects", "Meetings", "Attendance"] },
+  { blueprintRoleId: "role.member", sections: ["Tasks", "Attendance", "Meetings"] },
+];
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -50,6 +68,22 @@ export class AuthService {
         const rolesByBlueprintId = await materializeBlueprintRoles(tx, tenant.id, blueprintRoles);
         await materializeDepartmentTypeLabels(tx, tenant.id, blueprintDef.departmentTypes ?? [], rolesByBlueprintId);
         const adminRole = rolesByBlueprintId.get("role.admin")!;
+
+        // Analytics Phase D — one role-level DashboardLayout default per
+        // in-scope role, seeded here rather than via seed.ts's static
+        // blueprint JSON: DashboardLayout.roleId is a real, per-tenant
+        // materialized Role.id (only known now, post-materializeBlueprintRoles),
+        // never a blueprint-level id. A role not present in this blueprint
+        // is simply skipped, not an error. One batched createMany, not N
+        // sequential creates — materialize-roles.ts's own doc comment
+        // records a real prior P2028 timeout from exactly that mistake
+        // inside this same signup transaction.
+        await tx.dashboardLayout.createMany({
+          data: DEFAULT_DASHBOARD_SECTIONS.flatMap(({ blueprintRoleId, sections }) => {
+            const role = rolesByBlueprintId.get(blueprintRoleId);
+            return role ? [{ tenantId: tenant.id, roleId: role.id, dashboardKey: "analytics", sections }] : [];
+          }),
+        });
 
         const user = await tx.user.create({
           data: {

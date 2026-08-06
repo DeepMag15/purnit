@@ -36,3 +36,40 @@ model AnalyticsSnapshot {
   @@index([tenantId, metricKey, departmentId, periodStart])
   @@map("analytics_snapshots")
 }
+
+/** Analytics Phase D — role-based dashboard defaults. `roleId` is a real,
+ * per-tenant materialized Role.id (never a blueprint-level id), so rows are
+ * created at tenant provisioning time (AuthService.signup), not via
+ * seed.ts's static blueprint JSON like every other page/nav default.
+ *
+ * `userId` stays null for every row Phase D itself writes — every row here
+ * is a role-level template. Phase E adds real userId-keyed personal
+ * overrides on top of the same table, same TenantConfig-style versioning
+ * discipline (never UPDATE in place, insert a new row + flip isActive).
+ *
+ * `sections` only carries an ordered list of module-section keys in Phase D
+ * (e.g. ["Department Performance", "Tasks", "Attendance"]) — Phase E grows
+ * this additively to per-widget {key, visible, x, y, w, h} geometry, same
+ * column, no second migration, same principle TenantConfig.overrides
+ * already proves for this codebase's config-versioning pattern generally.
+ *
+ * No unique constraint enforcing "at most one active row per role" yet —
+ * Phase D never writes a second version for a given role (only Phase E's
+ * own save/activate mutations will), so there's nothing to conflict.
+ */
+model DashboardLayout {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  roleId       String?  @map("role_id") @db.Uuid
+  dashboardKey String   @default("analytics") @map("dashboard_key")
+  name         String   @default("Default")
+  sections     Json
+  isActive     Boolean  @default(true) @map("is_active")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([tenantId, roleId])
+  @@map("dashboard_layouts")
+}

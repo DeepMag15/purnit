@@ -83,7 +83,23 @@ export function createAnalyticsDashboardDataSource(metricRegistry: MetricRegistr
           widgets.push({ kind: "breakdown", key: metric.key, module: metric.module, label: metric.label, nameKey: metric.nameKey, valueKey: metric.valueKey, rows });
         }
       }
-      return { widgets };
+
+      // Analytics Phase D — an optional section-order hint, additive to the
+      // response. Absent for any tenant provisioned before this phase (no
+      // backfill — a missing template is a low-stakes cosmetic fallback to
+      // the frontend's own insertion order, not a correctness issue). Never
+      // widens what's visible: sectionOrder only ever reorders module
+      // sections already present in `widgets` above, which is itself
+      // already fully permission-pruned by the loop that just ran.
+      const roleAssignment = await tx.roleAssignment.findFirst({ where: { tenantId: ctx.tenantId, userId: ctx.userId }, select: { roleId: true } });
+      const layout = roleAssignment
+        ? await tx.dashboardLayout.findFirst({
+            where: { tenantId: ctx.tenantId, roleId: roleAssignment.roleId, userId: null, isActive: true },
+            select: { sections: true },
+          })
+        : null;
+
+      return { widgets, sectionOrder: (layout?.sections as string[] | undefined) ?? undefined };
     },
   };
 }
