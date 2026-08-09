@@ -157,37 +157,57 @@ describe("analytics.dashboard", () => {
     expect(result.widgets[0]).toMatchObject({ kind: "breakdown", rows: [{ name: "a", value: 1 }] });
   });
 
-  it("returns sectionOrder from the caller's role-level DashboardLayout template when one exists", async () => {
+  it("returns layout from the caller's role-level DashboardLayout template when no personal layout exists", async () => {
     const registry = new MetricRegistry();
     registry.register(gatedScalar("open.metric", undefined, 1));
     const dataSource = createAnalyticsDashboardDataSource(registry);
+    const roleWidgets = [{ key: "open.metric", visible: true, x: 0, y: 0, w: 6, h: 4 }];
+    const dashboardLayoutFindFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null) // personal lookup: none
+      .mockResolvedValueOnce({ widgets: roleWidgets }); // role-level lookup: found
     const tx = {
       roleAssignment: { findFirst: jest.fn().mockResolvedValue({ roleId: "role-1" }) },
-      dashboardLayout: { findFirst: jest.fn().mockResolvedValue({ sections: ["Department Performance", "Tasks"] }) },
+      dashboardLayout: { findFirst: dashboardLayoutFindFirst },
     } as unknown as PrismaTx;
 
-    const result = (await dataSource.resolve({}, context([]), tx)) as { sectionOrder?: string[] };
-    expect(result.sectionOrder).toEqual(["Department Performance", "Tasks"]);
-    const layoutCall = (tx as unknown as { dashboardLayout: { findFirst: jest.Mock } }).dashboardLayout.findFirst.mock.calls[0][0];
-    expect(layoutCall.where).toMatchObject({ tenantId: "t1", roleId: "role-1", userId: null, isActive: true });
+    const result = (await dataSource.resolve({}, context([]), tx)) as { layout?: unknown };
+    expect(result.layout).toEqual(roleWidgets);
+    expect(dashboardLayoutFindFirst.mock.calls[0]![0].where).toMatchObject({ tenantId: "t1", userId: "u1", dashboardKey: "analytics", isActive: true });
+    expect(dashboardLayoutFindFirst.mock.calls[1]![0].where).toMatchObject({ tenantId: "t1", roleId: "role-1", userId: null, dashboardKey: "analytics", isActive: true });
   });
 
-  it("returns sectionOrder: undefined (not an error) for a caller with no role assignment or no matching template — the pre-Phase-D tenant fallback", async () => {
+  it("returns the caller's PERSONAL layout instead of the role template when both exist — personal takes priority", async () => {
+    const registry = new MetricRegistry();
+    registry.register(gatedScalar("open.metric", undefined, 1));
+    const dataSource = createAnalyticsDashboardDataSource(registry);
+    const personalWidgets = [{ key: "open.metric", visible: true, x: 6, y: 0, w: 6, h: 4 }];
+    const tx = {
+      roleAssignment: { findFirst: jest.fn() },
+      dashboardLayout: { findFirst: jest.fn().mockResolvedValue({ widgets: personalWidgets }) },
+    } as unknown as PrismaTx;
+
+    const result = (await dataSource.resolve({}, context([]), tx)) as { layout?: unknown };
+    expect(result.layout).toEqual(personalWidgets);
+    // The role-level lookup is never reached — personal short-circuits it.
+    expect((tx as unknown as { roleAssignment: { findFirst: jest.Mock } }).roleAssignment.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns layout: undefined (not an error) for a caller with no personal layout, no role assignment, or no matching template — the pre-Phase-E tenant fallback", async () => {
     const registry = new MetricRegistry();
     registry.register(gatedScalar("open.metric", undefined, 1));
     const dataSource = createAnalyticsDashboardDataSource(registry);
 
     const txNoRole = withRoleLookup();
-    const noRoleResult = (await dataSource.resolve({}, context([]), txNoRole)) as { sectionOrder?: string[] };
-    expect(noRoleResult.sectionOrder).toBeUndefined();
-    expect((txNoRole as unknown as { dashboardLayout: { findFirst: jest.Mock } }).dashboardLayout.findFirst).not.toHaveBeenCalled();
+    const noRoleResult = (await dataSource.resolve({}, context([]), txNoRole)) as { layout?: unknown };
+    expect(noRoleResult.layout).toBeUndefined();
 
     const txNoTemplate = {
       roleAssignment: { findFirst: jest.fn().mockResolvedValue({ roleId: "role-1" }) },
       dashboardLayout: { findFirst: jest.fn().mockResolvedValue(null) },
     } as unknown as PrismaTx;
-    const noTemplateResult = (await dataSource.resolve({}, context([]), txNoTemplate)) as { sectionOrder?: string[] };
-    expect(noTemplateResult.sectionOrder).toBeUndefined();
+    const noTemplateResult = (await dataSource.resolve({}, context([]), txNoTemplate)) as { layout?: unknown };
+    expect(noTemplateResult.layout).toBeUndefined();
   });
 });
 

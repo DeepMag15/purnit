@@ -37,25 +37,32 @@ model AnalyticsSnapshot {
   @@map("analytics_snapshots")
 }
 
-/** Analytics Phase D — role-based dashboard defaults. `roleId` is a real,
- * per-tenant materialized Role.id (never a blueprint-level id), so rows are
- * created at tenant provisioning time (AuthService.signup), not via
- * seed.ts's static blueprint JSON like every other page/nav default.
+/** Role- or user-level Analytics dashboard layout. `roleId` is a real,
+ * per-tenant materialized Role.id (never a blueprint-level id), so
+ * role-level rows are created at tenant provisioning time
+ * (AuthService.signup), not via seed.ts's static blueprint JSON like every
+ * other page/nav default.
  *
- * `userId` stays null for every row Phase D itself writes — every row here
- * is a role-level template. Phase E adds real userId-keyed personal
- * overrides on top of the same table, same TenantConfig-style versioning
- * discipline (never UPDATE in place, insert a new row + flip isActive).
+ * A row is keyed by exactly one of `userId` (a personal layout) or `roleId`
+ * (a role-level default template) — never both. `analytics.dashboard`'s own
+ * resolver checks the caller's personal row first, falling back to their
+ * role's template, then to the frontend's own auto-computed arrangement if
+ * neither exists (Phase D/E's shared "graceful, no backfill needed"
+ * principle — a missing row is a cosmetic fallback, never an error).
  *
- * `sections` only carries an ordered list of module-section keys in Phase D
- * (e.g. ["Department Performance", "Tasks", "Attendance"]) — Phase E grows
- * this additively to per-widget {key, visible, x, y, w, h} geometry, same
- * column, no second migration, same principle TenantConfig.overrides
- * already proves for this codebase's config-versioning pattern generally.
+ * `widgets` is an ordered array of `{key, visible, x, y, w, h}` — one entry
+ * per widget, `x/y/w/h` in react-grid-layout's own grid-unit convention
+ * (Phase E). Renamed in place from Phase D's coarser `sections: string[]`
+ * (an ordered list of module-section names) — that shape is superseded, not
+ * kept alongside this one; Phase D's own doc comment already flagged this
+ * column as the thing Phase E would extend.
  *
- * No unique constraint enforcing "at most one active row per role" yet —
- * Phase D never writes a second version for a given role (only Phase E's
- * own save/activate mutations will), so there's nothing to conflict.
+ * TenantConfig-style versioning discipline: never UPDATE `widgets` in
+ * place — a change inserts a new row (`version + 1`) and flips the prior
+ * version's `isActive` to false in the same transaction. Enforced at the DB
+ * level by two partial unique indexes (Phase E's own migration) — one per
+ * keying dimension, since a plain `(tenantId, userId, roleId)` unique
+ * couldn't express "at most one active row per *non-null* key" on its own.
  */
 model DashboardLayout {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -64,7 +71,7 @@ model DashboardLayout {
   roleId       String?  @map("role_id") @db.Uuid
   dashboardKey String   @default("analytics") @map("dashboard_key")
   name         String   @default("Default")
-  sections     Json
+  widgets      Json
   isActive     Boolean  @default(true) @map("is_active")
   version      Int      @default(1)
   createdAt    DateTime @default(now()) @map("created_at")

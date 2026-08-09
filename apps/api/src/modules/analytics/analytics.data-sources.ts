@@ -3,6 +3,7 @@ import { ForbiddenException } from "@nestjs/common";
 import type { DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import { isPermissionGranted } from "../../rbac/permission-gate";
 import type { MetricRegistry, AnalyticsFilters } from "../../metrics/metric-registry.service";
+import type { WidgetLayoutEntry } from "./dashboard-layout.types";
 
 const FiltersParamsSchema = z.object({
   from: z.coerce.date().optional(),
@@ -84,22 +85,32 @@ export function createAnalyticsDashboardDataSource(metricRegistry: MetricRegistr
         }
       }
 
-      // Analytics Phase D — an optional section-order hint, additive to the
-      // response. Absent for any tenant provisioned before this phase (no
-      // backfill — a missing template is a low-stakes cosmetic fallback to
-      // the frontend's own insertion order, not a correctness issue). Never
-      // widens what's visible: sectionOrder only ever reorders module
-      // sections already present in `widgets` above, which is itself
-      // already fully permission-pruned by the loop that just ran.
-      const roleAssignment = await tx.roleAssignment.findFirst({ where: { tenantId: ctx.tenantId, userId: ctx.userId }, select: { roleId: true } });
-      const layout = roleAssignment
-        ? await tx.dashboardLayout.findFirst({
-            where: { tenantId: ctx.tenantId, roleId: roleAssignment.roleId, userId: null, isActive: true },
-            select: { sections: true },
-          })
-        : null;
+      // Analytics Phase E — an optional saved layout, additive to the
+      // response. Absent for any tenant provisioned before this phase, or
+      // for a viewer with neither a personal layout nor a role template (no
+      // backfill — a missing row is a low-stakes cosmetic fallback to the
+      // frontend's own auto-computed arrangement, not a correctness issue).
+      // Never widens what's visible: `layout` only ever reorders/positions
+      // widgets already present in `widgets` above, which is itself already
+      // fully permission-pruned by the loop that just ran. Personal layout
+      // takes priority over the role-level template when both exist —
+      // sequential, never Promise.all, against this resolver's one shared tx.
+      const personal = await tx.dashboardLayout.findFirst({
+        where: { tenantId: ctx.tenantId, userId: ctx.userId, dashboardKey: "analytics", isActive: true },
+        select: { widgets: true },
+      });
+      let layoutRow = personal;
+      if (!layoutRow) {
+        const roleAssignment = await tx.roleAssignment.findFirst({ where: { tenantId: ctx.tenantId, userId: ctx.userId }, select: { roleId: true } });
+        layoutRow = roleAssignment
+          ? await tx.dashboardLayout.findFirst({
+              where: { tenantId: ctx.tenantId, roleId: roleAssignment.roleId, userId: null, dashboardKey: "analytics", isActive: true },
+              select: { widgets: true },
+            })
+          : null;
+      }
 
-      return { widgets, sectionOrder: (layout?.sections as string[] | undefined) ?? undefined };
+      return { widgets, layout: (layoutRow?.widgets as WidgetLayoutEntry[] | undefined) ?? undefined };
     },
   };
 }

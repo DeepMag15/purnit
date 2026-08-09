@@ -5,24 +5,47 @@ import { SupabaseAdminService } from "./supabase-admin.service";
 import { generateUniqueWorkspaceId } from "./workspace-id";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "./materialize-roles";
 import type { SignupInput } from "./signup.schema";
+import type { WidgetLayoutEntry } from "../modules/analytics/dashboard-layout.types";
 
-// Analytics Phase D — initial section order per role's default dashboard.
-// Purely a display preference (order of already-permitted module sections,
-// see AnalyticsDashboard.tsx) — never grants visibility a role's real
-// permissions wouldn't already permit; a section a role can't see is simply
-// absent from the response regardless of where this list would have placed
-// it. Company Admin/Executive/HR Manager lead with "Department Performance"
-// (the one section they hold analytics:departmentPerformance for by
-// default); everyone else leads with the modules most of their day-to-day
-// work lives in.
-const DEFAULT_DASHBOARD_SECTIONS: { blueprintRoleId: string; sections: string[] }[] = [
-  { blueprintRoleId: "role.admin", sections: ["Department Performance", "Employee Productivity", "AI Usage", "Tasks", "Attendance", "Projects", "Meetings"] },
-  { blueprintRoleId: "role.executive", sections: ["Department Performance", "Employee Productivity", "Projects", "Tasks", "Attendance", "Meetings"] },
-  { blueprintRoleId: "role.hr-manager", sections: ["Department Performance", "Employee Productivity", "Attendance", "Tasks", "Meetings"] },
-  { blueprintRoleId: "role.department-head", sections: ["Tasks", "Attendance", "Projects", "Meetings"] },
-  { blueprintRoleId: "role.project-manager", sections: ["Tasks", "Projects", "Meetings", "Attendance"] },
-  { blueprintRoleId: "role.member", sections: ["Tasks", "Attendance", "Meetings"] },
+// Analytics Phase E — initial widget order per role's default dashboard.
+// Purely a display preference — never grants visibility a role's real
+// permissions wouldn't already permit; a widget a role can't see is simply
+// absent from analytics.dashboard's response regardless of where this list
+// would have placed it. Deliberately NOT exhaustive (18+ real widgets exist
+// across every module by this phase) — just each role's own "headline"
+// scalar metrics, prioritized first; every other permitted widget the list
+// doesn't name is auto-appended by autoLayout below (or, client-side, by
+// AnalyticsDashboard.tsx's own identical fallback for any widget key absent
+// from a *saved* layout — same "graceful, never an error" principle).
+// Company Admin/Executive/HR Manager lead with the two Phase D leaderboards
+// (the permission-controlled widgets they hold by default); everyone else
+// leads with the metrics most of their day-to-day work lives in.
+const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }[] = [
+  {
+    blueprintRoleId: "role.admin",
+    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "ai.usageSummary", "tasks.openCount", "tasks.completionRate", "attendance.rateThisMonth", "projects.activeCount", "meetings.heldThisWeek"],
+  },
+  {
+    blueprintRoleId: "role.executive",
+    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "projects.activeCount", "tasks.completionRate", "attendance.rateThisMonth", "meetings.heldThisWeek"],
+  },
+  {
+    blueprintRoleId: "role.hr-manager",
+    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "attendance.rateThisMonth", "tasks.openCount", "meetings.heldThisWeek"],
+  },
+  { blueprintRoleId: "role.department-head", keys: ["tasks.openCount", "tasks.completionRate", "attendance.rateThisMonth", "projects.activeCount", "meetings.heldThisWeek"] },
+  { blueprintRoleId: "role.project-manager", keys: ["tasks.openCount", "projects.activeCount", "meetings.heldThisWeek", "attendance.rateThisMonth"] },
+  { blueprintRoleId: "role.member", keys: ["tasks.openCount", "attendance.rateThisMonth", "meetings.heldThisWeek"] },
 ];
+
+/** A simple flowing 12-column grid — 2 widgets per row, `w: 6, h: 4` each.
+ * The same small algorithm AnalyticsDashboard.tsx independently implements
+ * for its own "no saved layout" client-side fallback — not extracted into a
+ * shared package for one small function, deliberately duplicated cheaply on
+ * both sides of the runtime boundary. */
+function autoLayout(keys: string[]): WidgetLayoutEntry[] {
+  return keys.map((key, i) => ({ key, visible: true, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
+}
 
 @Injectable()
 export class AuthService {
@@ -69,7 +92,7 @@ export class AuthService {
         await materializeDepartmentTypeLabels(tx, tenant.id, blueprintDef.departmentTypes ?? [], rolesByBlueprintId);
         const adminRole = rolesByBlueprintId.get("role.admin")!;
 
-        // Analytics Phase D — one role-level DashboardLayout default per
+        // Analytics Phase D/E — one role-level DashboardLayout default per
         // in-scope role, seeded here rather than via seed.ts's static
         // blueprint JSON: DashboardLayout.roleId is a real, per-tenant
         // materialized Role.id (only known now, post-materializeBlueprintRoles),
@@ -79,9 +102,9 @@ export class AuthService {
         // records a real prior P2028 timeout from exactly that mistake
         // inside this same signup transaction.
         await tx.dashboardLayout.createMany({
-          data: DEFAULT_DASHBOARD_SECTIONS.flatMap(({ blueprintRoleId, sections }) => {
+          data: DEFAULT_DASHBOARD_WIDGET_KEYS.flatMap(({ blueprintRoleId, keys }) => {
             const role = rolesByBlueprintId.get(blueprintRoleId);
-            return role ? [{ tenantId: tenant.id, roleId: role.id, dashboardKey: "analytics", sections }] : [];
+            return role ? [{ tenantId: tenant.id, roleId: role.id, dashboardKey: "analytics", widgets: autoLayout(keys) }] : [];
           }),
         });
 
