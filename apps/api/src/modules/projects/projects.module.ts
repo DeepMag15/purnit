@@ -4,7 +4,7 @@ import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource } from "./projects.data-sources";
 import { projectAddMemberMutation, projectCreateMutation, projectDeleteMutation, projectRemoveMemberMutation, projectUpdateMutation } from "./projects.mutations";
-import { projectsActiveCountMetric, projectsStatusBreakdownMetric } from "./projects.metrics";
+import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric } from "./projects.metrics";
 
 /** Registers the Projects module's data sources/mutations at boot. This
  * registrar pattern — not a bigger `ModuleDefinition` abstraction with
@@ -32,6 +32,7 @@ class ProjectsRegistrar implements OnModuleInit {
     this.mutations.register(projectRemoveMemberMutation);
     this.metrics.register(projectsActiveCountMetric);
     this.metrics.register(projectsStatusBreakdownMetric);
+    this.metrics.register(projectsAtRiskMetric);
   }
 }
 

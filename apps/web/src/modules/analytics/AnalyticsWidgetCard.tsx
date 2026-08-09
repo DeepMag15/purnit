@@ -68,6 +68,14 @@ const BREAKDOWN_RENDER_KIND: Record<string, BreakdownRenderKind> = {
   // already-built Leaderboard primitive, zero new frontend component.
   "department.performanceLeaderboard": "leaderboard",
   "tasks.productivityLeaderboard": "leaderboard",
+  // Analytics Phase F — Cross-Module Composites + Executive Attention. All
+  // 3 reuse the same Leaderboard primitive, zero new frontend component.
+  // (employeeProductivityScore, the phase's one composite metric, needs no
+  // entry here at all — it arrives as an ordinary kind:"scalar" widget on
+  // the wire and falls through to the default KpiCard rendering below.)
+  "projects.atRisk": "leaderboard",
+  "tasks.overloadedEmployees": "leaderboard",
+  "documents.pendingApprovals": "leaderboard",
 };
 const CHART_NATIVE_KINDS = new Set<BreakdownRenderKind>(["donut", "bar", "stacked-bar", "scatter", "radial"]);
 // Only tasks.byProjectStatus needs this — its stage columns can't be

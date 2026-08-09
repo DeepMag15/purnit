@@ -243,6 +243,47 @@ export const tasksAssigneeWorkloadMetric: BreakdownMetricDefinition = {
   },
 };
 
+// Phase F (Cross-Module Composites + Executive Attention) — a self-relative
+// threshold, not a hardcoded absolute number: an assignee whose open-task
+// count exceeds 1.5x the mean open-task-count across every assignee (within
+// this caller's own task:read scope) who has at least one open task, with a
+// floor of >=3 open tasks so a tenant with only 1-2 tasks per person
+// everywhere doesn't get flagged on pure noise. A disclosed, adjustable
+// judgment call — no external basis for "1.5x" beyond it being a real,
+// stated multiplier rather than an arbitrary absolute cutoff.
+export const tasksOverloadedEmployeesMetric: BreakdownMetricDefinition = {
+  kind: "breakdown",
+  key: "tasks.overloadedEmployees",
+  module: "Tasks",
+  label: "Overloaded Employees",
+  requiredPermission: "task:read",
+  nameKey: "employee",
+  valueKey: "openTaskCount",
+  async computeLive(ctx, tx, filters) {
+    const where = await tasksWhere(tx, ctx, filterParams(filters));
+    if (!where) return [];
+    const groups = await tx.task.groupBy({
+      by: ["assigneeId"],
+      where: { ...where, assigneeId: { not: null }, status: { not: "done" } },
+      _count: { _all: true },
+    });
+    if (groups.length === 0) return [];
+
+    const mean = groups.reduce((sum, g) => sum + g._count._all, 0) / groups.length;
+    const overloaded = groups.filter((g) => g._count._all >= 3 && g._count._all > mean * 1.5);
+    if (overloaded.length === 0) return [];
+
+    const assigneeIds = overloaded.map((g) => g.assigneeId!);
+    const users = await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, displayName: true } });
+    const nameByUser = new Map(users.map((u) => [u.id, u.displayName]));
+
+    return overloaded
+      .map((g) => ({ employee: nameByUser.get(g.assigneeId!) ?? "Unknown", openTaskCount: g._count._all }))
+      .sort((a, b) => b.openTaskCount - a.openTaskCount)
+      .slice(0, 10);
+  },
+};
+
 // Analytics Phase D (Permission-Controlled Widget Catalog) — deliberately
 // does NOT call tasksWhere. Every other metric in this file reuses the
 // caller's own task:read scope; this one is gated by analytics:productivity

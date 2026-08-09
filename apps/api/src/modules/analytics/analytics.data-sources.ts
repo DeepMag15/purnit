@@ -2,8 +2,25 @@ import { z } from "zod";
 import { ForbiddenException } from "@nestjs/common";
 import type { DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import { isPermissionGranted } from "../../rbac/permission-gate";
-import type { MetricRegistry, AnalyticsFilters } from "../../metrics/metric-registry.service";
+import type { MetricRegistry, AnalyticsFilters, CompositeMetricDefinition, ScalarMetricDefinition } from "../../metrics/metric-registry.service";
+import type { EffectivePermissions } from "../../rbac/permission-collapse";
 import type { WidgetLayoutEntry } from "./dashboard-layout.types";
+
+/** Phase F — a composite is visible iff the caller already holds every one
+ * of its ingredients' own requiredPermission, checked independently per
+ * ingredient (AND, not a "narrowest scope" comparison — its ingredients are
+ * typically different resource:action pairs entirely, so there is no single
+ * scope to compare; see the Phase F plan for why this is the actually-safe
+ * property, not the architecture pass's original "narrowest scope" sketch).
+ * An ingredient key that fails to resolve to a registered scalar metric
+ * fails closed (composite hidden), never throws — a config error here
+ * should never surface as a broken dashboard. */
+function isCompositeVisible(composite: CompositeMetricDefinition, metricRegistry: MetricRegistry, effective: EffectivePermissions): boolean {
+  return composite.ingredients.every((key) => {
+    const ingredient = metricRegistry.get(key);
+    return ingredient?.kind === "scalar" && isPermissionGranted(ingredient.requiredPermission, effective);
+  });
+}
 
 const FiltersParamsSchema = z.object({
   from: z.coerce.date().optional(),
@@ -50,6 +67,18 @@ export function createAnalyticsDashboardDataSource(metricRegistry: MetricRegistr
       // Sequential, never Promise.all — same shared-tx discipline as
       // calendar.list (CONTEXT.md §9).
       for (const metric of metricRegistry.list()) {
+        if (metric.kind === "composite") {
+          if (!isCompositeVisible(metric, metricRegistry, ctx.effective)) continue;
+          const values: Record<string, number> = {};
+          // Sequential, same shared-tx discipline as the loop itself.
+          for (const key of metric.ingredients) {
+            const ingredient = metricRegistry.get(key) as ScalarMetricDefinition;
+            values[key] = await ingredient.computeLive(ctx, tx, filters);
+          }
+          widgets.push({ kind: "scalar", key: metric.key, module: metric.module, label: metric.label, format: metric.format, unit: metric.unit, value: metric.combine(values) });
+          continue;
+        }
+
         if (!isPermissionGranted(metric.requiredPermission, ctx.effective)) continue;
 
         if (metric.kind === "scalar") {

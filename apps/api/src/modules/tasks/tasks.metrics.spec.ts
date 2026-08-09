@@ -9,6 +9,7 @@ import {
   tasksCompletionLeaderboardMetric,
   tasksAssigneeWorkloadMetric,
   tasksProductivityLeaderboardMetric,
+  tasksOverloadedEmployeesMetric,
 } from "./tasks.metrics";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -223,5 +224,49 @@ describe("tasks metrics", () => {
   it("tasksProductivityLeaderboardMetric.computeLive returns [] with zero tasks, no crash", async () => {
     const tx = { task: { groupBy: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
     expect(await tasksProductivityLeaderboardMetric.computeLive(context([]), tx)).toEqual([]);
+  });
+
+  describe("tasksOverloadedEmployeesMetric (Phase F)", () => {
+    it("requires task:read", () => {
+      expect(tasksOverloadedEmployeesMetric.requiredPermission).toBe("task:read");
+    });
+
+    it("flags an assignee at >1.5x the scope-mean with >=3 open tasks; excludes assignees at/below the mean and under the small-n floor", async () => {
+      const tx = {
+        task: {
+          groupBy: jest.fn().mockResolvedValue([
+            { assigneeId: "u1", _count: { _all: 10 } }, // mean=4.5, 1.5x=6.75 -> flagged
+            { assigneeId: "u2", _count: { _all: 3 } }, // at the floor but not over 1.5x mean -> excluded
+            { assigneeId: "u3", _count: { _all: 3 } },
+            { assigneeId: "u4", _count: { _all: 2 } }, // under the n>=3 floor -> excluded regardless
+          ]),
+        },
+        user: { findMany: jest.fn().mockResolvedValue([{ id: "u1", displayName: "Alice" }]) },
+      } as unknown as PrismaTx;
+
+      const rows = await tasksOverloadedEmployeesMetric.computeLive(context(["task:read:tenant"]), tx);
+      expect(rows).toEqual([{ employee: "Alice", openTaskCount: 10 }]);
+      const call = (tx as unknown as { task: { groupBy: jest.Mock } }).task.groupBy.mock.calls[0][0];
+      expect(call.where).toMatchObject({ assigneeId: { not: null }, status: { not: "done" } });
+    });
+
+    it("returns [] when nobody has an open task", async () => {
+      const tx = { task: { groupBy: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
+      expect(await tasksOverloadedEmployeesMetric.computeLive(context(["task:read:tenant"]), tx)).toEqual([]);
+    });
+
+    it("returns [] when nobody exceeds the 1.5x-mean threshold", async () => {
+      const tx = {
+        task: {
+          groupBy: jest.fn().mockResolvedValue([
+            { assigneeId: "u1", _count: { _all: 4 } },
+            { assigneeId: "u2", _count: { _all: 4 } },
+          ]),
+        },
+        user: { findMany: jest.fn() },
+      } as unknown as PrismaTx;
+      expect(await tasksOverloadedEmployeesMetric.computeLive(context(["task:read:tenant"]), tx)).toEqual([]);
+      expect((tx as unknown as { user: { findMany: jest.Mock } }).user.findMany).not.toHaveBeenCalled();
+    });
   });
 });

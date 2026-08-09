@@ -20,21 +20,53 @@ import type { WidgetLayoutEntry } from "../modules/analytics/dashboard-layout.ty
 // Company Admin/Executive/HR Manager lead with the two Phase D leaderboards
 // (the permission-controlled widgets they hold by default); everyone else
 // leads with the metrics most of their day-to-day work lives in.
+// Phase F (Cross-Module Composites + Executive Attention) — prepended the
+// 4 new executive-attention widget keys to the roles where they're actually
+// relevant, so a freshly-provisioned tenant's default layout puts them near
+// the top. Existing tenants are unaffected — no backfill, same Phase D/E
+// precedent ("a missing/stale template is a low-stakes cosmetic fallback,
+// not worth a migration for"). Pure ordering nicety, not an authorization
+// mechanism — a role whose list doesn't name a key still sees that widget
+// (auto-appended by AnalyticsDashboard.tsx's mergeLayout) if their own real
+// permissions grant it; not listing a key here only means it isn't
+// front-and-center by default.
 const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }[] = [
   {
     blueprintRoleId: "role.admin",
-    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "ai.usageSummary", "tasks.openCount", "tasks.completionRate", "attendance.rateThisMonth", "projects.activeCount", "meetings.heldThisWeek"],
+    keys: [
+      "projects.atRisk",
+      "tasks.overloadedEmployees",
+      "employeeProductivityScore",
+      "documents.pendingApprovals",
+      "department.performanceLeaderboard",
+      "tasks.productivityLeaderboard",
+      "ai.usageSummary",
+      "tasks.openCount",
+      "tasks.completionRate",
+      "attendance.rateThisMonth",
+      "projects.activeCount",
+      "meetings.heldThisWeek",
+    ],
   },
   {
     blueprintRoleId: "role.executive",
-    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "projects.activeCount", "tasks.completionRate", "attendance.rateThisMonth", "meetings.heldThisWeek"],
+    keys: [
+      "projects.atRisk",
+      "employeeProductivityScore",
+      "department.performanceLeaderboard",
+      "tasks.productivityLeaderboard",
+      "projects.activeCount",
+      "tasks.completionRate",
+      "attendance.rateThisMonth",
+      "meetings.heldThisWeek",
+    ],
   },
   {
     blueprintRoleId: "role.hr-manager",
-    keys: ["department.performanceLeaderboard", "tasks.productivityLeaderboard", "attendance.rateThisMonth", "tasks.openCount", "meetings.heldThisWeek"],
+    keys: ["employeeProductivityScore", "department.performanceLeaderboard", "tasks.productivityLeaderboard", "attendance.rateThisMonth", "tasks.openCount", "meetings.heldThisWeek"],
   },
   { blueprintRoleId: "role.department-head", keys: ["tasks.openCount", "tasks.completionRate", "attendance.rateThisMonth", "projects.activeCount", "meetings.heldThisWeek"] },
-  { blueprintRoleId: "role.project-manager", keys: ["tasks.openCount", "projects.activeCount", "meetings.heldThisWeek", "attendance.rateThisMonth"] },
+  { blueprintRoleId: "role.project-manager", keys: ["projects.atRisk", "tasks.openCount", "projects.activeCount", "meetings.heldThisWeek", "attendance.rateThisMonth"] },
   { blueprintRoleId: "role.member", keys: ["tasks.openCount", "attendance.rateThisMonth", "meetings.heldThisWeek"] },
 ];
 

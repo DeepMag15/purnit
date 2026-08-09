@@ -78,7 +78,31 @@ export interface BreakdownMetricDefinition {
   computeLive: (ctx: DataSourceContext, tx: PrismaTx, filters?: AnalyticsFilters) => Promise<Record<string, unknown>[]>;
 }
 
-export type MetricDefinition = ScalarMetricDefinition | BreakdownMetricDefinition;
+/** Phase F — blends 2+ already-registered SCALAR metrics into one derived
+ * scalar value. `ingredients` are resolved by key lazily, at request time
+ * (via MetricRegistry.get() inside analytics.dashboard's resolve loop) —
+ * deliberately NOT at registration time, so which module registers a
+ * composite is never sensitive to NestJS's module-init ordering against its
+ * ingredients' own owning modules. Has no `requiredPermission` of its own —
+ * visibility is computed as the AND of every ingredient's own
+ * `requiredPermission` (see `isCompositeVisible` in analytics.data-sources.ts)
+ * — safe specifically because each ingredient's own computeLive is already
+ * independently scope-safe; a composite can never show a viewer a blended
+ * number that leaks a component they couldn't already see individually. */
+export interface CompositeMetricDefinition {
+  kind: "composite";
+  key: string;
+  /** Typically "Cross-Module" — a composite rarely belongs to one owning
+   * module the way a scalar/breakdown metric does. */
+  module: string;
+  label: string;
+  format: MetricFormat;
+  unit?: string;
+  ingredients: readonly string[];
+  combine: (values: Record<string, number>) => number;
+}
+
+export type MetricDefinition = ScalarMetricDefinition | BreakdownMetricDefinition | CompositeMetricDefinition;
 
 /** Same registry pattern as DataSourceRegistry/MutationRegistry — in-process,
  * name-keyed, populated at boot by each feature module's own registrar.

@@ -1,6 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { MetricRegistry, type ScalarMetricDefinition, type BreakdownMetricDefinition } from "../../metrics/metric-registry.service";
+import { MetricRegistry, type ScalarMetricDefinition, type BreakdownMetricDefinition, type CompositeMetricDefinition } from "../../metrics/metric-registry.service";
 import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource } from "./analytics.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -208,6 +208,63 @@ describe("analytics.dashboard", () => {
     } as unknown as PrismaTx;
     const noTemplateResult = (await dataSource.resolve({}, context([]), txNoTemplate)) as { layout?: unknown };
     expect(noTemplateResult.layout).toBeUndefined();
+  });
+});
+
+describe("analytics.dashboard — composite metrics (Phase F)", () => {
+  function composite(ingredients: string[]): CompositeMetricDefinition {
+    return {
+      kind: "composite",
+      key: "composite.metric",
+      module: "Cross-Module",
+      label: "Composite",
+      format: "percent",
+      ingredients,
+      combine: (values) => Math.round(((values["a.metric"] ?? 0) + (values["b.metric"] ?? 0)) / 2),
+    };
+  }
+
+  it("is present, with the correct combine()-computed value, when the caller holds every ingredient's requiredPermission", async () => {
+    const registry = new MetricRegistry();
+    registry.register(gatedScalar("a.metric", "task:read", 80));
+    registry.register(gatedScalar("b.metric", "attendance:read", 60));
+    registry.register(composite(["a.metric", "b.metric"]));
+    const dataSource = createAnalyticsDashboardDataSource(registry);
+    const tx = withRoleLookup();
+
+    const result = (await dataSource.resolve({}, context(["task:read:own", "attendance:read:own"]), tx)) as {
+      widgets: { key: string; kind: string; value: number }[];
+    };
+    const widget = result.widgets.find((w) => w.key === "composite.metric");
+    expect(widget).toMatchObject({ kind: "scalar", value: 70 });
+  });
+
+  it("is absent when the caller is missing even one ingredient's permission", async () => {
+    const registry = new MetricRegistry();
+    registry.register(gatedScalar("a.metric", "task:read", 80));
+    registry.register(gatedScalar("b.metric", "attendance:read", 60));
+    registry.register(composite(["a.metric", "b.metric"]));
+    const dataSource = createAnalyticsDashboardDataSource(registry);
+    const tx = withRoleLookup();
+
+    // Holds task:read but NOT attendance:read.
+    const result = (await dataSource.resolve({}, context(["task:read:own"]), tx)) as { widgets: { key: string }[] };
+    expect(result.widgets.find((w) => w.key === "composite.metric")).toBeUndefined();
+    // The ungated ingredient widget (a.metric, task:read) is still present —
+    // per-widget pruning, not an all-or-nothing gate.
+    expect(result.widgets.find((w) => w.key === "a.metric")).toBeDefined();
+  });
+
+  it("is never returned by analytics.trend, regardless of metricKey — confirms the existing kind !== 'scalar' guard still holds", async () => {
+    const registry = new MetricRegistry();
+    registry.register(gatedScalar("a.metric", "task:read", 80));
+    registry.register(gatedScalar("b.metric", "attendance:read", 60));
+    registry.register(composite(["a.metric", "b.metric"]));
+    const dataSource = createAnalyticsTrendDataSource(registry);
+    const tx = {} as unknown as PrismaTx;
+
+    const rows = await dataSource.resolve({ metricKey: "composite.metric", days: 90 }, context(["task:read:tenant", "attendance:read:tenant"]), tx);
+    expect(rows).toEqual([]);
   });
 });
 

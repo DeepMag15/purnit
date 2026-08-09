@@ -14,6 +14,7 @@ import {
   tasksCompletionLeaderboardMetric,
   tasksAssigneeWorkloadMetric,
   tasksProductivityLeaderboardMetric,
+  tasksOverloadedEmployeesMetric,
 } from "./tasks.metrics";
 
 /** Same registrar pattern as ProjectsModule — see its comment for why this
@@ -41,6 +42,7 @@ class TasksRegistrar implements OnModuleInit {
     this.metrics.register(tasksCompletionLeaderboardMetric);
     this.metrics.register(tasksAssigneeWorkloadMetric);
     this.metrics.register(tasksProductivityLeaderboardMetric);
+    this.metrics.register(tasksOverloadedEmployeesMetric);
   }
 }
 
