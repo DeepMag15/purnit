@@ -3,7 +3,7 @@ import { DataSourceRegistry } from "../../data-sources/data-source-registry.serv
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { tasksCountDataSource, tasksListDataSource } from "./tasks.data-sources";
-import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation } from "./tasks.mutations";
+import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation, taskUpdateDueDateMutation } from "./tasks.mutations";
 import {
   tasksOpenCountMetric,
   tasksOverdueCountMetric,
@@ -33,6 +33,7 @@ class TasksRegistrar implements OnModuleInit {
     this.mutations.register(taskCreateMutation);
     this.mutations.register(taskUpdateStatusMutation);
     this.mutations.register(taskReassignMutation);
+    this.mutations.register(taskUpdateDueDateMutation);
     this.metrics.register(tasksOpenCountMetric);
     this.metrics.register(tasksOverdueCountMetric);
     this.metrics.register(tasksCompletionRateMetric);

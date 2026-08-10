@@ -31,6 +31,13 @@ import { FunnelSchema } from "./Funnel";
 const Funnel = dynamic(() => import("./Funnel").then((m) => m.Funnel));
 import { TimelineChartSchema } from "./TimelineChart";
 const TimelineChart = dynamic(() => import("./TimelineChart").then((m) => m.TimelineChart));
+import { GanttChartSchema } from "./GanttChart";
+const GanttChart = dynamic(() => import("./GanttChart").then((m) => m.GanttChart));
+
+// Analytics Phase G — pulls in @dnd-kit/core, same bundle-size reasoning as
+// the recharts-based primitives above: schema stays static, component is lazy.
+import { KanbanBoardSchema } from "./KanbanBoard";
+const KanbanBoard = dynamic(() => import("./KanbanBoard").then((m) => m.KanbanBoard));
 
 // Hand-built (no recharts) — statically imported, same as Heatmap/List below.
 import { Heatmap, HeatmapSchema } from "./Heatmap";
@@ -83,6 +90,8 @@ export function registerCorePrimitives(): void {
   registerPrimitive("Heatmap", 1, HeatmapSchema, Heatmap);
   registerPrimitive("CalendarHeatmap", 1, CalendarHeatmapSchema, CalendarHeatmap);
   registerPrimitive("TimelineChart", 1, TimelineChartSchema, TimelineChart);
+  registerPrimitive("GanttChart", 1, GanttChartSchema, GanttChart);
+  registerPrimitive("KanbanBoard", 1, KanbanBoardSchema, KanbanBoard);
   registerPrimitive("ProgressGoal", 1, ProgressGoalSchema, ProgressGoal);
   registerPrimitive("Leaderboard", 1, LeaderboardSchema, Leaderboard);
   registerPrimitive("ActivityFeed", 1, ActivityFeedSchema, ActivityFeed);

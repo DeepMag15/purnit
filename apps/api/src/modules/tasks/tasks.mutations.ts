@@ -67,9 +67,14 @@ const CreateInputSchema = z
     priority: z.string().optional(),
     dueDate: z.string().optional(), // ISO date string
     // Calendar & Scheduling (Core Workspace Phase 3) — only settable at
-    // create time (Task has no post-creation dueDate-editing mutation; see
-    // CHANGELOG's disclosed limitation). Enqueues one CalendarReminder row
-    // targeting the assignee.
+    // create time. Enqueues one CalendarReminder row targeting the assignee.
+    // ⚠️ Analytics Phase G added task.updateDueDate (a real post-creation
+    // dueDate edit, for GanttChart's click-to-reschedule interaction), but
+    // it does NOT retarget/re-enqueue this reminder — a dueDate changed
+    // after creation leaves any already-enqueued reminder pointed at the
+    // original date, the same disclosed "reminder retargeting on task
+    // reassignment" gap already tracked in CHANGELOG's deferred-items list,
+    // now also true of a dueDate edit specifically, not just reassignment.
     reminderMinutesBefore: z.number().int().positive().max(10_080).optional(),
   })
   .refine((data) => !data.reminderMinutesBefore || !!data.dueDate, {
@@ -192,5 +197,23 @@ export const taskReassignMutation: MutationDefinition<z.infer<typeof ReassignInp
     }
 
     return updated;
+  },
+};
+
+const UpdateDueDateInputSchema = z.object({ id: z.string(), dueDate: z.string().nullable() });
+
+// Analytics Phase G (Interactive Kanban & Gantt) — the first post-creation
+// dueDate-editing mutation on Task (task.create's own doc comment above
+// used to disclaim this as a real gap; the GanttChart widget's click-to-edit
+// interaction is what finally needed it). `dueDate: null` explicitly clears
+// it — same "row-scope only, no widening" reuse of requireTaskInScope as
+// task.updateStatus/task.reassign above.
+export const taskUpdateDueDateMutation: MutationDefinition<z.infer<typeof UpdateDueDateInputSchema>> = {
+  name: "task.updateDueDate",
+  inputSchema: UpdateDueDateInputSchema,
+  requiredPermission: "task:update",
+  async resolve(input, ctx, tx) {
+    await requireTaskInScope(tx, ctx, input.id);
+    return tx.task.update({ where: { id: input.id }, data: { dueDate: input.dueDate ? new Date(input.dueDate) : null } });
   },
 };

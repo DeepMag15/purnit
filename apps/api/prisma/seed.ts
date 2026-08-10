@@ -1237,6 +1237,36 @@ const IT_BLUEPRINT_V1 = {
           bind: { source: "notifications.list" },
         },
         { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
+        // Analytics Phase G (Interactive Kanban & Gantt) — both bind
+        // directly to the already-real, already-scoped tasks.list (no extra
+        // params — tenant/scope-wide, deliberately broader than page.tasks's
+        // own personal `assigneeId: {ref:"user.id"}`-scoped TaskList node).
+        // actions mirror page.tasks's own established ActionSpec shape
+        // exactly, so action-level permission pruning gates drag/edit the
+        // same way task:update already gates every other task mutation.
+        {
+          id: "analytics-task-kanban",
+          type: "KanbanBoard",
+          version: 1,
+          props: {
+            title: "Task Board",
+            groupKey: "status",
+            labelKey: "title",
+            columns: ["todo", "in_progress", "done"],
+            updateMutation: "task.updateStatus",
+            updateValueKey: "status",
+          },
+          bind: { source: "tasks.list", params: {} },
+          actions: [{ kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" }],
+        },
+        {
+          id: "analytics-task-gantt",
+          type: "GanttChart",
+          version: 1,
+          props: { title: "Task Timeline", labelKey: "title", startKey: "createdAt", endKey: "dueDate", idKey: "id", updateMutation: "task.updateDueDate" },
+          bind: { source: "tasks.list", params: {} },
+          actions: [{ kind: "mutation", mutation: "task.updateDueDate", input: { ref: "row.id" }, requiredPermission: "task:update" }],
+        },
       ],
     },
     "page.account": {

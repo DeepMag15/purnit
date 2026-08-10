@@ -1,4 +1,5 @@
-import { notificationRecipientFor, taskCreateMutation } from "./tasks.mutations";
+import { NotFoundException, ForbiddenException } from "@nestjs/common";
+import { notificationRecipientFor, taskCreateMutation, taskUpdateDueDateMutation } from "./tasks.mutations";
 import { collapsePermissions } from "../../rbac/permission-collapse";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -66,5 +67,46 @@ describe("task.create — reminder enqueue", () => {
     await taskCreateMutation.resolve({ projectId: "p1", title: "Report" }, context(), tx);
 
     expect((tx as unknown as { calendarReminder: { createMany: jest.Mock } }).calendarReminder.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("task.updateDueDate (Analytics Phase G — Interactive Kanban & Gantt)", () => {
+  it("requires task:update", () => {
+    expect(taskUpdateDueDateMutation.requiredPermission).toBe("task:update");
+  });
+
+  it("updates dueDate to a real parsed Date for an in-scope task", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: "task1", assigneeId: "u1", project: { id: "p1", ownerId: "u1", departmentId: null } });
+    const update = jest.fn().mockResolvedValue({ id: "task1", dueDate: new Date("2026-09-01") });
+    const tx = { task: { findFirst, update } } as unknown as PrismaTx;
+
+    await taskUpdateDueDateMutation.resolve({ id: "task1", dueDate: "2026-09-01" }, context(["task:update:tenant"]), tx);
+    expect(update.mock.calls[0]![0]).toEqual({ where: { id: "task1" }, data: { dueDate: new Date("2026-09-01") } });
+  });
+
+  it("clears dueDate when given null", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: "task1", assigneeId: "u1", project: { id: "p1", ownerId: "u1", departmentId: null } });
+    const update = jest.fn().mockResolvedValue({ id: "task1", dueDate: null });
+    const tx = { task: { findFirst, update } } as unknown as PrismaTx;
+
+    await taskUpdateDueDateMutation.resolve({ id: "task1", dueDate: null }, context(["task:update:tenant"]), tx);
+    expect(update.mock.calls[0]![0].data).toEqual({ dueDate: null });
+  });
+
+  it("throws NotFoundException for a task that doesn't exist in this tenant", async () => {
+    const tx = { task: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
+    await expect(taskUpdateDueDateMutation.resolve({ id: "ghost", dueDate: "2026-09-01" }, context(["task:update:tenant"]), tx)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it("throws ForbiddenException for a caller outside their own-scope floor", async () => {
+    const findFirst = jest
+      .fn()
+      .mockResolvedValue({ id: "task1", assigneeId: "someone-else", project: { id: "p1", ownerId: "someone-else", departmentId: "d-other" } });
+    const tx = { task: { findFirst } } as unknown as PrismaTx;
+    await expect(taskUpdateDueDateMutation.resolve({ id: "task1", dueDate: "2026-09-01" }, context(["task:update:own"]), tx)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 });
