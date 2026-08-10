@@ -1473,11 +1473,16 @@ const HEALTHCARE_BLUEPRINT_V1 = {
       id: "page.dashboard",
       type: "Page",
       version: 1,
-      // Deliberately minimal in Phase A — no requiredPermission (must never
-      // be permission-gated, see main()'s own sanity check below). Real
-      // Patient/Appointment metrics (Phase C) enrich this later; for now a
-      // plain welcome heading, matching every other placeholder-style page
-      // in this codebase's own established precedent.
+      // Deliberately minimal — no requiredPermission (must never be
+      // permission-gated, see main()'s own sanity check below). Phase C
+      // resolved the earlier "enrich this later" breadcrumb: role-specific
+      // Patient/Appointment widgets are delivered entirely through
+      // page.analytics's own AnalyticsDashboard composite (already present
+      // below) plus DEFAULT_DASHBOARD_WIDGET_KEYS role curation
+      // (auth.service.ts) — not by duplicating that composite here, which
+      // would show identical content on two different nav pages and
+      // contradict the original request's own "do not redesign the
+      // dashboard" instruction. This page stays a plain welcome heading.
       children: [{ id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } }],
     },
     "page.patients": {

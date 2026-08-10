@@ -68,6 +68,22 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }
   { blueprintRoleId: "role.department-head", keys: ["tasks.openCount", "tasks.completionRate", "attendance.rateThisMonth", "projects.activeCount", "meetings.heldThisWeek"] },
   { blueprintRoleId: "role.project-manager", keys: ["projects.atRisk", "tasks.openCount", "projects.activeCount", "meetings.heldThisWeek", "attendance.rateThisMonth"] },
   { blueprintRoleId: "role.member", keys: ["tasks.openCount", "attendance.rateThisMonth", "meetings.heldThisWeek"] },
+  // Healthcare Domain, Phase C. role.admin (Hospital Administrator) shares
+  // the entry above across industries — untouched here; the 5 new metrics
+  // still auto-append below it for a Healthcare admin (see
+  // AnalyticsDashboard.tsx's mergeLayout), just not specially curated.
+  {
+    blueprintRoleId: "role.doctor",
+    keys: ["patients.totalCount", "appointments.todayCount", "patients.statusBreakdown", "tasks.openCount", "attendance.rateThisMonth"],
+  },
+  {
+    blueprintRoleId: "role.nurse",
+    keys: ["appointments.todayCount", "patients.totalCount", "patients.statusBreakdown", "tasks.openCount", "attendance.rateThisMonth"],
+  },
+  {
+    blueprintRoleId: "role.receptionist",
+    keys: ["appointments.todayCount", "patients.totalCount", "appointments.completedCount", "doctors.activeCount"],
+  },
 ];
 
 /** A simple flowing 12-column grid — 2 widgets per row, `w: 6, h: 4` each.
