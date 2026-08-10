@@ -5,6 +5,7 @@ import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource } from "./analytics.data-sources";
 import { AnalyticsSnapshotProcessorService } from "./analytics-snapshot-processor.service";
 import { dashboardLayoutSaveMutation, dashboardLayoutResetMutation, dashboardLayoutSaveAsTemplateMutation } from "./dashboard-layout.mutations";
+import { dashboardLayoutGetDataSource } from "./dashboard-layout.data-sources";
 import { employeeProductivityScoreMetric } from "./analytics.composites";
 
 /** Same registrar pattern as every other module — see attendance.module.ts.
@@ -26,6 +27,7 @@ class AnalyticsRegistrar implements OnModuleInit {
   onModuleInit() {
     this.dataSources.register(createAnalyticsDashboardDataSource(this.metricRegistry));
     this.dataSources.register(createAnalyticsTrendDataSource(this.metricRegistry));
+    this.dataSources.register(dashboardLayoutGetDataSource);
     this.mutations.register(dashboardLayoutSaveMutation);
     this.mutations.register(dashboardLayoutResetMutation);
     this.mutations.register(dashboardLayoutSaveAsTemplateMutation);

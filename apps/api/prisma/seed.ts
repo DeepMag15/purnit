@@ -564,11 +564,24 @@ const IT_BLUEPRINT_V1 = {
       version: 1,
       children: [
         { id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } },
+        // Platform UI/UX Redesign, Phase F — everything below is now a
+        // DashboardGrid child (a customizable, drag/resize/save/reset grid,
+        // reusing Analytics' own DashboardLayout persistence engine under a
+        // dedicated "dashboard" key). A dedicated Dashboard-specific "Ask AI"
+        // button was scoped for this phase but dropped on inspection: no
+        // blueprint-level conditional-visibility mechanism exists to gate a
+        // node on `manifest.aiAvailable` the way every other AI entry point
+        // in this codebase does in real component code, and an ungated
+        // button would open a broken panel for tenants without AI
+        // configured. The header's own "Ask AI" button (workspace/layout.tsx,
+        // already gated on `aiAvailable`, already visible on every page
+        // including this one) already covers this ask without new surface
+        // area.
         {
-          id: "kpis",
-          type: "Grid",
+          id: "grid",
+          type: "DashboardGrid",
           version: 1,
-          props: { cols: 3 },
+          props: { dashboardKey: "dashboard" },
           children: [
             {
               id: "k1",
@@ -594,83 +607,119 @@ const IT_BLUEPRINT_V1 = {
               props: { label: "Overdue Tasks" },
               bind: { source: "tasks.count", params: { overdue: { const: true } } },
             },
-          ],
-        },
-        {
-          id: "status-chart",
-          type: "Chart",
-          version: 1,
-          props: { title: "Projects by status", nameKey: "status", valueKey: "count" },
-          bind: { source: "projects.statusBreakdown" },
-        },
-        {
-          id: "task-view",
-          type: "TaskList",
-          version: 1,
-          props: { title: "Critical Task View" },
-          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
-          actions: [
             {
-              kind: "mutation",
-              mutation: "task.create",
-              input: { ref: "form.newTask" },
-              requiredPermission: "task:create",
+              id: "status-chart",
+              type: "Chart",
+              version: 1,
+              props: { title: "Projects by status", nameKey: "status", valueKey: "count" },
+              bind: { source: "projects.statusBreakdown" },
+            },
+            // "Activity timeline" + "Notifications" collapse into one
+            // widget — no separate activity-log backend exists anywhere in
+            // this codebase, both requested sections are backed by the
+            // identical notifications.list data. Same bind shape already
+            // proven on page.analytics.
+            {
+              id: "activity",
+              type: "ActivityFeed",
+              version: 1,
+              props: { title: "Recent Activity", limit: 8 },
+              bind: { source: "notifications.list" },
+            },
+            // List@1's first real blueprint adoption (Phase F) — projects.list
+            // already orders by updatedAt desc, take 50, so a client-side
+            // limit is all "recent" needs.
+            {
+              id: "recent-projects",
+              type: "List",
+              version: 1,
+              props: { title: "Recent Projects", titleField: "name", limit: 5 },
+              bind: { source: "projects.list" },
+              actions: [{ kind: "navigate", to: "page.projects" }],
+            },
+            // "Upcoming meetings" + "Calendar overview" collapse into one
+            // widget bound to calendar.list — already a properly time-
+            // windowed, ascending-sorted aggregator across meetings/events/
+            // tasks/appointments. Omitting from/to relies on calendar.list's
+            // own server-side rolling today->+14-day default (Phase F).
+            {
+              id: "upcoming",
+              type: "List",
+              version: 1,
+              props: { title: "Upcoming", titleField: "title", limit: 8 },
+              bind: { source: "calendar.list" },
+              actions: [{ kind: "navigate", to: "page.calendar" }],
             },
             {
-              kind: "mutation",
-              mutation: "task.updateStatus",
-              input: { ref: "row.id" },
-              requiredPermission: "task:update",
+              id: "task-view",
+              type: "TaskList",
+              version: 1,
+              props: { title: "Critical Task View" },
+              bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+              actions: [
+                {
+                  kind: "mutation",
+                  mutation: "task.create",
+                  input: { ref: "form.newTask" },
+                  requiredPermission: "task:create",
+                },
+                {
+                  kind: "mutation",
+                  mutation: "task.updateStatus",
+                  input: { ref: "row.id" },
+                  requiredPermission: "task:update",
+                },
+                {
+                  kind: "mutation",
+                  mutation: "task.reassign",
+                  input: { ref: "row.id" },
+                  requiredPermission: "task:update",
+                },
+              ],
             },
             {
-              kind: "mutation",
-              mutation: "task.reassign",
-              input: { ref: "row.id" },
-              requiredPermission: "task:update",
-            },
-          ],
-        },
-        {
-          id: "quick-actions",
-          type: "QuickActions",
-          version: 1,
-          props: {
-            title: "Quick Actions",
-            items: [
-              { label: "New Project", icon: "layers", pageId: "page.projects" },
-              { label: "New Task", icon: "task_alt", pageId: "page.tasks" },
-              // Labels kept in sync with their nav items' new labels
-              // ("Team" -> "Employees", "Org Structure" -> "Teams") even
-              // though the pageIds/mechanism are unchanged.
-              { label: "Employees", icon: "group", pageId: "page.team" },
-              { label: "Teams", icon: "account_tree", pageId: "page.hr" },
-            ],
-          },
-        },
-        {
-          id: "board",
-          type: "ProjectBoard",
-          version: 1,
-          props: { title: "Active Projects" },
-          bind: { source: "projects.list", params: { status: { const: "active" } }, paginate: true },
-          actions: [
-            {
-              kind: "mutation",
-              mutation: "project.create",
-              input: { ref: "form.newProject" },
-              requiredPermission: "project:create",
+              id: "board",
+              type: "ProjectBoard",
+              version: 1,
+              props: { title: "Active Projects" },
+              bind: { source: "projects.list", params: { status: { const: "active" } }, paginate: true },
+              actions: [
+                {
+                  kind: "mutation",
+                  mutation: "project.create",
+                  input: { ref: "form.newProject" },
+                  requiredPermission: "project:create",
+                },
+                {
+                  kind: "mutation",
+                  mutation: "project.addMember",
+                  input: { ref: "form.projectMember" },
+                  requiredPermission: "project:update",
+                },
+                {
+                  kind: "mutation",
+                  mutation: "project.removeMember",
+                  input: { ref: "form.projectMember" },
+                  requiredPermission: "project:update",
+                },
+              ],
             },
             {
-              kind: "mutation",
-              mutation: "project.addMember",
-              input: { ref: "form.projectMember" },
-              requiredPermission: "project:update",
-            },
-            {
-              kind: "mutation",
-              mutation: "project.removeMember",
-              input: { ref: "form.projectMember" },
-              requiredPermission: "project:update",
+              id: "quick-actions",
+              type: "QuickActions",
+              version: 1,
+              props: {
+                title: "Quick Actions",
+                items: [
+                  { label: "New Project", icon: "layers", pageId: "page.projects" },
+                  { label: "New Task", icon: "task_alt", pageId: "page.tasks" },
+                  // Labels kept in sync with their nav items' new labels
+                  // ("Team" -> "Employees", "Org Structure" -> "Teams") even
+                  // though the pageIds/mechanism are unchanged.
+                  { label: "Employees", icon: "group", pageId: "page.team" },
+                  { label: "Teams", icon: "account_tree", pageId: "page.hr" },
+                ],
+              },
             },
           ],
         },

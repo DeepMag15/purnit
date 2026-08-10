@@ -40,7 +40,13 @@ interface CalendarItem {
   meta: Record<string, unknown>;
 }
 
-const CalendarListParamsSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+// `from`/`to` are optional (Platform UI/UX Redesign, Phase F) — every
+// existing caller (CalendarWorkspace) always passes both explicitly, so this
+// is additive. A blueprint-authored widget (Dashboard's "Upcoming" List) has
+// no way to compute "today" at seed/authoring time, so omitting both falls
+// back to a rolling today→+14-day window, resolved server-side at request
+// time instead.
+const CalendarListParamsSchema = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() });
 
 /**
  * The unified Calendar view — aggregates Meetings, CalendarEvents, and
@@ -64,7 +70,9 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
   name: "calendar.list",
   paramsSchema: CalendarListParamsSchema,
   async resolve(params, ctx, tx) {
-    const { from, to } = params;
+    const now = new Date();
+    const from = params.from ?? new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const to = params.to ?? new Date(from.getTime() + 14 * 24 * 60 * 60 * 1000);
     const items: CalendarItem[] = [];
 
     const meetingsWhereClause = await meetingsWhere(tx, ctx, { scheduledStart: { gte: from, lte: to } });

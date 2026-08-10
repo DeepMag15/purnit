@@ -176,4 +176,39 @@ describe("calendar.list — aggregation", () => {
 
     expect(items.map((i) => i.id)).toEqual(["e1", "a1", "m1", "tk1"]);
   });
+
+  // Platform UI/UX Redesign, Phase F — Dashboard's "Upcoming" widget binds
+  // with no from/to at all (a blueprint can't compute "today" at authoring
+  // time), so omitting both must fall back to a rolling window server-side.
+  it("defaults to a rolling today-to-+14-day window when from/to are both omitted", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    await calendarListDataSource.resolve({}, context([], null), tx);
+
+    const call = (tx as unknown as { meeting: { findMany: jest.Mock } }).meeting.findMany.mock.calls[0]![0];
+    const { gte: from, lte: to } = call.where.scheduledStart;
+    const now = new Date();
+    expect(from.getFullYear()).toBe(now.getFullYear());
+    expect(from.getMonth()).toBe(now.getMonth());
+    expect(from.getDate()).toBe(now.getDate());
+    expect(from.getHours()).toBe(0);
+    expect(to.getTime() - from.getTime()).toBe(14 * 24 * 60 * 60 * 1000);
+  });
+
+  it("still honors explicit from/to when both are given, unchanged from before Phase F", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    await calendarListDataSource.resolve({ from: FROM, to: TO }, context([], null), tx);
+
+    const call = (tx as unknown as { meeting: { findMany: jest.Mock } }).meeting.findMany.mock.calls[0]![0];
+    expect(call.where.scheduledStart).toEqual({ gte: FROM, lte: TO });
+  });
 });

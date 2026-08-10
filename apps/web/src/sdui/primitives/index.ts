@@ -39,6 +39,12 @@ const GanttChart = dynamic(() => import("./GanttChart").then((m) => m.GanttChart
 import { KanbanBoardSchema } from "./KanbanBoard";
 const KanbanBoard = dynamic(() => import("./KanbanBoard").then((m) => m.KanbanBoard));
 
+// Platform UI/UX Redesign, Phase F — pulls in react-grid-layout, same
+// bundle-size reasoning as the primitives above: schema stays static
+// (needed synchronously by registerPrimitive), component is lazy.
+import { DashboardGridSchema } from "./DashboardGrid";
+const DashboardGrid = dynamic(() => import("./DashboardGrid").then((m) => m.DashboardGrid));
+
 // Hand-built (no recharts) — statically imported, same as Heatmap/List below.
 import { Heatmap, HeatmapSchema } from "./Heatmap";
 import { CalendarHeatmap, CalendarHeatmapSchema } from "./CalendarHeatmap";
@@ -92,6 +98,7 @@ export function registerCorePrimitives(): void {
   registerPrimitive("TimelineChart", 1, TimelineChartSchema, TimelineChart);
   registerPrimitive("GanttChart", 1, GanttChartSchema, GanttChart);
   registerPrimitive("KanbanBoard", 1, KanbanBoardSchema, KanbanBoard);
+  registerPrimitive("DashboardGrid", 1, DashboardGridSchema, DashboardGrid);
   registerPrimitive("ProgressGoal", 1, ProgressGoalSchema, ProgressGoal);
   registerPrimitive("Leaderboard", 1, LeaderboardSchema, Leaderboard);
   registerPrimitive("ActivityFeed", 1, ActivityFeedSchema, ActivityFeed);

@@ -3,7 +3,14 @@ import { z } from "zod";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import { WidgetLayoutEntrySchema } from "./dashboard-layout.types";
 
-const SaveInputSchema = z.object({ widgets: z.array(WidgetLayoutEntrySchema) });
+// Platform UI/UX Redesign, Phase F — `dashboardKey` is additive and
+// defaults to "analytics", so every existing Analytics call site (which
+// never passes it) is 100% behavior-unchanged. Lets a second named
+// dashboard (Dashboard's own `DashboardGrid`, dashboardKey: "dashboard")
+// reuse this exact same persistence/versioning mechanism rather than a
+// second one — the `DashboardLayout` model's own `dashboardKey` column was
+// already designed for this, just never generalized past the one literal.
+const SaveInputSchema = z.object({ widgets: z.array(WidgetLayoutEntrySchema), dashboardKey: z.string().default("analytics") });
 
 /** Personal layout save — no requiredPermission, every tenant member may
  * save their own arrangement, same "universal, ownership-scoped" precedent
@@ -20,7 +27,7 @@ export const dashboardLayoutSaveMutation: MutationDefinition<z.infer<typeof Save
   inputSchema: SaveInputSchema,
   async resolve(input, ctx, tx) {
     const current = await tx.dashboardLayout.findFirst({
-      where: { tenantId: ctx.tenantId, userId: ctx.userId, dashboardKey: "analytics", isActive: true },
+      where: { tenantId: ctx.tenantId, userId: ctx.userId, dashboardKey: input.dashboardKey, isActive: true },
     });
     if (current) {
       await tx.dashboardLayout.update({ where: { id: current.id }, data: { isActive: false } });
@@ -29,7 +36,7 @@ export const dashboardLayoutSaveMutation: MutationDefinition<z.infer<typeof Save
       data: {
         tenantId: ctx.tenantId,
         userId: ctx.userId,
-        dashboardKey: "analytics",
+        dashboardKey: input.dashboardKey,
         widgets: input.widgets,
         version: (current?.version ?? 0) + 1,
         isActive: true,
@@ -38,7 +45,7 @@ export const dashboardLayoutSaveMutation: MutationDefinition<z.infer<typeof Save
   },
 };
 
-const ResetInputSchema = z.object({});
+const ResetInputSchema = z.object({ dashboardKey: z.string().default("analytics") });
 
 /** Deactivates the caller's own active personal layout, if one exists — no
  * new row inserted. The next analytics.dashboard call then falls through to
@@ -48,9 +55,9 @@ const ResetInputSchema = z.object({});
 export const dashboardLayoutResetMutation: MutationDefinition<z.infer<typeof ResetInputSchema>> = {
   name: "dashboardLayout.reset",
   inputSchema: ResetInputSchema,
-  async resolve(_input, ctx, tx) {
+  async resolve(input, ctx, tx) {
     const current = await tx.dashboardLayout.findFirst({
-      where: { tenantId: ctx.tenantId, userId: ctx.userId, dashboardKey: "analytics", isActive: true },
+      where: { tenantId: ctx.tenantId, userId: ctx.userId, dashboardKey: input.dashboardKey, isActive: true },
     });
     if (current) {
       await tx.dashboardLayout.update({ where: { id: current.id }, data: { isActive: false } });
@@ -59,7 +66,11 @@ export const dashboardLayoutResetMutation: MutationDefinition<z.infer<typeof Res
   },
 };
 
-const SaveAsTemplateInputSchema = z.object({ roleId: z.string(), widgets: z.array(WidgetLayoutEntrySchema) });
+const SaveAsTemplateInputSchema = z.object({
+  roleId: z.string(),
+  widgets: z.array(WidgetLayoutEntrySchema),
+  dashboardKey: z.string().default("analytics"),
+});
 
 /** Company-Admin-tier — reuses the existing role:manage permission rather
  * than inventing a new one, same "reuse before inventing" precedent as
@@ -74,7 +85,7 @@ export const dashboardLayoutSaveAsTemplateMutation: MutationDefinition<z.infer<t
     if (!role) throw new NotFoundException(`No role "${input.roleId}" in this tenant`);
 
     const current = await tx.dashboardLayout.findFirst({
-      where: { tenantId: ctx.tenantId, roleId: input.roleId, dashboardKey: "analytics", isActive: true },
+      where: { tenantId: ctx.tenantId, roleId: input.roleId, dashboardKey: input.dashboardKey, isActive: true },
     });
     if (current) {
       await tx.dashboardLayout.update({ where: { id: current.id }, data: { isActive: false } });
@@ -83,7 +94,7 @@ export const dashboardLayoutSaveAsTemplateMutation: MutationDefinition<z.infer<t
       data: {
         tenantId: ctx.tenantId,
         roleId: input.roleId,
-        dashboardKey: "analytics",
+        dashboardKey: input.dashboardKey,
         widgets: input.widgets,
         version: (current?.version ?? 0) + 1,
         isActive: true,
