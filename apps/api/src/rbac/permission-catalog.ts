@@ -121,6 +121,25 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "analytics", action: "aiUsage", label: "View AI usage analytics" },
     ],
   },
+  {
+    // Healthcare Domain, Phase A — the platform's first non-IT industry
+    // blueprint. Same shape/discipline as every module above; nothing here
+    // is industry-filtered — this catalog is global, reused unchanged.
+    module: "Patients",
+    entries: [
+      { resource: "patient", action: "create", label: "Register new patients" },
+      { resource: "patient", action: "read", label: "View patient records" },
+      { resource: "patient", action: "update", label: "Update patient profile/status" },
+    ],
+  },
+  {
+    module: "Appointments",
+    entries: [
+      { resource: "appointment", action: "create", label: "Book appointments" },
+      { resource: "appointment", action: "read", label: "View appointments" },
+      { resource: "appointment", action: "update", label: "Update/reschedule/cancel appointments" },
+    ],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));

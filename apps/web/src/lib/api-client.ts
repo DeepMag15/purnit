@@ -44,7 +44,7 @@ export interface SignupInput {
   password: string;
   companyName: string;
   displayName: string;
-  industry: "IT";
+  industry: "IT" | "Healthcare";
 }
 
 export function signup(input: SignupInput): Promise<{ tenantId: string; userId: string; workspaceId: string }> {

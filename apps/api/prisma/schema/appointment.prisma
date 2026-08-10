@@ -1,0 +1,28 @@
+/// Healthcare Domain, Phase A. A Patient cannot be a `MeetingParticipant`
+/// today (that model resolves participant ids strictly against real `User`
+/// rows — a Patient has no login/User row by design), so Appointment is its
+/// own dedicated model, not an extension of Meeting or CalendarEvent —
+/// the same structural precedent `calendar.list` already uses for its three
+/// existing source types (Meeting/CalendarEvent/Task, each its own model,
+/// each contributing one branch to the shared aggregator). Plugs into
+/// `calendar.list` as a fourth source type in a later phase (not Phase A).
+model Appointment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  patientId      String   @map("patient_id") @db.Uuid
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  doctorId       String   @map("doctor_id") @db.Uuid
+  scheduledStart DateTime @map("scheduled_start")
+  scheduledEnd   DateTime @map("scheduled_end")
+  // Free-text vocabulary: "scheduled" | "completed" | "cancelled" | "no-show".
+  status         String   @default("scheduled")
+  notes          String?
+  bookedById     String   @map("booked_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, patientId])
+  @@index([tenantId, doctorId])
+  @@index([tenantId, scheduledStart])
+  @@map("appointments")
+}

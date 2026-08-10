@@ -1281,21 +1281,415 @@ const IT_BLUEPRINT_V1 = {
   },
 };
 
+// Healthcare Domain, Phase A — the platform's first non-IT industry
+// blueprint, proving the config-driven multi-domain architecture for real
+// (ARCHITECTURE.md's own roadmap note used to say "everything built so far
+// is IT-only" — this is what closes that gap). Deliberately minimal per the
+// approved Phase A scope: no department taxonomy (`departmentTypes: []` —
+// Patient/Appointment have no `departmentId` column at all, see
+// patient.prisma/appointment.prisma's own doc comments), 4 flat roles (no
+// `extends` chains — unlike the IT blueprint's tier-ladder inheritance,
+// every Healthcare role's `permissions` array is complete and
+// self-contained, the simplest correct shape for 4 roles with no shared
+// sub-hierarchy worth factoring out yet).
+//
+// Every role maps onto the SAME universal 7-tier ladder / 5-value scope
+// enum every module in this codebase already authorizes through
+// (ORG_HIERARCHY.md's own compliance rule — no new authority model
+// invented). `role.admin` is required verbatim by AuthService.signup's own
+// hardcoded lookup; Doctor/Nurse/Receptionist are ordinary blueprint-defined
+// roles, materialized exactly like any IT-blueprint role.
+//
+// Patient/Appointment ownership scoping (patient:*:own = "my assigned
+// patients", appointment:*:own = "my own appointments") is where this
+// blueprint's RBAC precision actually lives — Project/Task/Document grants
+// are deliberately kept at :tenant scope for Doctor/Nurse rather than :own,
+// a disclosed simplification: `isRowInScope`'s "own" check is an OWNERSHIP
+// match (Project.ownerId), not a MEMBERSHIP match (ProjectMember) — a
+// patient's auto-created chart Project is owned by whoever registered the
+// patient, not necessarily the assigned doctor, so an :own grant on
+// project/task/document would incorrectly deny a doctor's own patient's
+// chart in some cases. Tenant-wide scope for these three sidesteps that
+// ownership/membership mismatch entirely; Patient/Appointment's own
+// :own-scoped grants are what actually demonstrate real per-role RBAC
+// differentiation (see the live-verification plan).
+const HEALTHCARE_BLUEPRINT_V1 = {
+  id: "healthcare",
+  version: 1,
+  industry: "Healthcare",
+  roles: [
+    {
+      id: "role.admin",
+      label: "Hospital Administrator",
+      permissions: [
+        "patient:create:tenant",
+        "patient:read:tenant",
+        "patient:update:tenant",
+        "appointment:create:tenant",
+        "appointment:read:tenant",
+        "appointment:update:tenant",
+        "project:create:tenant",
+        "project:read:tenant",
+        "project:update:tenant",
+        "project:delete:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "task:delete:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "document:delete:tenant",
+        "role:manage:tenant",
+        "role:assign:tenant",
+        "user:invite:tenant",
+        "user:manage:tenant",
+        "department:manage:tenant",
+        "settings:manage:tenant",
+        "meeting:create:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:tenant",
+        "attendance:create:tenant",
+        "attendance:read:tenant",
+        "attendance:update:tenant",
+      ],
+    },
+    {
+      id: "role.doctor",
+      label: "Doctor",
+      permissions: [
+        // Needs to look up any patient (referrals/coverage), but may only
+        // update their own assigned patients' profile/status.
+        "patient:read:tenant",
+        "patient:update:own",
+        "appointment:read:own",
+        "appointment:update:own",
+        // See this fixture's own header comment for why these three stay
+        // :tenant rather than :own.
+        "project:read:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      id: "role.nurse",
+      label: "Nurse",
+      permissions: [
+        "patient:read:tenant",
+        "patient:update:own",
+        // Broader than Doctor's own-scoped appointment access — nurses
+        // coordinate scheduling across a doctor's whole patient load, not
+        // just their own assignments (there is no assignment concept for
+        // nurses in Phase A).
+        "appointment:read:tenant",
+        "project:read:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      id: "role.receptionist",
+      label: "Receptionist",
+      permissions: [
+        // Registers new patients and books for anyone — no patient:update,
+        // no project/task/document grants at all. A receptionist never
+        // becomes a chart Project's member, so they see zero care-plan/
+        // medical-record content — not a special-cased rule, just the
+        // natural consequence of never being added. The concrete,
+        // demonstrable "different roles see genuinely different things"
+        // proof for this domain.
+        "patient:create:tenant",
+        "patient:read:tenant",
+        "appointment:create:tenant",
+        "appointment:read:tenant",
+        "appointment:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+  ],
+  // No Healthcare department taxonomy in Phase A — see this fixture's own
+  // header comment. Additive to populate later; not a redesign.
+  departmentTypes: [],
+  navigation: [
+    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
+    {
+      id: "nav.patients",
+      label: "Patients",
+      icon: "group",
+      pageId: "page.patients",
+      requiredPermission: "patient:read",
+      moduleKey: "patients",
+    },
+    {
+      id: "nav.appointments",
+      label: "Appointments",
+      icon: "calendar",
+      pageId: "page.appointments",
+      requiredPermission: "appointment:read",
+      moduleKey: "appointments",
+    },
+    // Everything below reuses an existing module's own nav entry verbatim
+    // (same pageId-bearing composite, same permission gate where one
+    // exists) — zero new code, only blueprint content, per this initiative's
+    // own "reuse as many existing modules as possible" mandate.
+    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
+    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
+    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
+    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
+    {
+      id: "nav.attendance",
+      label: "Attendance",
+      icon: "attendance",
+      pageId: "page.attendance",
+      requiredPermission: "attendance:read",
+    },
+    {
+      id: "nav.roles-permissions",
+      label: "Roles & Permissions",
+      icon: "roles-permissions",
+      pageId: "page.roles-permissions",
+      requiredPermission: "role:manage",
+    },
+    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
+    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+  ],
+  dashboards: { default: "page.dashboard" },
+  modules: ["patients", "appointments"],
+  pages: {
+    "page.dashboard": {
+      id: "page.dashboard",
+      type: "Page",
+      version: 1,
+      // Deliberately minimal in Phase A — no requiredPermission (must never
+      // be permission-gated, see main()'s own sanity check below). Real
+      // Patient/Appointment metrics (Phase C) enrich this later; for now a
+      // plain welcome heading, matching every other placeholder-style page
+      // in this codebase's own established precedent.
+      children: [{ id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } }],
+    },
+    "page.patients": {
+      id: "page.patients",
+      type: "Page",
+      version: 1,
+      requiredPermission: "patient:read",
+      children: [
+        {
+          id: "patients-workspace",
+          type: "PatientsWorkspace",
+          version: 1,
+          props: { title: "Patients" },
+          bind: { source: "patients.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "patient.register", input: { ref: "form.registerPatient" }, requiredPermission: "patient:create" },
+            { kind: "mutation", mutation: "patient.updateStatus", input: { ref: "row.id" }, requiredPermission: "patient:update" },
+            { kind: "mutation", mutation: "patient.assignDoctor", input: { ref: "row.id" }, requiredPermission: "patient:update" },
+          ],
+        },
+      ],
+    },
+    "page.appointments": {
+      id: "page.appointments",
+      type: "Page",
+      version: 1,
+      requiredPermission: "appointment:read",
+      children: [
+        {
+          id: "appointments-workspace",
+          type: "AppointmentsWorkspace",
+          version: 1,
+          props: { title: "Appointments" },
+          bind: { source: "appointments.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "appointment.create", input: { ref: "form.bookAppointment" }, requiredPermission: "appointment:create" },
+            { kind: "mutation", mutation: "appointment.updateStatus", input: { ref: "row.id" }, requiredPermission: "appointment:update" },
+          ],
+        },
+      ],
+    },
+    // Everything below reuses an existing blueprint page's own real content
+    // verbatim (same composite type, same actions/mutations) — copied, not
+    // referenced, since `pages` is a per-blueprint map; zero new frontend
+    // code either way, only JSON.
+    "page.analytics": {
+      id: "page.analytics",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
+        {
+          id: "analytics-activity",
+          type: "ActivityFeed",
+          version: 1,
+          props: { title: "Recent Activity", limit: 10 },
+          bind: { source: "notifications.list" },
+        },
+        { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
+      ],
+    },
+    "page.chat": {
+      id: "page.chat",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "chat-workspace",
+          type: "ChatWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "conversation.createChannel", input: { ref: "form.newChannel" } },
+            { kind: "mutation", mutation: "conversation.createDm", input: { ref: "form.newDm" } },
+            { kind: "mutation", mutation: "conversation.addMember", input: { ref: "form.addMember" } },
+            { kind: "mutation", mutation: "conversation.archive", input: { ref: "row.conversationId" } },
+            { kind: "mutation", mutation: "message.send", input: { ref: "form.newMessage" } },
+            { kind: "mutation", mutation: "message.delete", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "conversation.markRead", input: { ref: "row.conversationId" } },
+          ],
+        },
+      ],
+    },
+    "page.meetings": {
+      id: "page.meetings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "meetings-workspace",
+          type: "MeetingsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "meeting.create", input: { ref: "form.scheduleMeeting" }, requiredPermission: "meeting:create" },
+            { kind: "mutation", mutation: "meeting.cancel", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "meeting.addParticipant", input: { ref: "form.addParticipant" } },
+            { kind: "mutation", mutation: "meeting.removeParticipant", input: { ref: "row.userId" } },
+            { kind: "mutation", mutation: "meeting.getJoinInfo", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.calendar": {
+      id: "page.calendar",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "calendar-workspace",
+          type: "CalendarWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "calendarEvent.create", input: { ref: "form.newCalendarEvent" }, requiredPermission: "calendarEvent:create" },
+            { kind: "mutation", mutation: "calendarEvent.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.attendance": {
+      id: "page.attendance",
+      type: "Page",
+      version: 1,
+      requiredPermission: "attendance:read",
+      children: [
+        {
+          id: "attendance-workspace",
+          type: "AttendanceWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "attendance.mark", input: { ref: "form.markAttendance" }, requiredPermission: "attendance:create" },
+            { kind: "mutation", mutation: "attendance.correct", input: { ref: "form.correctAttendance" }, requiredPermission: "attendance:update" },
+          ],
+        },
+      ],
+    },
+    "page.roles-permissions": {
+      id: "page.roles-permissions",
+      type: "Page",
+      version: 1,
+      requiredPermission: "role:manage",
+      children: [
+        {
+          id: "roles-permissions-workspace",
+          type: "RolesPermissionsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "role.createCustom", input: { ref: "form.newRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.grant", input: { ref: "form.grantDelegation" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.revoke", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+          ],
+        },
+      ],
+    },
+    "page.settings": {
+      id: "page.settings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "workspace-settings",
+          type: "WorkspaceSettings",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "tenant.updateBranding", input: { ref: "form.branding" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.updateWorkspaceId", input: { ref: "form.workspaceId" }, requiredPermission: "settings:manage" },
+            {
+              kind: "mutation",
+              mutation: "workspaceConfig.updateNavigationLabel",
+              input: { ref: "form.navLabel" },
+              requiredPermission: "settings:manage",
+            },
+            { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+          ],
+        },
+      ],
+    },
+    "page.account": {
+      id: "page.account",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
+        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
+      ],
+    },
+  },
+};
+
+// Shared by both blueprints — the default dashboard must never be
+// permission-gated for any tier, or a real user whose effective permissions
+// fail that gate would hit compileWorkspace's unguarded
+// `pruned.pages[defaultPageId]` lookup (compiler.service.ts) and get a raw
+// 500, not a controlled 404. Caught here, at seed time.
+function assertDefaultDashboardUngated(blueprint: { dashboards: { default: string }; pages: Record<string, { requiredPermission?: string }> }) {
+  const defaultPage = blueprint.pages[blueprint.dashboards.default];
+  if (defaultPage?.requiredPermission) {
+    throw new Error(`Default dashboard "${blueprint.dashboards.default}" must not have a requiredPermission`);
+  }
+}
+
 async function main() {
   // Validated against the same shared contract the Configuration Engine
   // compiles against — a malformed fixture fails here, at seed time, not
   // silently inside a compiled manifest later.
   BlueprintDefinitionSchema.parse(IT_BLUEPRINT_V1);
+  BlueprintDefinitionSchema.parse(HEALTHCARE_BLUEPRINT_V1);
 
-  // The default dashboard must never be permission-gated for any tier — if
-  // it were, a real user whose effective permissions fail that gate would
-  // hit compileWorkspace's unguarded `pruned.pages[defaultPageId]` lookup
-  // (compiler.service.ts) and get a raw 500, not a controlled 404. Caught
-  // here, at seed time, rather than left to be discovered live.
-  const defaultPage = IT_BLUEPRINT_V1.pages[IT_BLUEPRINT_V1.dashboards.default as keyof typeof IT_BLUEPRINT_V1.pages];
-  if (defaultPage?.requiredPermission) {
-    throw new Error(`Default dashboard "${IT_BLUEPRINT_V1.dashboards.default}" must not have a requiredPermission`);
-  }
+  assertDefaultDashboardUngated(IT_BLUEPRINT_V1);
+  assertDefaultDashboardUngated(HEALTHCARE_BLUEPRINT_V1);
 
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL }),
@@ -1306,8 +1700,17 @@ async function main() {
     create: { industry: "IT", version: 1, definition: IT_BLUEPRINT_V1 },
     update: { definition: IT_BLUEPRINT_V1 },
   });
-
   console.log("Seeded blueprint: IT v1");
+
+  // Healthcare Domain, Phase A — the platform's first non-IT blueprint,
+  // coexisting in the same `blueprints` table with zero collision (the
+  // unique key is the pair `[industry, version]`, not `industry` alone).
+  await prisma.blueprint.upsert({
+    where: { industry_version: { industry: "Healthcare", version: 1 } },
+    create: { industry: "Healthcare", version: 1, definition: HEALTHCARE_BLUEPRINT_V1 },
+    update: { definition: HEALTHCARE_BLUEPRINT_V1 },
+  });
+  console.log("Seeded blueprint: Healthcare v1");
 
   // Roles are materialized at tenant provisioning (AuthService.signup) —
   // a `Role` row's `permissions` is a snapshot copied from the blueprint at
@@ -1337,7 +1740,21 @@ async function main() {
     await materializeDepartmentTypeLabels(prisma, tenantId, IT_BLUEPRINT_V1.departmentTypes, roleIds);
     syncedTenants++;
   }
-  console.log(`Re-synced roles + department-type labels for ${syncedTenants} existing tenant(s) to the current blueprint`);
+  console.log(`Re-synced roles + department-type labels for ${syncedTenants} existing IT tenant(s) to the current blueprint`);
+
+  // Same re-sync, scoped to Healthcare tenants — identical mechanism, zero
+  // industry-conditional branching beyond which blueprint's own `roles`/
+  // `departmentTypes` get passed in.
+  const healthcareTenantIds = (
+    await prisma.tenant.findMany({ where: { industry: HEALTHCARE_BLUEPRINT_V1.industry }, select: { id: true } })
+  ).map((t) => t.id);
+  let syncedHealthcareTenants = 0;
+  for (const tenantId of healthcareTenantIds) {
+    const roleIds = await materializeBlueprintRoles(prisma, tenantId, HEALTHCARE_BLUEPRINT_V1.roles);
+    await materializeDepartmentTypeLabels(prisma, tenantId, HEALTHCARE_BLUEPRINT_V1.departmentTypes, roleIds);
+    syncedHealthcareTenants++;
+  }
+  console.log(`Re-synced roles + department-type labels for ${syncedHealthcareTenants} existing Healthcare tenant(s) to the current blueprint`);
 
   await prisma.$disconnect();
 }

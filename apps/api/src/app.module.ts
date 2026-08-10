@@ -27,6 +27,8 @@ import { DocumentsModule } from "./modules/documents/documents.module";
 import { AiModule } from "./ai/ai.module";
 import { AiAssistantModule } from "./modules/ai-assistant/ai-assistant.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
+import { PatientsModule } from "./modules/patients/patients.module";
+import { AppointmentsModule } from "./modules/appointments/appointments.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -57,6 +59,8 @@ import { MeController } from "./me/me.controller";
     AiModule,
     AiAssistantModule,
     AnalyticsModule,
+    PatientsModule,
+    AppointmentsModule,
   ],
   controllers: [HealthController, MeController],
 })

@@ -6,6 +6,7 @@ import { signup, ApiError } from "../../lib/api-client";
 import { supabase } from "../../lib/supabase-client";
 import { setAccessToken } from "../../lib/session";
 import { Input } from "../../ui/Input";
+import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
 import { Alert } from "../../ui/Alert";
 import { Icon } from "../../ui/Icon";
@@ -16,6 +17,12 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  // Healthcare Domain, Phase A — the platform's first non-IT blueprint;
+  // this is the one real frontend hardcode that needed to change to make a
+  // second industry provisionable at all (everything else — nav, pages,
+  // widgets — is already 100% manifest-driven, zero industry-conditional
+  // code anywhere else in this app).
+  const [industry, setIndustry] = useState<"IT" | "Healthcare">("IT");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Held only in memory, only between signup succeeding and the user
@@ -29,7 +36,7 @@ export default function SignupPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await signup({ email, password, companyName, displayName, industry: "IT" });
+      const result = await signup({ email, password, companyName, displayName, industry });
       setReady({ workspaceId: result.workspaceId, email, password });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Something went wrong");
@@ -98,6 +105,10 @@ export default function SignupPage() {
         <h1 className="text-center text-lg font-semibold text-text">Create your workspace</h1>
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
           <Input placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required autoFocus />
+          <Select value={industry} onChange={(e) => setIndustry(e.target.value as "IT" | "Healthcare")} aria-label="Industry">
+            <option value="IT">IT</option>
+            <option value="Healthcare">Healthcare</option>
+          </Select>
           <Input placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
           <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <Input
