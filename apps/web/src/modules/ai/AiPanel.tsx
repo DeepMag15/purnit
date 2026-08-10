@@ -39,6 +39,19 @@ const AUTO_SEND_PRESETS: Record<string, string> = {
  * message so opening it is a single click, not a click then a typed
  * question.
  *
+ * Analytics Phase H generalized the auto-send mechanism: a *string*
+ * `context` (rather than the `{sourceType, sourceId}` object shape) is
+ * treated as the literal first message to auto-send, instead of looking up
+ * a fixed per-preset literal in `AUTO_SEND_PRESETS` — "Ask AI about this
+ * dashboard" builds that string client-side from the dashboard's own
+ * already-fetched widget values (`AnalyticsDashboard.tsx`'s
+ * `formatWidgetsForAi`), no new backend mutation/data source needed. A
+ * string `context` is never forwarded as `contextRef` (it isn't a retrieval
+ * scope, would fail that mutation's own Zod validation) — see `sendMessage`
+ * below. `documents.summarize`/`documents.qa` are unaffected: their
+ * `context` is always an object, so they keep resolving through
+ * `AUTO_SEND_PRESETS` exactly as before.
+ *
  * No polling: unlike Chat, `aiMessage.send` is a single synchronous
  * mutation that returns the assistant's reply directly — there's no
  * background job for a poll to catch up with, and a personal AI
@@ -98,8 +111,14 @@ export function AiPanel({
       if (!conversationId) {
         // preset/contextRef only matter at creation time — once a
         // conversation exists, every later send just reuses its id, so a
-        // manually-typed follow-up naturally stays scoped the same way.
-        const created = (await callMutation("aiConversation.create", { preset, contextRef: context })) as { id: string };
+        // manually-typed follow-up naturally stays scoped the same way. A
+        // string context (Phase H's dynamic auto-send content) is never a
+        // real {sourceType, sourceId} retrieval scope — never forwarded as
+        // contextRef, which would fail that mutation's own Zod validation.
+        const created = (await callMutation("aiConversation.create", {
+          preset,
+          contextRef: typeof context === "string" ? undefined : context,
+        })) as { id: string };
         conversationId = created.id;
         setActiveConversationId(conversationId);
       }
@@ -138,7 +157,9 @@ export function AiPanel({
     autoSentForRef.current = autoSendKey;
     setActiveConversationId(null);
     setDraft("");
-    const autoSendContent = AUTO_SEND_PRESETS[preset];
+    // A string context IS the content to auto-send (Phase H) — otherwise
+    // fall back to a fixed per-preset literal, unchanged from before.
+    const autoSendContent = typeof context === "string" ? context : AUTO_SEND_PRESETS[preset];
     if (autoSendContent) void sendMessage(autoSendContent, { forceNewConversation: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sendMessage closes over activeConversationId/sending by design; re-running per keystroke would defeat the "only once per preset+context" guard above.
   }, [open, preset, context]);

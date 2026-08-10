@@ -60,6 +60,29 @@ function autoLayout(keys: string[]): WidgetLayoutEntry[] {
   return keys.map((key, i) => ({ key, visible: true, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
 }
 
+// Analytics Phase H (AI Insights, first slice) — builds the exact text
+// auto-sent to the AI Assistant when "Ask AI about this dashboard" is
+// clicked, entirely client-side from whatever `analytics.dashboard` already
+// returned (already permission-pruned, no server-side re-fetch needed — see
+// the Phase H plan's own resolved fork for why this isn't a new backend
+// mutation/data source). Capped at the first 5 rows per breakdown widget,
+// same "keep the prompt readable" reasoning as `AnalyticsDrillDown`'s own
+// column cap.
+function formatWidgetsForAi(widgets: AnalyticsWidget[]): string {
+  const lines = widgets.map((w) => {
+    if (w.kind === "scalar") {
+      const value = w.format === "percent" ? `${w.value}${w.unit ?? "%"}` : w.unit ? `${w.value} ${w.unit}` : String(w.value);
+      return `- ${w.label}: ${value}`;
+    }
+    const top = w.rows
+      .slice(0, 5)
+      .map((r) => `${r[w.nameKey]} (${r[w.valueKey]})`)
+      .join(", ");
+    return `- ${w.label}: ${top || "no data"}`;
+  });
+  return `Here's my current Analytics dashboard. Summarize what stands out, flag anything that looks concerning, and suggest 1-2 next actions.\n\n${lines.join("\n")}`;
+}
+
 // Merges the server's saved layout (if any) with whichever widgets
 // analytics.dashboard actually returned this call — a widget key present in
 // `widgets` but absent from `saved` (a metric shipped after this layout was
@@ -105,7 +128,7 @@ export function AnalyticsDashboard(_props: Props & CommonRenderProps) {
 
 function AnalyticsDashboardContent() {
   const filters = useAnalyticsFilters();
-  const { callMutation } = useRenderContext();
+  const { callMutation, openAiPanel, aiAvailable } = useRenderContext();
   const { show: showToast } = useToast();
   const isDesktop = useIsDesktop();
   const { width, containerRef, mounted } = useContainerWidth();
@@ -192,6 +215,14 @@ function AnalyticsDashboardContent() {
     <div className="flex flex-col gap-6">
       <AnalyticsViewTabs />
       <AnalyticsFilterBar />
+
+      {aiAvailable && widgets.length > 0 && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="secondary" onClick={() => openAiPanel("analytics.insights", formatWidgetsForAi(widgets))}>
+            Ask AI about this dashboard
+          </Button>
+        </div>
+      )}
 
       {isDesktop && (
         <div className="flex items-center justify-end gap-2">
