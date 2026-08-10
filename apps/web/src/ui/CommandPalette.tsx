@@ -12,26 +12,28 @@ export interface CommandItem {
 }
 
 /**
- * Cmd/Ctrl+K quick-jump palette. Items come from `manifest.navigation` (see
+ * Quick-jump palette. Items come from `manifest.navigation` (see
  * `WorkspaceLayout`) — already pruned/compiled per the user's permissions,
  * not a hardcoded route list, so a Member never sees a palette entry for a
  * page they couldn't otherwise navigate to.
+ *
+ * Controlled `open`/`onClose`, mirroring `Dialog`'s own exact contract —
+ * the parent owns *when* it opens (the Cmd/Ctrl+K global shortcut now lives
+ * in `WorkspaceLayout`, which is also where the visible header search
+ * trigger lives), while this component still self-manages `Escape`-to-close
+ * and backdrop-click-to-close, same split of responsibility `Dialog` uses.
  */
-export function CommandPalette({ items }: { items: CommandItem[] }) {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({ open, onClose, items }: { open: boolean; onClose: () => void; items: CommandItem[] }) {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setOpen((v) => !v);
-      }
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -47,7 +49,7 @@ export function CommandPalette({ items }: { items: CommandItem[] }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[15vh]"
-      onClick={() => setOpen(false)}
+      onClick={onClose}
     >
       <div
         className="glass-panel w-full max-w-lg overflow-hidden rounded-xl border border-border shadow-2xl"
@@ -72,9 +74,9 @@ export function CommandPalette({ items }: { items: CommandItem[] }) {
               type="button"
               onClick={() => {
                 item.onSelect();
-                setOpen(false);
+                onClose();
               }}
-              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-hover"
+              className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
             >
               <Icon name={iconFor(item.icon)} size={15} className="text-text-muted" />
               {item.label}

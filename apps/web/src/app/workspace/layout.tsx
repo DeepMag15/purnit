@@ -16,11 +16,13 @@ import { AiPanel } from "../../modules/ai/AiPanel";
 import { Icon } from "../../ui/Icon";
 import { Dropdown, DropdownItem } from "../../ui/Dropdown";
 import { CommandPalette, type CommandItem } from "../../ui/CommandPalette";
+import { Tooltip } from "../../ui/Tooltip";
+import { Breadcrumbs } from "../../ui/Breadcrumbs";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { cn } from "../../ui/utils";
 import { WorkspaceSidebar, hrefForNavItem } from "../../ui/WorkspaceSidebar";
-import { flattenNavItems } from "../../ui/nav-tree";
+import { flattenNavItems, findNavPath } from "../../ui/nav-tree";
 
 // Persisted across navigation/reload — same reasoning as lib/session.ts's
 // access-token storage (a plain UI preference, not sensitive, doesn't need
@@ -40,6 +42,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [aiPanelPreset, setAiPanelPreset] = useState<string | undefined>();
   const [aiPanelContext, setAiPanelContext] = useState<unknown>();
@@ -75,6 +78,22 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true") setCollapsed(true);
+  }, []);
+
+  // Owns the Cmd/Ctrl+K shortcut — moved here from CommandPalette itself
+  // (Phase E) now that it's a controlled open/onClose component, matching
+  // Dialog's own contract: the parent decides *when* it opens (this
+  // shortcut, or the new visible header search button below), the overlay
+  // itself still self-manages Escape-to-close.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   function toggleCollapsed() {
@@ -253,7 +272,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={toggleCollapsed}
-              className="hidden h-8 w-full shrink-0 items-center justify-center rounded-md border border-border text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text md:flex"
+              className="hidden h-8 w-full shrink-0 items-center justify-center rounded-md border border-border text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text md:flex"
             >
               <Icon name={collapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"} size={16} />
             </button>
@@ -261,17 +280,36 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="glass-panel sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border px-4">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <button type="button" className="text-text-muted md:hidden" onClick={() => setDrawerOpen(true)}>
                   <Icon name="menu" size={20} />
                 </button>
+                <Breadcrumbs path={findNavPath(manifest.navigation, manifest, pathname)} onNavigate={navigate} />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCommandPaletteOpen(true)}
+                  className="flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
+                >
+                  <Icon name="search" size={15} />
+                  <span className="hidden sm:inline">Search</span>
+                  <kbd className="hidden rounded border border-border px-1 py-0.5 text-[10px] text-text-muted sm:inline">⌘K</kbd>
+                </button>
+                <Tooltip content={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+                  <button
+                    type="button"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
+                  >
+                    <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={16} />
+                  </button>
+                </Tooltip>
                 {manifest.aiAvailable && (
                   <button
                     type="button"
                     onClick={() => openAiPanel()}
-                    className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+                    className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
                   >
                     <Icon name="auto_awesome" size={15} />
                     Ask AI
@@ -290,21 +328,22 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
                     </button>
                   )}
                 >
-                  {({ close }) => (
+                  {() => (
                     <>
                       <div className="border-b border-border px-3 py-2">
-                        <div className="truncate text-sm font-medium text-text">{manifest.user.displayName}</div>
+                        <div className="flex items-center gap-2">
+                          {logoUrl ? (
+                            <img src={logoUrl} alt="" className="h-5 w-5 shrink-0 rounded object-contain" />
+                          ) : (
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-accent text-[9px] font-semibold text-accent-fg">
+                              {tenantInitials}
+                            </span>
+                          )}
+                          <span className="truncate text-xs font-medium text-text-muted">{manifest.tenant.name}</span>
+                        </div>
+                        <div className="mt-1.5 truncate text-sm font-medium text-text">{manifest.user.displayName}</div>
                         <div className="truncate text-xs text-text-muted">{manifest.user.roles.join(", ")}</div>
                       </div>
-                      <DropdownItem
-                        onClick={() => {
-                          setTheme(theme === "dark" ? "light" : "dark");
-                          close();
-                        }}
-                      >
-                        <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={15} />
-                        {theme === "dark" ? "Light mode" : "Dark mode"}
-                      </DropdownItem>
                       <DropdownItem danger onClick={handleLogout}>
                         <Icon name="logout" size={15} />
                         Log out
@@ -318,7 +357,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             <main className="flex-1 p-4 md:p-6">{children}</main>
           </div>
         </div>
-        <CommandPalette items={commandItems} />
+        <CommandPalette items={commandItems} open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
         <AiPanel open={aiPanelOpen} onClose={() => setAiPanelOpen(false)} preset={aiPanelPreset} context={aiPanelContext} />
       </RenderContextProvider>
     </BootstrapContextProvider>

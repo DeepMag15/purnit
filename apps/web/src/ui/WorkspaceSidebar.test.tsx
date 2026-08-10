@@ -73,4 +73,14 @@ describe("WorkspaceSidebar", () => {
     fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
     expect(navigated).toBe(true);
   });
+
+  it("wraps a row in a styled Tooltip (not the native title attribute) when collapsed", () => {
+    render(<WorkspaceSidebar items={items} manifest={manifest} pathname="/workspace" collapsed onNavigate={() => {}} />);
+
+    const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
+    expect(dashboardLink).not.toHaveAttribute("title");
+    const describedBy = dashboardLink.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent("Dashboard");
+  });
 });
