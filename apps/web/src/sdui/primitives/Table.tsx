@@ -8,6 +8,7 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
+import { Pagination } from "../../ui/Pagination";
 
 export const TableSchema = z.object({ columns: z.array(z.string()) });
 type Props = z.infer<typeof TableSchema>;
@@ -250,19 +251,7 @@ export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind,
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-xs text-text-muted">
-          <span>
-            Page {currentPage + 1} of {totalPages}
-          </span>
-          <Button size="sm" variant="secondary" disabled={currentPage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-            Prev
-          </Button>
-          <Button size="sm" variant="secondary" disabled={currentPage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
-            Next
-          </Button>
-        </div>
-      )}
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

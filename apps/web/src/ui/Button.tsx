@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "./utils";
 
 type Variant = "primary" | "secondary" | "danger" | "ghost";
-type Size = "sm" | "md";
+type Size = "sm" | "md" | "lg";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary: "bg-accent text-accent-fg hover:bg-accent-hover shadow-sm",
@@ -16,6 +16,7 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 const SIZE_CLASSES: Record<Size, string> = {
   sm: "h-8 px-3 text-xs gap-1.5",
   md: "h-9 px-3.5 text-sm gap-2",
+  lg: "h-10 px-4 text-sm gap-2",
 };
 
 export function Button({
@@ -33,7 +34,7 @@ export function Button({
     <button
       type="button"
       className={cn(
-        "inline-flex items-center justify-center rounded-md font-medium transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        "inline-flex items-center justify-center rounded-md font-medium transition-colors duration-[var(--duration-base)] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         className,

@@ -4,24 +4,40 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { Icon } from "./Icon";
 import { cn } from "./utils";
 
+type Tone = "success" | "danger" | "info" | "warning";
+
 interface ToastItem {
   id: number;
   message: string;
-  tone: "success" | "danger";
+  tone: Tone;
 }
 
 interface ToastContextValue {
-  show: (message: string, tone?: "success" | "danger") => void;
+  show: (message: string, tone?: Tone) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
+
+const TONE_BORDER: Record<Tone, string> = {
+  success: "border-success/30",
+  danger: "border-danger/30",
+  info: "border-info/30",
+  warning: "border-warning/30",
+};
+
+const TONE_ICON: Record<Tone, { name: string; className: string }> = {
+  success: { name: "check_circle", className: "text-success" },
+  danger: { name: "cancel", className: "text-danger" },
+  info: { name: "info", className: "text-info" },
+  warning: { name: "warning", className: "text-warning" },
+};
 
 let nextId = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const show = useCallback((message: string, tone: "success" | "danger" = "success") => {
+  const show = useCallback((message: string, tone: Tone = "success") => {
     const id = ++nextId;
     setToasts((current) => [...current, { id, message, tone }]);
     setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), 3500);
@@ -39,15 +55,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             className={cn(
-              "flex items-center gap-2 rounded-lg border bg-surface px-3.5 py-2.5 text-sm shadow-lg transition-all duration-200",
-              t.tone === "success" ? "border-success/30 text-text" : "border-danger/30 text-text",
+              "flex items-center gap-2 rounded-lg border bg-surface px-3.5 py-2.5 text-sm text-text shadow-lg transition-all duration-[var(--duration-base)]",
+              TONE_BORDER[t.tone],
             )}
           >
-            {t.tone === "success" ? (
-              <Icon name="check_circle" size={16} className="text-success shrink-0" />
-            ) : (
-              <Icon name="cancel" size={16} className="text-danger shrink-0" />
-            )}
+            <Icon name={TONE_ICON[t.tone].name} size={16} className={cn(TONE_ICON[t.tone].className, "shrink-0")} />
             <span>{t.message}</span>
             <button type="button" onClick={() => dismiss(t.id)} className="ml-2 text-text-muted hover:text-text">
               <Icon name="close" size={14} />

@@ -4,7 +4,7 @@ import { Badge as UiBadge } from "../../ui/Badge";
 
 export const BadgeSchema = z.object({
   text: z.string(),
-  tone: z.enum(["neutral", "success", "warning", "danger"]).optional(),
+  tone: z.enum(["neutral", "success", "warning", "danger", "info", "accent"]).optional(),
 });
 type Props = z.infer<typeof BadgeSchema>;
 
