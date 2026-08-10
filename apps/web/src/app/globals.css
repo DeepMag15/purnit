@@ -23,53 +23,82 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
 
-  /* Design-system migration (UI_DESIGN.html reference) — replaces Tailwind's
-   * default radius scale so every existing `rounded-lg`/`rounded-xl` class
-   * already used throughout the ui/ kit picks up the new values with no
-   * per-component changes. */
-  --radius: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  /* Platform-wide UI/UX redesign, Phase A (Design Foundation) — softened
+   * versus the prior "obsidian" scale for a warmer, friendlier feel; every
+   * existing `rounded-lg`/`rounded-xl` class already used throughout the
+   * ui/ kit picks up the new values with no per-component changes. */
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
 
   --spacing-sidebar-width: 240px;
   --spacing-sidebar-collapsed: 64px;
+
+  /* New token category (Phase A) — did not exist before; warm-tinted (not
+   * pure black) soft shadows via color-mix against --text, so dark mode's
+   * shadows read as depth rather than a flat gray haze. Mapped as
+   * --shadow-* so Tailwind's stock shadow-sm/md/lg/xl utility classes pick
+   * these up automatically, same zero-per-component-change leverage as the
+   * color tokens above. */
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--color-text) 6%, transparent);
+  --shadow-sm:
+    0 1px 3px color-mix(in srgb, var(--color-text) 8%, transparent), 0 1px 2px color-mix(in srgb, var(--color-text) 4%, transparent);
+  --shadow-md:
+    0 4px 8px color-mix(in srgb, var(--color-text) 10%, transparent), 0 2px 4px color-mix(in srgb, var(--color-text) 6%, transparent);
+  --shadow-lg:
+    0 10px 20px color-mix(in srgb, var(--color-text) 12%, transparent), 0 4px 8px color-mix(in srgb, var(--color-text) 6%, transparent);
+  --shadow-xl:
+    0 20px 32px color-mix(in srgb, var(--color-text) 14%, transparent), 0 8px 12px color-mix(in srgb, var(--color-text) 8%, transparent);
+
+  /* New token category (Phase A) — a consistent duration/easing vocabulary
+   * for hover/focus/expand-collapse micro-interactions, replacing the
+   * inconsistent hand-picked `duration-150` sprinkled per-component before.
+   * Deliberately not used on layout-affecting properties (width/height/
+   * position) — only color/background-color/border-color/opacity/transform,
+   * so smooth motion never costs a layout/paint performance regression. */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Light theme (also the fallback before next-themes hydrates) — unchanged
- * from before the obsidian migration; the reference design is dark-only, so
- * this variant was designed in the same spirit rather than copied. */
+/* Light theme (also the fallback before next-themes hydrates). Platform-wide
+ * UI/UX redesign, Phase A — replaces the prior indigo-accent/cool-gray
+ * scale with a warm, neutral enterprise palette (confirmed direction, not
+ * an evolution of the prior "obsidian" scheme). */
 :root {
-  --bg: #fafafa;
+  --bg: #faf8f5;
   --surface: #ffffff;
-  --surface-hover: #f4f4f5;
-  --border: #e4e4e7;
-  --text: #18181b;
-  --text-muted: #71717a;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
+  --surface-hover: #f3efe8;
+  --border: #e7e1d6;
+  --text: #29241f;
+  --text-muted: #7a7266;
+  --accent: #b5651d;
+  --accent-hover: #9c561a;
   --accent-fg: #ffffff;
-  --danger: #dc2626;
-  --success: #059669;
-  --warning: #d97706;
-  --info: #0891b2;
+  --danger: #b23a3a;
+  --success: #4f7942;
+  --warning: #b8860b;
+  --info: #3e6b96;
 }
 
-/* Dark theme — "obsidian," per UI_DESIGN.html. The primary/default mode (see
- * layout.tsx's ThemeProvider defaultTheme). */
+/* Dark theme. Platform-wide UI/UX redesign, Phase A — a warm near-black
+ * (brown undertone, not pure #0a0a0a) replacing the prior "obsidian" scale.
+ * The primary/default mode (see layout.tsx's ThemeProvider defaultTheme). */
 .dark {
-  --bg: #0a0a0a;
-  --surface: #141414;
-  --surface-hover: #1a1a1a;
-  --border: #262626;
-  --text: #ededed;
-  --text-muted: #a1a1aa;
-  --accent: #0070f3;
-  --accent-hover: #0061d5;
-  --accent-fg: #ffffff;
-  --danger: #ef4444;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --info: #22d3ee;
+  --bg: #211e1b;
+  --surface: #2a2621;
+  --surface-hover: #332e27;
+  --border: #423c33;
+  --text: #f2ede3;
+  --text-muted: #a89c8c;
+  --accent: #e07a45;
+  --accent-hover: #c96633;
+  --accent-fg: #1a1512;
+  --danger: #d9645f;
+  --success: #7fae6b;
+  --warning: #d4a72c;
+  --info: #6c9bc9;
 }
 
 body {

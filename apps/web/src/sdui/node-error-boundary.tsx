@@ -31,7 +31,11 @@ export class NodeErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div role="alert" data-node-error={this.props.nodeId} style={{ padding: "0.5rem", border: "1px solid #c33", borderRadius: 4, color: "#c33", fontSize: "0.875rem" }}>
+        <div
+          role="alert"
+          data-node-error={this.props.nodeId}
+          className="rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
           Something went wrong rendering this widget.
         </div>
       );
