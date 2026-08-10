@@ -51,9 +51,21 @@ const STATUS_TONE: Record<string, "neutral" | "info" | "success" | "danger"> = {
   "no-show": "neutral",
 };
 
+// Healthcare Domain, Phase D. Mirrors AnalyticsDashboard.tsx's own
+// formatWidgetsForAi/"Ask AI about this dashboard" pattern exactly — the
+// already-fetched `rows`, formatted client-side, zero new fetch or backend
+// surface. Explicitly instructs against diagnosis/treatment suggestions in
+// the prompt text itself, not just as an unread backend policy.
+function formatAppointmentsForAi(rows: AppointmentRow[]): string {
+  const lines = rows.map(
+    (a) => `- ${a.patientName} with Dr. ${a.doctorName}, ${new Date(a.scheduledStart).toLocaleString()} (${a.status})${a.notes ? ` — ${a.notes}` : ""}`,
+  );
+  return `Here are the currently visible appointments. Summarize what stands out (busy periods, cancellations, no-shows) — do not suggest a diagnosis or treatment for any patient.\n\n${lines.join("\n")}`;
+}
+
 export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch } = useDataBinding(bind);
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
 
   const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "appointment.create") ?? false;
@@ -113,6 +125,13 @@ export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRe
     <Card>
       <CardHeader title={title} />
       <CardBody className="flex flex-col gap-3">
+        {aiAvailable && rows.length > 0 && (
+          <div>
+            <Button size="sm" variant="secondary" onClick={() => openAiPanel("appointments.summarize", formatAppointmentsForAi(rows))}>
+              Summarize Appointments
+            </Button>
+          </div>
+        )}
         {canCreate && (
           <div className="flex flex-wrap gap-2">
             <Select value={patientId} onChange={(e) => setPatientId(e.target.value)}>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { projectsWhere } from "../projects/projects.data-sources";
 
 /** Healthcare Domain, Phase A. Same `*Where()` contract every module in this
  * codebase already follows — never a parallel/reimplemented scope check.
@@ -29,6 +30,22 @@ async function withDoctorNames(tx: PrismaTx, patients: { assignedDoctorId: strin
   if (doctorIds.length === 0) return new Map<string, string>();
   const doctors = await tx.user.findMany({ where: { id: { in: doctorIds } }, select: { id: true, displayName: true } });
   return new Map(doctors.map((d) => [d.id, d.displayName]));
+}
+
+/** Healthcare Domain, Phase D. `patient:read` and `project:read` are
+ * different permissions — Receptionist holds the former tenant-wide but
+ * zero of the latter (never becomes a chart Project's member), so a Patient
+ * row being visible here does NOT mean its chart Project's Documents/
+ * Comments are. Reuses `projectsWhere` unchanged (the same cross-module
+ * function-import pattern `calendar.data-sources.ts` already established)
+ * rather than a new permission check, bounded to just this page's own chart
+ * ids, not every visible project tenant-wide. */
+async function withChartVisibility(tx: PrismaTx, ctx: DataSourceContext, patients: { chartProjectId: string }[]) {
+  const chartProjectIds = patients.map((p) => p.chartProjectId);
+  const where = await projectsWhere(tx, ctx, { id: { in: chartProjectIds } });
+  if (!where) return new Set<string>();
+  const visible = await tx.project.findMany({ where, select: { id: true } });
+  return new Set(visible.map((p) => p.id));
 }
 
 const DoctorOptionsParamsSchema = z.object({});
@@ -70,9 +87,11 @@ export const patientsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
     // Sequential, not Promise.all — concurrent queries against the same
     // transactional tx are unsafe.
     const doctorNames = await withDoctorNames(tx, patients);
+    const visibleChartIds = await withChartVisibility(tx, ctx, patients);
     return patients.map((p) => ({
       ...p,
       assignedDoctorName: p.assignedDoctorId ? (doctorNames.get(p.assignedDoctorId) ?? null) : null,
+      chartVisible: visibleChartIds.has(p.chartProjectId),
     }));
   },
 };

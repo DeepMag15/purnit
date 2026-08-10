@@ -46,16 +46,57 @@ describe("patients.list", () => {
       patient: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ id: "p1", assignedDoctorId: "d1" }, { id: "p2", assignedDoctorId: null }]),
+          .mockResolvedValue([
+            { id: "p1", assignedDoctorId: "d1", chartProjectId: "proj1" },
+            { id: "p2", assignedDoctorId: null, chartProjectId: "proj2" },
+          ]),
       },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "d1", displayName: "Dr. Alice" }]) },
     } as unknown as PrismaTx;
 
-    const rows = (await patientsListDataSource.resolve({}, context(["patient:read:tenant"]), tx)) as { id: string; assignedDoctorName: string | null }[];
+    // No project:read grant — withChartVisibility short-circuits before ever
+    // touching tx.project, both rows come back chartVisible: false.
+    const rows = (await patientsListDataSource.resolve({}, context(["patient:read:tenant"]), tx)) as {
+      id: string;
+      assignedDoctorName: string | null;
+      chartVisible: boolean;
+    }[];
     expect(rows).toEqual([
-      { id: "p1", assignedDoctorId: "d1", assignedDoctorName: "Dr. Alice" },
-      { id: "p2", assignedDoctorId: null, assignedDoctorName: null },
+      { id: "p1", assignedDoctorId: "d1", chartProjectId: "proj1", assignedDoctorName: "Dr. Alice", chartVisible: false },
+      { id: "p2", assignedDoctorId: null, chartProjectId: "proj2", assignedDoctorName: null, chartVisible: false },
     ]);
+  });
+
+  describe("chartVisible", () => {
+    it("is true for a patient whose chart Project is within the caller's own project:read scope", async () => {
+      const tx = {
+        patient: { findMany: jest.fn().mockResolvedValue([{ id: "p1", assignedDoctorId: null, chartProjectId: "proj1" }]) },
+        user: { findMany: jest.fn() },
+        project: { findMany: jest.fn().mockResolvedValue([{ id: "proj1" }]) },
+      } as unknown as PrismaTx;
+
+      const rows = (await patientsListDataSource.resolve(
+        {},
+        context(["patient:read:tenant", "project:read:tenant"]),
+        tx,
+      )) as { chartVisible: boolean }[];
+      expect(rows[0]!.chartVisible).toBe(true);
+
+      const call = (tx as unknown as { project: { findMany: jest.Mock } }).project.findMany.mock.calls[0]![0];
+      expect(call.where).toMatchObject({ tenantId: "t1", id: { in: ["proj1"] } });
+    });
+
+    it("is false for a patient whose chart Project the caller cannot see (e.g. Receptionist, no project:read grant at all)", async () => {
+      const tx = {
+        patient: { findMany: jest.fn().mockResolvedValue([{ id: "p1", assignedDoctorId: null, chartProjectId: "proj1" }]) },
+        user: { findMany: jest.fn() },
+        project: { findMany: jest.fn() },
+      } as unknown as PrismaTx;
+
+      const rows = (await patientsListDataSource.resolve({}, context(["patient:read:tenant"]), tx)) as { chartVisible: boolean }[];
+      expect(rows[0]!.chartVisible).toBe(false);
+      expect((tx as unknown as { project: { findMany: jest.Mock } }).project.findMany).not.toHaveBeenCalled();
+    });
   });
 });
 

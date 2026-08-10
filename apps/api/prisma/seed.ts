@@ -1501,6 +1501,18 @@ const HEALTHCARE_BLUEPRINT_V1 = {
             { kind: "mutation", mutation: "patient.register", input: { ref: "form.registerPatient" }, requiredPermission: "patient:create" },
             { kind: "mutation", mutation: "patient.updateStatus", input: { ref: "row.id" }, requiredPermission: "patient:update" },
             { kind: "mutation", mutation: "patient.assignDoctor", input: { ref: "row.id" }, requiredPermission: "patient:update" },
+            // Healthcare Domain, Phase D — Medical Records. Verbatim copy of
+            // page.projects's own document.*/comment.create entries (same
+            // reasoning: comment.create has no requiredPermission since the
+            // mutation itself re-derives scope per-row via
+            // assertCommentTargetInScope; this only gates whether the
+            // affordance shows at all). PatientsWorkspace.tsx derives
+            // canCreateDocuments/canUpdateDocuments/canDeleteDocuments from
+            // this same actions array, mirroring ProjectBoard.tsx exactly.
+            { kind: "mutation", mutation: "comment.create", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "document.create", input: { ref: "form.newDocument" }, requiredPermission: "document:create" },
+            { kind: "mutation", mutation: "document.update", input: { ref: "row.id" }, requiredPermission: "document:update" },
+            { kind: "mutation", mutation: "document.delete", input: { ref: "row.id" }, requiredPermission: "document:delete" },
           ],
         },
       ],

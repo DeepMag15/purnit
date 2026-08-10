@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { useState } from "react";
+import { Icon } from "../../ui/Icon";
 import type { CommonRenderProps } from "../../sdui/registry";
 import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
@@ -14,6 +15,7 @@ import { Alert } from "../../ui/Alert";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 import { useToast } from "../../ui/Toast";
+import { DocumentsPanel } from "../documents/DocumentsPanel";
 
 // Healthcare Domain, Phase A — the platform's first non-IT blueprint
 // composite. Mirrors TaskList.tsx's exact shape (inline create form above a
@@ -32,6 +34,69 @@ interface PatientRow {
   assignedDoctorId: string | null;
   assignedDoctorName: string | null;
   chartProjectId: string;
+  chartVisible: boolean;
+}
+
+interface PatientDocumentRow {
+  id: string;
+  name: string;
+  approvalStatus: string;
+}
+
+// Healthcare Domain, Phase D. A separate component (not inline in the
+// PatientRow map) so its own `useDataSourceQuery` call obeys the Rules of
+// Hooks — mounted only while a chart-visible row is expanded, never called
+// conditionally inside the variable-length row map itself.
+function PatientChartSection({
+  patient,
+  canCreateDocuments,
+  canUpdateDocuments,
+  canDeleteDocuments,
+  aiAvailable,
+  openAiPanel,
+}: {
+  patient: PatientRow;
+  canCreateDocuments: boolean;
+  canUpdateDocuments: boolean;
+  canDeleteDocuments: boolean;
+  aiAvailable: boolean;
+  openAiPanel: (preset?: string, context?: unknown) => void;
+}) {
+  // Same query key DocumentsPanel fetches internally below — deduplicated by
+  // the existing TanStack Query cache layer (CONTEXT.md §48), not a second
+  // network request.
+  const { data } = useDataSourceQuery<PatientDocumentRow[]>("documents.list", { projectId: patient.chartProjectId });
+  const documents = Array.isArray(data) ? data : [];
+
+  function summarizeNotes() {
+    const lines = [
+      `Patient: ${patient.name}`,
+      patient.dateOfBirth ? `DOB: ${new Date(patient.dateOfBirth).toLocaleDateString()}` : null,
+      `Status: ${patient.status}`,
+      patient.assignedDoctorName ? `Assigned doctor: Dr. ${patient.assignedDoctorName}` : null,
+      documents.length > 0
+        ? `Documents on file: ${documents.map((d) => `${d.name} (${d.approvalStatus})`).join(", ")}`
+        : "No documents on file yet.",
+    ].filter((line): line is string => !!line);
+    openAiPanel("patients.summarizeNotes", `Summarize this patient's record. Do not suggest a diagnosis or treatment.\n\n${lines.join("\n")}`);
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {aiAvailable && (
+        <Button size="sm" variant="secondary" onClick={summarizeNotes}>
+          Summarize Patient Notes
+        </Button>
+      )}
+      <DocumentsPanel
+        projectId={patient.chartProjectId}
+        canCreate={canCreateDocuments}
+        canUpdate={canUpdateDocuments}
+        canDelete={canDeleteDocuments}
+        mentionCandidates={patient.assignedDoctorId ? [{ id: patient.assignedDoctorId, displayName: patient.assignedDoctorName ?? "Doctor" }] : []}
+      />
+    </div>
+  );
 }
 
 interface DoctorOption {
@@ -46,7 +111,7 @@ const STATUS_TONE: Record<string, "neutral" | "info" | "success"> = { active: "n
 
 export function PatientsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch } = useDataBinding(bind);
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
 
   // Presence-gated, same pattern as TaskList: the register/status/assign
@@ -55,6 +120,27 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
   const canRegister = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.register") ?? false;
   const canUpdateStatus = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.updateStatus") ?? false;
   const canAssignDoctor = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.assignDoctor") ?? false;
+  // Healthcare Domain, Phase D — mirrors ProjectBoard.tsx's own
+  // canCreateDocuments/canUpdateDocuments/canDeleteDocuments derivation
+  // exactly, reading the same document.* actions off this composite's own
+  // actions array (seed.ts's page.patients node).
+  const canCreateDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.create") ?? false;
+  const canUpdateDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.update") ?? false;
+  const canDeleteDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.delete") ?? false;
+
+  // Chart-visible-gated expand toggle — same shape as ProjectBoard.tsx's
+  // expandedDocumentProjectIds. Only rendered for rows the server already
+  // marked chartVisible (patient:read does not imply project:read — see
+  // patients.data-sources.ts's withChartVisibility doc comment).
+  const [expandedPatientIds, setExpandedPatientIds] = useState<Set<string>>(new Set());
+  function toggleChart(id: string) {
+    setExpandedPatientIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const { data: doctorsData } = useDataSourceQuery<DoctorOption[]>("patients.doctorOptions", {}, { enabled: canRegister || canAssignDoctor });
   const doctors = Array.isArray(doctorsData) ? doctorsData : [];
@@ -150,6 +236,16 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
                     <span className="truncate text-sm text-text">{p.name}</span>
                     {p.dateOfBirth && <span className="text-xs text-text-muted">{new Date(p.dateOfBirth).toLocaleDateString()}</span>}
                     {p.assignedDoctorName && <Badge tone="accent">Dr. {p.assignedDoctorName}</Badge>}
+                    {p.chartVisible && (
+                      <button
+                        type="button"
+                        onClick={() => toggleChart(p.id)}
+                        title="Medical Record"
+                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                      >
+                        <Icon name="description" size={14} />
+                      </button>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {canAssignDoctor && (
@@ -179,6 +275,16 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
                   {p.contactPhone && <span>{p.contactPhone}</span>}
                   {p.contactEmail && <span>{p.contactEmail}</span>}
                 </div>
+                {p.chartVisible && expandedPatientIds.has(p.id) && (
+                  <PatientChartSection
+                    patient={p}
+                    canCreateDocuments={canCreateDocuments}
+                    canUpdateDocuments={canUpdateDocuments}
+                    canDeleteDocuments={canDeleteDocuments}
+                    aiAvailable={aiAvailable}
+                    openAiPanel={openAiPanel}
+                  />
+                )}
               </li>
             ))}
           </ul>
