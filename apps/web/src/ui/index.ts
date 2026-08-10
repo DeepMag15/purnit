@@ -16,4 +16,5 @@ export { Radio } from "./Radio";
 export { Switch } from "./Switch";
 export { Textarea } from "./Textarea";
 export { Pagination } from "./Pagination";
+export { BulkActionBar } from "./BulkActionBar";
 export { cn } from "./utils";
