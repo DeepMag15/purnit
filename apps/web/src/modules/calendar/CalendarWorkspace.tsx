@@ -21,7 +21,7 @@ type Props = z.infer<typeof CalendarWorkspaceSchema>;
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment";
   title: string;
   start: string;
   end: string | null;
@@ -41,10 +41,14 @@ const REMINDER_PRESETS = [
   { value: "1440", label: "1 day before" },
 ];
 
-const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning"> = {
+const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning" | "success"> = {
   meeting: "info",
   calendarEvent: "accent",
   task: "warning",
+  // Healthcare Domain, Phase B — read-only here too, same treatment as the
+  // other three types (booking/status changes only happen through
+  // AppointmentsWorkspace).
+  appointment: "success",
 };
 
 function startOfDay(d: Date): Date {

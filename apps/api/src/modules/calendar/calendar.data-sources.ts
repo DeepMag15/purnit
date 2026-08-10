@@ -4,6 +4,7 @@ import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentAncestorIds } from "../../rbac/department-ancestors";
 import { meetingsWhere } from "../meetings/meetings.data-sources";
 import { tasksWhere } from "../tasks/tasks.data-sources";
+import { appointmentsWhere } from "../appointments/appointments.data-sources";
 
 /**
  * Mirrors `announcementsWhere` exactly: resolves the reader's own ancestor
@@ -32,7 +33,7 @@ export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, 
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment";
   title: string;
   start: Date;
   end: Date | null;
@@ -47,6 +48,13 @@ const CalendarListParamsSchema = z.object({ from: z.coerce.date(), to: z.coerce.
  * `requiredPermission` (an ungated aggregator, same shape as
  * `meetingsWhere`/`tasksWhere` being callable from other data sources) —
  * each underlying source enforces its own visibility.
+ *
+ * Healthcare Domain, Phase B — a fourth branch (Appointments) reuses the
+ * exact same structural pattern as the three below: its own dedicated
+ * `*Where()` import from a different module, its own raw query (never
+ * calling `appointments.list`'s own resolver), pushed into the same shared
+ * `items` array. Read-only here, same as every other item type — booking/
+ * status changes still only happen through `AppointmentsWorkspace`.
  *
  * Deliberately sequential, never `Promise.all` — concurrent queries against
  * one shared transactional `tx` are unsafe (every data-source file in this
@@ -100,6 +108,24 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
           start: t.dueDate,
           end: null,
           meta: { assigneeId: t.assigneeId, status: t.status, priority: t.priority },
+        });
+      }
+    }
+
+    // Returns null when the actor has no appointment:read grant at all —
+    // skipped, not an error, same "gracefully absent" shape as the task
+    // branch above.
+    const appointmentsWhereClause = await appointmentsWhere(tx, ctx, { scheduledStart: { gte: from, lte: to } });
+    if (appointmentsWhereClause) {
+      const appointments = await tx.appointment.findMany({ where: appointmentsWhereClause, include: { patient: { select: { name: true } } } });
+      for (const a of appointments) {
+        items.push({
+          id: a.id,
+          itemType: "appointment",
+          title: a.patient.name,
+          start: a.scheduledStart,
+          end: a.scheduledEnd,
+          meta: { patientId: a.patientId, doctorId: a.doctorId, status: a.status },
         });
       }
     }
