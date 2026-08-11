@@ -1756,7 +1756,393 @@ const HEALTHCARE_BLUEPRINT_V1 = {
   },
 };
 
-// Shared by both blueprints — the default dashboard must never be
+const EDUCATION_BLUEPRINT_V1 = {
+  id: "education",
+  version: 1,
+  industry: "Education",
+  roles: [
+    {
+      id: "role.admin",
+      label: "School Administrator",
+      permissions: [
+        "student:create:tenant",
+        "student:read:tenant",
+        "student:update:tenant",
+        "course:create:tenant",
+        "course:read:tenant",
+        "course:update:tenant",
+        "enrollment:create:tenant",
+        "enrollment:read:tenant",
+        "enrollment:update:tenant",
+        "assignment:create:tenant",
+        "assignment:read:tenant",
+        "assignment:update:tenant",
+        "grade:create:tenant",
+        "grade:read:tenant",
+        "grade:update:tenant",
+        "project:create:tenant",
+        "project:read:tenant",
+        "project:update:tenant",
+        "project:delete:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "task:delete:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "document:delete:tenant",
+        "role:manage:tenant",
+        "role:assign:tenant",
+        "user:invite:tenant",
+        "user:manage:tenant",
+        "department:manage:tenant",
+        "settings:manage:tenant",
+        "meeting:create:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:tenant",
+        "attendance:create:tenant",
+        "attendance:read:tenant",
+        "attendance:update:tenant",
+      ],
+    },
+    {
+      id: "role.teacher",
+      label: "Teacher",
+      permissions: [
+        // Needs to look up any student/course (coordination, substitute
+        // coverage), but may only edit courses actually assigned to them —
+        // identical reasoning to Doctor's patient:read:tenant / patient:update:own.
+        "student:read:tenant",
+        "course:read:tenant",
+        "course:update:own",
+        // The domain's real gradebook authority — own-scoped through the
+        // Course -> Assignment -> Grade chain (see grades.data-sources.ts).
+        "assignment:create:own",
+        "assignment:read:own",
+        "assignment:update:own",
+        "grade:create:own",
+        "grade:read:own",
+        "grade:update:own",
+        // See this fixture's own header comment for why these three stay
+        // :tenant rather than :own — materialsProjectId is always owned by
+        // whichever Admin ran course.create (course:create is Admin-only in
+        // Phase A), never the assigned teacher, so an :own grant here would
+        // never actually reach a Teacher's own course materials.
+        "project:read:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      id: "role.teaching-assistant",
+      label: "Teaching Assistant",
+      permissions: [
+        "student:read:tenant",
+        "course:read:tenant",
+        // Broader than Teacher's own-scoped reach — a TA supports multiple
+        // teachers' courses, not just one, mirroring Nurse's broader
+        // appointment:read:tenant vs Doctor's :own. No create/update on
+        // either — narrower authority than Teacher, the concrete "sees more,
+        // originates nothing" differentiation for this role.
+        "assignment:read:tenant",
+        "grade:read:tenant",
+        "project:read:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      id: "role.registrar",
+      label: "Registrar",
+      permissions: [
+        // Owns the Student/Enrollment lifecycle tenant-wide — no
+        // project/task/document, no assignment/grade at all. A registrar
+        // never becomes a course's materialsProject member and never touches
+        // the gradebook — not a special-cased rule, just the natural
+        // consequence of never being granted it. The concrete, demonstrable
+        // "different roles see genuinely different things" proof for this
+        // domain, mirroring Receptionist's own exact precedent.
+        "student:create:tenant",
+        "student:read:tenant",
+        "student:update:tenant",
+        "course:read:tenant", // to pick a real course when enrolling a student
+        "enrollment:create:tenant",
+        "enrollment:read:tenant",
+        "enrollment:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+  ],
+  // No Education department taxonomy in Phase A — same disclosed MVP
+  // narrowing as Healthcare's own Phase A; none of the 5 new models have a
+  // departmentId column.
+  departmentTypes: [],
+  navigation: [
+    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
+    {
+      id: "nav.students",
+      label: "Students",
+      icon: "group",
+      pageId: "page.students",
+      requiredPermission: "student:read",
+      moduleKey: "students",
+    },
+    {
+      id: "nav.courses",
+      label: "Courses",
+      icon: "school",
+      pageId: "page.courses",
+      requiredPermission: "course:read",
+      moduleKey: "courses",
+    },
+    // Everything below reuses an existing module's own nav entry verbatim
+    // (same pageId-bearing composite, same permission gate where one
+    // exists) — zero new code, only blueprint content, same "reuse as many
+    // existing modules as possible" mandate Healthcare's own Phase A used.
+    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
+    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
+    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
+    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
+    {
+      id: "nav.attendance",
+      label: "Attendance",
+      icon: "attendance",
+      pageId: "page.attendance",
+      requiredPermission: "attendance:read",
+    },
+    {
+      id: "nav.roles-permissions",
+      label: "Roles & Permissions",
+      icon: "roles-permissions",
+      pageId: "page.roles-permissions",
+      requiredPermission: "role:manage",
+    },
+    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
+    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+  ],
+  dashboards: { default: "page.dashboard" },
+  modules: ["students", "courses"],
+  pages: {
+    "page.dashboard": {
+      id: "page.dashboard",
+      type: "Page",
+      version: 1,
+      // Deliberately minimal, same treatment as Healthcare's own
+      // page.dashboard — no requiredPermission (must never be
+      // permission-gated, see main()'s own sanity check below). Role-specific
+      // widget curation belongs on page.analytics via
+      // DEFAULT_DASHBOARD_WIDGET_KEYS in a later phase, not duplicated here.
+      children: [{ id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } }],
+    },
+    "page.students": {
+      id: "page.students",
+      type: "Page",
+      version: 1,
+      requiredPermission: "student:read",
+      children: [
+        {
+          id: "students-workspace",
+          type: "StudentsWorkspace",
+          version: 1,
+          props: { title: "Students" },
+          bind: { source: "students.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "student.register", input: { ref: "form.registerStudent" }, requiredPermission: "student:create" },
+            { kind: "mutation", mutation: "student.updateStatus", input: { ref: "row.id" }, requiredPermission: "student:update" },
+          ],
+        },
+      ],
+    },
+    "page.courses": {
+      id: "page.courses",
+      type: "Page",
+      version: 1,
+      requiredPermission: "course:read",
+      children: [
+        {
+          id: "courses-workspace",
+          type: "CoursesWorkspace",
+          version: 1,
+          props: { title: "Courses" },
+          bind: { source: "courses.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "course.create", input: { ref: "form.newCourse" }, requiredPermission: "course:create" },
+            { kind: "mutation", mutation: "course.updateStatus", input: { ref: "row.id" }, requiredPermission: "course:update" },
+            { kind: "mutation", mutation: "course.assignTeacher", input: { ref: "row.id" }, requiredPermission: "course:update" },
+          ],
+        },
+      ],
+    },
+    // Everything below reuses an existing blueprint page's own real content
+    // verbatim (same composite type, same actions/mutations) — copied, not
+    // referenced, since `pages` is a per-blueprint map; zero new frontend
+    // code either way, only JSON. Detail-page mutations (enrollment.enroll,
+    // assignment.create/update, grade.record/update, comment.create,
+    // document.*) are triggered directly from CourseDetail/StudentDetail via
+    // useRenderContext().callMutation, not declared here — exactly how
+    // ProjectDetail.tsx already calls project.addMember/removeMember today
+    // without them appearing in page.projects's own actions.
+    "page.analytics": {
+      id: "page.analytics",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
+        {
+          id: "analytics-activity",
+          type: "ActivityFeed",
+          version: 1,
+          props: { title: "Recent Activity", limit: 10 },
+          bind: { source: "notifications.list" },
+        },
+        { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
+      ],
+    },
+    "page.chat": {
+      id: "page.chat",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "chat-workspace",
+          type: "ChatWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "conversation.createChannel", input: { ref: "form.newChannel" } },
+            { kind: "mutation", mutation: "conversation.createDm", input: { ref: "form.newDm" } },
+            { kind: "mutation", mutation: "conversation.addMember", input: { ref: "form.addMember" } },
+            { kind: "mutation", mutation: "conversation.archive", input: { ref: "row.conversationId" } },
+            { kind: "mutation", mutation: "message.send", input: { ref: "form.newMessage" } },
+            { kind: "mutation", mutation: "message.delete", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "conversation.markRead", input: { ref: "row.conversationId" } },
+          ],
+        },
+      ],
+    },
+    "page.meetings": {
+      id: "page.meetings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "meetings-workspace",
+          type: "MeetingsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "meeting.create", input: { ref: "form.scheduleMeeting" }, requiredPermission: "meeting:create" },
+            { kind: "mutation", mutation: "meeting.cancel", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "meeting.addParticipant", input: { ref: "form.addParticipant" } },
+            { kind: "mutation", mutation: "meeting.removeParticipant", input: { ref: "row.userId" } },
+            { kind: "mutation", mutation: "meeting.getJoinInfo", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.calendar": {
+      id: "page.calendar",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "calendar-workspace",
+          type: "CalendarWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "calendarEvent.create", input: { ref: "form.newCalendarEvent" }, requiredPermission: "calendarEvent:create" },
+            { kind: "mutation", mutation: "calendarEvent.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.attendance": {
+      id: "page.attendance",
+      type: "Page",
+      version: 1,
+      requiredPermission: "attendance:read",
+      children: [
+        {
+          id: "attendance-workspace",
+          type: "AttendanceWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "attendance.mark", input: { ref: "form.markAttendance" }, requiredPermission: "attendance:create" },
+            { kind: "mutation", mutation: "attendance.correct", input: { ref: "form.correctAttendance" }, requiredPermission: "attendance:update" },
+          ],
+        },
+      ],
+    },
+    "page.roles-permissions": {
+      id: "page.roles-permissions",
+      type: "Page",
+      version: 1,
+      requiredPermission: "role:manage",
+      children: [
+        {
+          id: "roles-permissions-workspace",
+          type: "RolesPermissionsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "role.createCustom", input: { ref: "form.newRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.grant", input: { ref: "form.grantDelegation" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.revoke", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+          ],
+        },
+      ],
+    },
+    "page.settings": {
+      id: "page.settings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "workspace-settings",
+          type: "WorkspaceSettings",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "tenant.updateBranding", input: { ref: "form.branding" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.updateWorkspaceId", input: { ref: "form.workspaceId" }, requiredPermission: "settings:manage" },
+            {
+              kind: "mutation",
+              mutation: "workspaceConfig.updateNavigationLabel",
+              input: { ref: "form.navLabel" },
+              requiredPermission: "settings:manage",
+            },
+            { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+          ],
+        },
+      ],
+    },
+    "page.account": {
+      id: "page.account",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
+        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
+      ],
+    },
+  },
+};
+
+// Shared by all blueprints — the default dashboard must never be
 // permission-gated for any tier, or a real user whose effective permissions
 // fail that gate would hit compileWorkspace's unguarded
 // `pruned.pages[defaultPageId]` lookup (compiler.service.ts) and get a raw
@@ -1774,9 +2160,11 @@ async function main() {
   // silently inside a compiled manifest later.
   BlueprintDefinitionSchema.parse(IT_BLUEPRINT_V1);
   BlueprintDefinitionSchema.parse(HEALTHCARE_BLUEPRINT_V1);
+  BlueprintDefinitionSchema.parse(EDUCATION_BLUEPRINT_V1);
 
   assertDefaultDashboardUngated(IT_BLUEPRINT_V1);
   assertDefaultDashboardUngated(HEALTHCARE_BLUEPRINT_V1);
+  assertDefaultDashboardUngated(EDUCATION_BLUEPRINT_V1);
 
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL }),
@@ -1798,6 +2186,15 @@ async function main() {
     update: { definition: HEALTHCARE_BLUEPRINT_V1 },
   });
   console.log("Seeded blueprint: Healthcare v1");
+
+  // Education Domain, Phase A — the platform's second non-IT blueprint,
+  // same zero-collision coexistence as Healthcare above.
+  await prisma.blueprint.upsert({
+    where: { industry_version: { industry: "Education", version: 1 } },
+    create: { industry: "Education", version: 1, definition: EDUCATION_BLUEPRINT_V1 },
+    update: { definition: EDUCATION_BLUEPRINT_V1 },
+  });
+  console.log("Seeded blueprint: Education v1");
 
   // Roles are materialized at tenant provisioning (AuthService.signup) —
   // a `Role` row's `permissions` is a snapshot copied from the blueprint at
@@ -1842,6 +2239,18 @@ async function main() {
     syncedHealthcareTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedHealthcareTenants} existing Healthcare tenant(s) to the current blueprint`);
+
+  // Same re-sync, scoped to Education tenants.
+  const educationTenantIds = (
+    await prisma.tenant.findMany({ where: { industry: EDUCATION_BLUEPRINT_V1.industry }, select: { id: true } })
+  ).map((t) => t.id);
+  let syncedEducationTenants = 0;
+  for (const tenantId of educationTenantIds) {
+    const roleIds = await materializeBlueprintRoles(prisma, tenantId, EDUCATION_BLUEPRINT_V1.roles);
+    await materializeDepartmentTypeLabels(prisma, tenantId, EDUCATION_BLUEPRINT_V1.departmentTypes, roleIds);
+    syncedEducationTenants++;
+  }
+  console.log(`Re-synced roles + department-type labels for ${syncedEducationTenants} existing Education tenant(s) to the current blueprint`);
 
   await prisma.$disconnect();
 }

@@ -1,0 +1,28 @@
+/// Education Domain, Phase A. One row per (Student × Assignment) — the
+/// actual gradebook entry. `score` is nullable until graded; a Grade row is
+/// only ever created on demand by `grade.record` (no batch-placeholder
+/// pre-creation at Assignment-creation time — see grades.mutations.ts's own
+/// doc comment), so `grades.list` simulates a LEFT JOIN against Enrollment
+/// to show every enrolled student's row even before one exists.
+/// `gradedById` is null pre-entry — it is NOT a reliable field to resolve
+/// "who's allowed to grade this" (see grades.data-sources.ts's own doc
+/// comment for the real, transitive scope chain through Assignment→Course).
+model Grade {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  assignmentId String     @map("assignment_id") @db.Uuid
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  studentId    String     @map("student_id") @db.Uuid
+  student      Student    @relation(fields: [studentId], references: [id])
+  score        Int?
+  feedback     String?
+  gradedById   String?    @map("graded_by_id") @db.Uuid
+  gradedAt     DateTime?  @map("graded_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@unique([assignmentId, studentId])
+  @@index([tenantId, assignmentId])
+  @@index([tenantId, studentId])
+  @@map("grades")
+}

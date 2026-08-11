@@ -1,0 +1,30 @@
+/// Education Domain, Phase A — the platform's second non-IT industry
+/// blueprint. Student is non-login, same structural reasoning as Patient:
+/// MeetingParticipant/ProjectMember/RoleAssignment etc. only ever resolve
+/// against real User rows, and a Student has none by design (no
+/// parent/guardian portal in Phase A — see the Phase A plan's own disclosed
+/// deferrals). Deliberately NO backing "chart" Project (unlike Patient) —
+/// Course, not Student, owns the shared-materials Project in this domain
+/// (see course.prisma's own doc comment for why).
+model Student {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  name           String
+  dateOfBirth    DateTime? @map("date_of_birth")
+  contactPhone   String?   @map("contact_phone")
+  contactEmail   String?   @map("contact_email")
+  // Free-text vocabulary, no DB enum — same treatment as Patient.status.
+  // UI-documented set: "active" | "graduated" | "withdrawn".
+  status         String    @default("active")
+  registeredById String    @map("registered_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  enrollments Enrollment[]
+  grades      Grade[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("students")
+}

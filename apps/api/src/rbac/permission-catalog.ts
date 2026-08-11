@@ -140,6 +140,48 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "appointment", action: "update", label: "Update/reschedule/cancel appointments" },
     ],
   },
+  // Education Domain, Phase A — the platform's second non-IT industry
+  // blueprint. Same shape/discipline as every module above.
+  {
+    module: "Students",
+    entries: [
+      { resource: "student", action: "create", label: "Register new students" },
+      { resource: "student", action: "read", label: "View student records" },
+      { resource: "student", action: "update", label: "Update student profile/status" },
+    ],
+  },
+  {
+    module: "Courses",
+    entries: [
+      { resource: "course", action: "create", label: "Create courses" },
+      { resource: "course", action: "read", label: "View courses" },
+      { resource: "course", action: "update", label: "Edit courses / reassign teacher" },
+    ],
+  },
+  {
+    module: "Enrollments",
+    entries: [
+      { resource: "enrollment", action: "create", label: "Enroll students in courses" },
+      { resource: "enrollment", action: "read", label: "View enrollment records" },
+      { resource: "enrollment", action: "update", label: "Update enrollment status/final grade" },
+    ],
+  },
+  {
+    module: "Assignments",
+    entries: [
+      { resource: "assignment", action: "create", label: "Create assignments" },
+      { resource: "assignment", action: "read", label: "View assignments" },
+      { resource: "assignment", action: "update", label: "Edit assignments" },
+    ],
+  },
+  {
+    module: "Grades",
+    entries: [
+      { resource: "grade", action: "create", label: "Enter grades" },
+      { resource: "grade", action: "read", label: "View grades" },
+      { resource: "grade", action: "update", label: "Correct grades" },
+    ],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));

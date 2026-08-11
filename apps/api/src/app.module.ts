@@ -29,6 +29,11 @@ import { AiAssistantModule } from "./modules/ai-assistant/ai-assistant.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { PatientsModule } from "./modules/patients/patients.module";
 import { AppointmentsModule } from "./modules/appointments/appointments.module";
+import { StudentsModule } from "./modules/students/students.module";
+import { CoursesModule } from "./modules/courses/courses.module";
+import { EnrollmentsModule } from "./modules/enrollments/enrollments.module";
+import { AssignmentsModule } from "./modules/assignments/assignments.module";
+import { GradesModule } from "./modules/grades/grades.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -61,6 +66,11 @@ import { MeController } from "./me/me.controller";
     AnalyticsModule,
     PatientsModule,
     AppointmentsModule,
+    StudentsModule,
+    CoursesModule,
+    EnrollmentsModule,
+    AssignmentsModule,
+    GradesModule,
   ],
   controllers: [HealthController, MeController],
 })

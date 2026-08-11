@@ -1,0 +1,25 @@
+/// Education Domain, Phase A. Belongs to a Course, deliberately NOT a reuse
+/// of Task — Task has no maxScore/gradebook-shaped fields, and adding them
+/// would leak Education-specific concerns into every other industry's Task
+/// model. Kept entirely out of the generic Task/Project graph for Phase A,
+/// the same "own dedicated model" precedent Appointment established over
+/// reusing Meeting/CalendarEvent.
+model Assignment {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  courseId    String    @map("course_id") @db.Uuid
+  course      Course    @relation(fields: [courseId], references: [id])
+  title       String
+  description String?
+  dueDate     DateTime? @map("due_date")
+  maxScore    Int       @default(100) @map("max_score")
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  grades Grade[]
+
+  @@index([tenantId, courseId])
+  @@map("assignments")
+}
