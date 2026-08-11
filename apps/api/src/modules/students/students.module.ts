@@ -1,8 +1,10 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
+import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { studentsListDataSource, studentDetailDataSource } from "./students.data-sources";
 import { studentRegisterMutation, studentUpdateStatusMutation } from "./students.mutations";
+import { studentsTotalCountMetric, studentsStatusBreakdownMetric } from "./students.metrics";
 
 /** Education Domain, Phase A. Same registrar pattern as every other module —
  * see patients.module.ts. */
@@ -11,6 +13,7 @@ class StudentsRegistrar implements OnModuleInit {
   constructor(
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
+    private readonly metrics: MetricRegistry,
   ) {}
 
   onModuleInit() {
@@ -18,6 +21,8 @@ class StudentsRegistrar implements OnModuleInit {
     this.dataSources.register(studentDetailDataSource);
     this.mutations.register(studentRegisterMutation);
     this.mutations.register(studentUpdateStatusMutation);
+    this.metrics.register(studentsTotalCountMetric);
+    this.metrics.register(studentsStatusBreakdownMetric);
   }
 }
 

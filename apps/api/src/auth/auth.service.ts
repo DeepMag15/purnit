@@ -84,6 +84,25 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }
     blueprintRoleId: "role.receptionist",
     keys: ["appointments.todayCount", "patients.totalCount", "appointments.completedCount", "doctors.activeCount"],
   },
+  // Education Domain, Phase C. role.admin (School Administrator) shares the
+  // entry above across industries — untouched here, same precedent Healthcare
+  // Phase C established; the 8 new metrics auto-append below it for an
+  // Education admin.
+  {
+    blueprintRoleId: "role.teacher",
+    keys: ["assignments.dueSoonCount", "grades.averagePercent", "grades.recordedCount", "tasks.openCount", "attendance.rateThisMonth"],
+  },
+  {
+    blueprintRoleId: "role.teaching-assistant",
+    keys: ["assignments.dueSoonCount", "grades.averagePercent", "students.totalCount", "tasks.openCount", "attendance.rateThisMonth"],
+  },
+  // Registrar deliberately lists no assignment/grade/task key — it holds
+  // none of those permissions (structurally excluded from the gradebook,
+  // same as Receptionist above), so listing one would just never render.
+  {
+    blueprintRoleId: "role.registrar",
+    keys: ["students.totalCount", "students.statusBreakdown", "enrollments.activeCount", "attendance.rateThisMonth"],
+  },
 ];
 
 /** A simple flowing 12-column grid — 2 widgets per row, `w: 6, h: 4` each.
