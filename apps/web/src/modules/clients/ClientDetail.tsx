@@ -10,6 +10,7 @@ import { Tabs } from "../../ui/Tabs";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Badge } from "../../ui/Badge";
 import { Select } from "../../ui/Select";
+import { Button } from "../../ui/Button";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
@@ -64,12 +65,29 @@ const INVOICE_STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "d
  * report the way Education Domain's own equivalent `materialsVisible` was). */
 export function ClientDetail({ clientId }: { clientId: string }) {
   const { data, loading, error, notFound, refetch } = useEntityDetail<ClientDetailData>("clients.detail", clientId);
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState("overview");
 
   const { data: invoicesData } = useDataSourceQuery<InvoiceRow[]>("invoices.list", { clientId }, { enabled: !!data?.canReadInvoices });
   const invoices = Array.isArray(invoicesData) ? invoicesData : [];
+
+  function summarizeAccount() {
+    if (!data) return;
+    const lines = [
+      `Client: ${data.name}`,
+      `Status: ${data.status}`,
+      invoices.length > 0
+        ? `Invoices: ${invoices
+            .map((inv) => `${inv.status} invoice due ${new Date(inv.dueDate).toLocaleDateString()}, ${formatCents(inv.total)} (${inv.paymentStatus})`)
+            .join("; ")}`
+        : "No invoices yet.",
+    ];
+    openAiPanel(
+      "clients.summarizeAccount",
+      `Summarize this client's billing account. Do not recommend collection actions, write-offs, or legal steps.\n\n${lines.join("\n")}`,
+    );
+  }
 
   async function handleStatusChange(status: string) {
     try {
@@ -159,7 +177,16 @@ export function ClientDetail({ clientId }: { clientId: string }) {
 
       {activeTab === "invoices" && data.canReadInvoices && (
         <Card>
-          <CardHeader title="Invoices" />
+          <CardHeader
+            title="Invoices"
+            action={
+              aiAvailable && (
+                <Button size="sm" variant="secondary" onClick={summarizeAccount}>
+                  Summarize Account
+                </Button>
+              )
+            }
+          />
           <CardBody>
             {invoices.length === 0 && <EmptyStateView message="No invoices yet." />}
             {invoices.length > 0 && (

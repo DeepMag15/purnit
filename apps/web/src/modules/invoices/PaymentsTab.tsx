@@ -36,15 +36,17 @@ const METHODS = ["cash", "check", "credit_card", "bank_transfer", "other"];
 export function PaymentsTab({
   invoiceId,
   invoiceStatus,
+  invoiceTotal,
   canRecordPayments,
   onRecorded,
 }: {
   invoiceId: string;
   invoiceStatus: string;
+  invoiceTotal: number;
   canRecordPayments: boolean;
   onRecorded: () => void;
 }) {
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const [recordOpen, setRecordOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState(METHODS[0]!);
@@ -54,6 +56,17 @@ export function PaymentsTab({
 
   const { data, isPending, error, refetch } = useDataSourceQuery<PaymentRow[]>("payments.list", { invoiceId });
   const payments = Array.isArray(data) ? data : [];
+
+  function summarizePayments() {
+    const lines = [
+      `Invoice total: ${formatCents(invoiceTotal)}`,
+      `Invoice status: ${invoiceStatus}`,
+      payments.length > 0
+        ? `Payments: ${payments.map((p) => `${formatCents(p.amount)} via ${p.method} on ${new Date(p.paidAt).toLocaleDateString()}`).join("; ")}`
+        : "No payments recorded yet.",
+    ];
+    openAiPanel("invoices.summarizePayments", `Summarize this invoice's payment history.\n\n${lines.join("\n")}`);
+  }
 
   function openRecord() {
     setAmount("");
@@ -95,11 +108,20 @@ export function PaymentsTab({
       <CardHeader
         title="Payments"
         action={
-          canRecordPayments && (
-            <Button size="sm" onClick={openRecord} disabled={!canRecordNow}>
-              <Icon name="add" size={14} />
-              Record Payment
-            </Button>
+          (aiAvailable || canRecordPayments) && (
+            <div className="flex gap-2">
+              {aiAvailable && (
+                <Button size="sm" variant="secondary" onClick={summarizePayments}>
+                  Summarize Payment History
+                </Button>
+              )}
+              {canRecordPayments && (
+                <Button size="sm" onClick={openRecord} disabled={!canRecordNow}>
+                  <Icon name="add" size={14} />
+                  Record Payment
+                </Button>
+              )}
+            </div>
           )
         }
       />

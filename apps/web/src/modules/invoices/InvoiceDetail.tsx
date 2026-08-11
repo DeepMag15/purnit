@@ -184,7 +184,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       )}
 
       {activeTab === "payments" && data.canReadPayments && (
-        <PaymentsTab invoiceId={invoiceId} invoiceStatus={data.status} canRecordPayments={data.canRecordPayments} onRecorded={refetch} />
+        <PaymentsTab
+          invoiceId={invoiceId}
+          invoiceStatus={data.status}
+          invoiceTotal={data.total}
+          canRecordPayments={data.canRecordPayments}
+          onRecorded={refetch}
+        />
       )}
     </DetailPageShell>
   );
