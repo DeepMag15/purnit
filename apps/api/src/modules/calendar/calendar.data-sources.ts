@@ -5,6 +5,7 @@ import { getDepartmentAncestorIds } from "../../rbac/department-ancestors";
 import { meetingsWhere } from "../meetings/meetings.data-sources";
 import { tasksWhere } from "../tasks/tasks.data-sources";
 import { appointmentsWhere } from "../appointments/appointments.data-sources";
+import { assignmentsWhere } from "../assignments/assignments.data-sources";
 
 /**
  * Mirrors `announcementsWhere` exactly: resolves the reader's own ancestor
@@ -33,7 +34,7 @@ export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, 
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue";
   title: string;
   start: Date;
   end: Date | null;
@@ -61,6 +62,8 @@ const CalendarListParamsSchema = z.object({ from: z.coerce.date().optional(), to
  * calling `appointments.list`'s own resolver), pushed into the same shared
  * `items` array. Read-only here, same as every other item type — booking/
  * status changes still only happen through `AppointmentsWorkspace`.
+ * Education Domain, Phase B added a fifth branch (Assignment due dates),
+ * the identical pattern again.
  *
  * Deliberately sequential, never `Promise.all` — concurrent queries against
  * one shared transactional `tx` are unsafe (every data-source file in this
@@ -134,6 +137,37 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
           start: a.scheduledStart,
           end: a.scheduledEnd,
           meta: { patientId: a.patientId, doctorId: a.doctorId, status: a.status },
+        });
+      }
+    }
+
+    // Education Domain, Phase B — a fifth branch (Assignment due dates),
+    // same structural pattern as the appointment branch above (its own
+    // dedicated `*Where()` import, its own raw query, pushed into the same
+    // shared `items` array). `Assignment.dueDate` is nullable (like
+    // `Task.dueDate`, unlike `Appointment.scheduledStart`), so this follows
+    // the task branch's null-check pattern rather than the appointment
+    // branch's. Read-only here — status/grading changes still only happen
+    // through `CourseDetail`'s own Assignments tab.
+    const assignmentsWhereClause = await assignmentsWhere(tx, ctx, {});
+    if (assignmentsWhereClause) {
+      const assignments = await tx.assignment.findMany({
+        where: { ...assignmentsWhereClause, dueDate: { gte: from, lte: to } },
+        include: { course: { select: { name: true } } },
+      });
+      for (const a of assignments) {
+        if (!a.dueDate) continue;
+        items.push({
+          id: a.id,
+          itemType: "assignmentDue",
+          // Assignment already has its own `title` field (unlike Appointment,
+          // which had none) — the course name is appended anyway since a
+          // bare assignment title floating in a calendar shared across
+          // multiple courses would otherwise be ambiguous.
+          title: `${a.title} — ${a.course.name}`,
+          start: a.dueDate,
+          end: null,
+          meta: { courseId: a.courseId, maxScore: a.maxScore },
         });
       }
     }

@@ -21,7 +21,7 @@ type Props = z.infer<typeof CalendarWorkspaceSchema>;
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue";
   title: string;
   start: string;
   end: string | null;
@@ -49,6 +49,11 @@ const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning" 
   // other three types (booking/status changes only happen through
   // AppointmentsWorkspace).
   appointment: "success",
+  // Education Domain, Phase B — reuses Task's own tone; both represent
+  // "work due," a shared visual language rather than a distinct 5th color.
+  // Read-only here too — status/grading changes only happen through
+  // CourseDetail's own Assignments tab.
+  assignmentDue: "warning",
 };
 
 function startOfDay(d: Date): Date {
@@ -409,7 +414,7 @@ function CalendarItemChip({
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
-        <Badge tone={ITEM_TONE[item.itemType]}>{item.itemType === "task" ? "Due" : item.itemType}</Badge>
+        <Badge tone={ITEM_TONE[item.itemType]}>{item.itemType === "task" || item.itemType === "assignmentDue" ? "Due" : item.itemType}</Badge>
         <span className="truncate text-sm text-text">{item.title}</span>
         <span className="shrink-0 text-xs text-text-muted">{time}</span>
       </div>

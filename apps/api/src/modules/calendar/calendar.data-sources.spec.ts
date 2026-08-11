@@ -177,6 +177,108 @@ describe("calendar.list — aggregation", () => {
     expect(items.map((i) => i.id)).toEqual(["e1", "a1", "m1", "tk1"]);
   });
 
+  // Education Domain, Phase B — assignment due dates as calendar.list's 5th source type.
+  it("skips assignments entirely with no assignment:read grant, no crash, never touches tx.assignment", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    const items = await calendarListDataSource.resolve({ from: FROM, to: TO }, context([], null), tx);
+    expect(items).toEqual([]);
+  });
+
+  it("includes assignments due in range when the actor holds assignment:read, tagged and titled by title + course name", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+      assignment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "as1",
+            courseId: "c1",
+            course: { name: "Algebra I" },
+            title: "Homework 1",
+            dueDate: new Date("2026-08-12T00:00:00Z"),
+            maxScore: 100,
+          },
+        ]),
+      },
+    } as unknown as PrismaTx;
+
+    const items = (await calendarListDataSource.resolve({ from: FROM, to: TO }, context(["assignment:read:tenant"], null), tx)) as Array<{
+      id: string;
+      itemType: string;
+      title: string;
+      meta: Record<string, unknown>;
+    }>;
+
+    expect(items).toEqual([
+      {
+        id: "as1",
+        itemType: "assignmentDue",
+        title: "Homework 1 — Algebra I",
+        start: new Date("2026-08-12T00:00:00Z"),
+        end: null,
+        meta: { courseId: "c1", maxScore: 100 },
+      },
+    ]);
+    const call = (tx as unknown as { assignment: { findMany: jest.Mock } }).assignment.findMany.mock.calls[0]![0];
+    expect(call.where.dueDate).toEqual({ gte: FROM, lte: TO });
+  });
+
+  it("excludes an assignment with a null dueDate, same as the task branch's own precedent", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+      assignment: {
+        findMany: jest.fn().mockResolvedValue([{ id: "as1", courseId: "c1", course: { name: "Algebra I" }, title: "No due date yet", dueDate: null, maxScore: 100 }]),
+      },
+    } as unknown as PrismaTx;
+
+    const items = await calendarListDataSource.resolve({ from: FROM, to: TO }, context(["assignment:read:tenant"], null), tx);
+    expect(items).toEqual([]);
+  });
+
+  it("sorts a mix of all five item types by start time together", async () => {
+    const tx = {
+      meeting: {
+        findMany: jest.fn().mockResolvedValue([{ id: "m1", title: "Standup", scheduledStart: new Date("2026-08-20T09:00:00Z"), scheduledEnd: new Date("2026-08-20T09:30:00Z"), organizerId: "u1", cancelledAt: null }]),
+      },
+      calendarEvent: {
+        findMany: jest.fn().mockResolvedValue([{ id: "e1", title: "Holiday", startAt: new Date("2026-08-05T00:00:00Z"), endAt: null, authorId: "u1", isPrivate: true, departmentId: null }]),
+      },
+      task: {
+        findMany: jest.fn().mockResolvedValue([{ id: "tk1", title: "Report due", dueDate: new Date("2026-08-25T00:00:00Z"), assigneeId: "u1", status: "todo", priority: "high" }]),
+      },
+      appointment: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "a1", patientId: "p1", patient: { name: "Jane Doe" }, doctorId: "u1", scheduledStart: new Date("2026-08-15T10:00:00Z"), scheduledEnd: new Date("2026-08-15T10:30:00Z"), status: "scheduled" },
+        ]),
+      },
+      assignment: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "as1", courseId: "c1", course: { name: "Algebra I" }, title: "Homework 1", dueDate: new Date("2026-08-12T00:00:00Z"), maxScore: 100 },
+        ]),
+      },
+      // Only consulted because this test grants assignment:read:own, which
+      // resolves transitively through teacherOwnedCourseIds — see
+      // courses.data-sources.ts's own doc comment for why.
+      course: { findMany: jest.fn().mockResolvedValue([{ id: "c1" }]) },
+    } as unknown as PrismaTx;
+
+    const items = (await calendarListDataSource.resolve(
+      { from: FROM, to: TO },
+      context(["task:read:own", "appointment:read:own", "assignment:read:own"], null),
+      tx,
+    )) as Array<{ id: string }>;
+
+    expect(items.map((i) => i.id)).toEqual(["e1", "as1", "a1", "m1", "tk1"]);
+  });
+
   // Platform UI/UX Redesign, Phase F — Dashboard's "Upcoming" widget binds
   // with no from/to at all (a blueprint can't compute "today" at authoring
   // time), so omitting both must fall back to a rolling window server-side.
