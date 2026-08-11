@@ -69,9 +69,6 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
   // form unusable, not an error state.
   const { data: rolesData } = useDataSourceQuery<RoleOption[]>("roles.list", {}, { enabled: canInvite || canChangeRole });
   const roles = Array.isArray(rolesData) ? rolesData : [];
-  useEffect(() => {
-    if (Array.isArray(rolesData)) setSelectedRoleId((current) => current || rolesData[0]?.id || "");
-  }, [rolesData]);
 
   // `departments.list` is gated on `department:manage`, which Company Admin
   // (the only role with `user:invite` today) always also holds.
@@ -133,6 +130,7 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Full name" className="flex-1" />
               <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="flex-1" />
               <Select value={selectedRoleId} onChange={(e) => setSelectedRoleId(e.target.value)}>
+                <option value="">Select role…</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}

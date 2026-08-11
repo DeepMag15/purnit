@@ -12,6 +12,10 @@ export const BlueprintRoleDefSchema = z.object({
    * When absent, `permissions` is a complete, self-contained grant list. */
   extends: z.string().optional(),
   permissions: z.array(z.string()),
+  /** Display order within the tenant's role list — lower shows first (0 =
+   * top/highest authority). Optional: falls back to array position when
+   * absent (see materializeBlueprintRoles). */
+  rank: z.number().int().optional(),
 });
 export type BlueprintRoleDef = z.infer<typeof BlueprintRoleDefSchema>;
 

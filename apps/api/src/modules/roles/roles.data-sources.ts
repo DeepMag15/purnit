@@ -16,7 +16,7 @@ export const rolesListDetailedDataSource: DataSourceDefinition<z.infer<typeof Li
   paramsSchema: ListRolesDetailedParamsSchema,
   requiredPermission: "role:manage",
   async resolve(_params, ctx, tx) {
-    const roles = await tx.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { createdAt: "asc" } });
+    const roles = await tx.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: "asc" } });
     const counts = await tx.roleAssignment.groupBy({ by: ["roleId"], where: { tenantId: ctx.tenantId }, _count: { roleId: true } });
     const countByRoleId = new Map(counts.map((c) => [c.roleId, c._count.roleId]));
 

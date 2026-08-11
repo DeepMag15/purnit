@@ -40,6 +40,11 @@ export const roleCreateCustomMutation: MutationDefinition<z.infer<typeof CreateC
     assertKnownPermissions(input.permissions);
     assertPermissionsGrantableByActor(ctx.effective, input.permissions);
 
+    // Appends at the end of the tenant's current display order, never
+    // touching where existing roles (including any manually reordered by
+    // the admin) already sit.
+    const { _max } = await tx.role.aggregate({ where: { tenantId: ctx.tenantId }, _max: { rank: true } });
+
     return tx.role.create({
       data: {
         tenantId: ctx.tenantId,
@@ -47,6 +52,7 @@ export const roleCreateCustomMutation: MutationDefinition<z.infer<typeof CreateC
         sourceBlueprintRoleId: null,
         extendsRoleId: null,
         permissions: input.permissions,
+        rank: (_max.rank ?? -1) + 1,
       },
     });
   },
@@ -151,5 +157,35 @@ export const roleDeleteMutation: MutationDefinition<z.infer<typeof DeleteRoleInp
     if (blockerMessage) throw new ConflictException(blockerMessage);
 
     return tx.role.delete({ where: { id: input.roleId } });
+  },
+};
+
+const ReorderRolesInputSchema = z.object({ roleIds: z.array(z.string()).min(1) });
+
+/** Unlike role.updateCustom/role.delete, blueprint-sourced roles are fully
+ * reorderable here — reordering never touches grants or label, only display
+ * position, and letting a Company Admin control exactly this (including for
+ * "System" roles like Intern) is the entire point of this mutation.
+ * `roleIds` must be the tenant's complete current role-id set, in the
+ * desired new order — a partial or mismatched set is rejected outright
+ * (400) rather than silently re-ranking a subset. */
+export const roleReorderMutation: MutationDefinition<z.infer<typeof ReorderRolesInputSchema>> = {
+  name: "role.reorder",
+  inputSchema: ReorderRolesInputSchema,
+  requiredPermission: "role:manage",
+  async resolve(input, ctx, tx) {
+    const existing = await tx.role.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true } });
+    const existingIds = new Set(existing.map((r) => r.id));
+    const givenIds = new Set(input.roleIds);
+
+    if (input.roleIds.length !== existingIds.size || givenIds.size !== existingIds.size || ![...existingIds].every((id) => givenIds.has(id))) {
+      throw new BadRequestException("roleIds must exactly match the tenant's current full role set, with no duplicates");
+    }
+
+    for (let i = 0; i < input.roleIds.length; i++) {
+      await tx.role.update({ where: { id: input.roleIds[i] }, data: { rank: i } });
+    }
+
+    return tx.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: "asc" } });
   },
 };

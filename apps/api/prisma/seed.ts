@@ -33,6 +33,7 @@ const IT_BLUEPRINT_V1 = {
     {
       id: "role.intern",
       label: "Intern",
+      rank: 8,
       // calendarEvent:create:own — Calendar & Scheduling (Core Workspace
       // Phase 3): a universal floor, deliberately granted at the ladder's
       // root so every tier inherits it via `extends` — personal calendar
@@ -51,6 +52,7 @@ const IT_BLUEPRINT_V1 = {
       // tier name. Permissions unchanged.
       id: "role.member",
       label: "Practitioner",
+      rank: 7,
       extends: "role.intern",
       // meeting:read:team — Meetings (Core Workspace Phase 1, Submodule 3):
       // this only *widens* visibility beyond the always-on participant floor
@@ -63,6 +65,7 @@ const IT_BLUEPRINT_V1 = {
       // Was "Senior Employee".
       id: "role.senior-employee",
       label: "Senior Practitioner",
+      rank: 6,
       extends: "role.member",
       permissions: ["+task:update:team", "+project:read:department", "+meeting:read:department"],
     },
@@ -80,6 +83,7 @@ const IT_BLUEPRINT_V1 = {
       // project:create's tier ladder rather than announcement:create's.
       id: "role.team-lead",
       label: "Lead",
+      rank: 5,
       extends: "role.senior-employee",
       permissions: [
         "+project:create:team",
@@ -94,6 +98,7 @@ const IT_BLUEPRINT_V1 = {
       // Was "Project Manager" — the universal people-manager tier.
       id: "role.project-manager",
       label: "Manager",
+      rank: 4,
       extends: "role.team-lead",
       permissions: [
         "+project:create:department",
@@ -117,6 +122,7 @@ const IT_BLUEPRINT_V1 = {
       // ownerId-shaped field for "own" to mean anything through that path.
       id: "role.department-head",
       label: "Department Head",
+      rank: 2,
       extends: "role.project-manager",
       // announcement:create:department — Announcements (Core Workspace
       // Phase 1, Submodule 4): first appears here, not at Manager/Lead — an
@@ -159,6 +165,7 @@ const IT_BLUEPRINT_V1 = {
       // (hr.mutations.ts's new branch).
       id: "role.executive",
       label: "Executive",
+      rank: 1,
       extends: "role.department-head",
       permissions: [
         "+project:create:department-subtree",
@@ -192,6 +199,7 @@ const IT_BLUEPRINT_V1 = {
       // the not-yet-built delegation mechanism; not granted by default.
       id: "role.hr-manager",
       label: "HR Manager",
+      rank: 3,
       extends: "role.project-manager",
       // announcement:create:tenant — HR Manager already holds tenant-wide
       // user:manage/department:manage for real HR authority; company-wide
@@ -214,6 +222,7 @@ const IT_BLUEPRINT_V1 = {
     {
       id: "role.admin",
       label: "Company Admin",
+      rank: 0,
       permissions: [
         "project:create:tenant",
         "project:read:tenant",
@@ -1391,6 +1400,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     {
       id: "role.admin",
       label: "Hospital Administrator",
+      rank: 0,
       permissions: [
         "patient:create:tenant",
         "patient:read:tenant",
@@ -1426,6 +1436,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     {
       id: "role.doctor",
       label: "Doctor",
+      rank: 1,
       permissions: [
         // Needs to look up any patient (referrals/coverage), but may only
         // update their own assigned patients' profile/status.
@@ -1450,6 +1461,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     {
       id: "role.nurse",
       label: "Nurse",
+      rank: 2,
       permissions: [
         "patient:read:tenant",
         "patient:update:own",
@@ -1470,6 +1482,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     {
       id: "role.receptionist",
       label: "Receptionist",
+      rank: 3,
       permissions: [
         // Registers new patients and books for anyone — no patient:update,
         // no project/task/document grants at all. A receptionist never
@@ -1764,6 +1777,7 @@ const EDUCATION_BLUEPRINT_V1 = {
     {
       id: "role.admin",
       label: "School Administrator",
+      rank: 0,
       permissions: [
         "student:create:tenant",
         "student:read:tenant",
@@ -1808,6 +1822,7 @@ const EDUCATION_BLUEPRINT_V1 = {
     {
       id: "role.teacher",
       label: "Teacher",
+      rank: 1,
       permissions: [
         // Needs to look up any student/course (coordination, substitute
         // coverage), but may only edit courses actually assigned to them —
@@ -1843,6 +1858,7 @@ const EDUCATION_BLUEPRINT_V1 = {
     {
       id: "role.teaching-assistant",
       label: "Teaching Assistant",
+      rank: 2,
       permissions: [
         "student:read:tenant",
         "course:read:tenant",
@@ -1865,6 +1881,7 @@ const EDUCATION_BLUEPRINT_V1 = {
     {
       id: "role.registrar",
       label: "Registrar",
+      rank: 3,
       permissions: [
         // Owns the Student/Enrollment lifecycle tenant-wide — no
         // project/task/document, no assignment/grade at all. A registrar

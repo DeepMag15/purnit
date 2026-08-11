@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation } from "./roles.mutations";
+import { roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation, roleReorderMutation } from "./roles.mutations";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
 function context(grants: string[] = []) {
@@ -8,14 +8,16 @@ function context(grants: string[] = []) {
 }
 
 describe("every roles.* mutation requires role:manage", () => {
-  it.each([roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation])("$name", (mutation) => {
+  it.each([roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation, roleReorderMutation])("$name", (mutation) => {
     expect(mutation.requiredPermission).toBe("role:manage");
   });
 });
 
 describe("role.createCustom", () => {
   it("succeeds when every requested triple is within the actor's own effective grants", async () => {
-    const tx = { role: { create: jest.fn().mockResolvedValue({ id: "r1" }) } } as unknown as PrismaTx;
+    const tx = {
+      role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) },
+    } as unknown as PrismaTx;
 
     await roleCreateCustomMutation.resolve(
       { label: "Custom Reviewer", permissions: ["project:read:department"] },
@@ -33,8 +35,30 @@ describe("role.createCustom", () => {
     });
   });
 
+  it("defaults the new role's rank to one past the tenant's current max", async () => {
+    const tx = {
+      role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: 8 } }) },
+    } as unknown as PrismaTx;
+
+    await roleCreateCustomMutation.resolve({ label: "Custom", permissions: [] }, context([]), tx);
+
+    const call = (tx as unknown as { role: { create: jest.Mock } }).role.create.mock.calls[0][0];
+    expect(call.data.rank).toBe(9);
+  });
+
+  it("defaults rank to 0 for the very first role in a tenant with no existing roles", async () => {
+    const tx = {
+      role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) },
+    } as unknown as PrismaTx;
+
+    await roleCreateCustomMutation.resolve({ label: "Custom", permissions: [] }, context([]), tx);
+
+    const call = (tx as unknown as { role: { create: jest.Mock } }).role.create.mock.calls[0][0];
+    expect(call.data.rank).toBe(0);
+  });
+
   it("throws ForbiddenException when a requested triple exceeds the actor's own grants", async () => {
-    const tx = { role: { create: jest.fn() } } as unknown as PrismaTx;
+    const tx = { role: { create: jest.fn(), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) } } as unknown as PrismaTx;
     await expect(
       roleCreateCustomMutation.resolve({ label: "Custom", permissions: ["settings:manage:tenant"] }, context(["project:read:tenant"]), tx),
     ).rejects.toThrow(ForbiddenException);
@@ -42,14 +66,14 @@ describe("role.createCustom", () => {
   });
 
   it("throws BadRequestException for a permission not in the catalog", async () => {
-    const tx = { role: { create: jest.fn() } } as unknown as PrismaTx;
+    const tx = { role: { create: jest.fn(), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) } } as unknown as PrismaTx;
     await expect(
       roleCreateCustomMutation.resolve({ label: "Custom", permissions: ["task:delete:tenant"] }, context(["task:delete:tenant"]), tx),
     ).rejects.toThrow(BadRequestException);
   });
 
   it("throws BadRequestException, not a raw crash, on a malformed permission string", async () => {
-    const tx = { role: { create: jest.fn() } } as unknown as PrismaTx;
+    const tx = { role: { create: jest.fn(), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) } } as unknown as PrismaTx;
     await expect(roleCreateCustomMutation.resolve({ label: "Custom", permissions: ["garbage"] }, context([]), tx)).rejects.toThrow(BadRequestException);
   });
 });
@@ -169,5 +193,65 @@ describe("role.delete", () => {
   it("throws NotFoundException when the role doesn't exist", async () => {
     const tx = { role: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
     await expect(roleDeleteMutation.resolve({ roleId: "ghost" }, context([]), tx)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe("role.reorder", () => {
+  function tenantRoles(ids: string[]) {
+    return ids.map((id) => ({ id }));
+  }
+
+  it("re-ranks every role 0..N-1 in the given order", async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const tx = {
+      role: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce(tenantRoles(["a", "b", "c"]))
+          .mockResolvedValueOnce([{ id: "c" }, { id: "a" }, { id: "b" }]),
+        update,
+      },
+    } as unknown as PrismaTx;
+
+    await roleReorderMutation.resolve({ roleIds: ["c", "a", "b"] }, context([]), tx);
+
+    expect(update).toHaveBeenNthCalledWith(1, { where: { id: "c" }, data: { rank: 0 } });
+    expect(update).toHaveBeenNthCalledWith(2, { where: { id: "a" }, data: { rank: 1 } });
+    expect(update).toHaveBeenNthCalledWith(3, { where: { id: "b" }, data: { rank: 2 } });
+  });
+
+  it("works for a blueprint-sourced role id, not just custom ones — reordering is deliberately allowed for System roles", async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const tx = {
+      role: {
+        findMany: jest.fn().mockResolvedValueOnce(tenantRoles(["role.intern-row", "role.admin-row"])).mockResolvedValueOnce([]),
+        update,
+      },
+    } as unknown as PrismaTx;
+
+    await roleReorderMutation.resolve({ roleIds: ["role.intern-row", "role.admin-row"] }, context([]), tx);
+
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a partial id set (missing a role the tenant actually has)", async () => {
+    const tx = { role: { findMany: jest.fn().mockResolvedValueOnce(tenantRoles(["a", "b", "c"])), update: jest.fn() } } as unknown as PrismaTx;
+
+    await expect(roleReorderMutation.resolve({ roleIds: ["a", "b"] }, context([]), tx)).rejects.toThrow(BadRequestException);
+    expect((tx as unknown as { role: { update: jest.Mock } }).role.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an id set with an id from outside the tenant's role set", async () => {
+    const tx = { role: { findMany: jest.fn().mockResolvedValueOnce(tenantRoles(["a", "b"])), update: jest.fn() } } as unknown as PrismaTx;
+
+    await expect(roleReorderMutation.resolve({ roleIds: ["a", "ghost"] }, context([]), tx)).rejects.toThrow(BadRequestException);
+    expect((tx as unknown as { role: { update: jest.Mock } }).role.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a duplicated id even when the array length matches", async () => {
+    const tx = { role: { findMany: jest.fn().mockResolvedValueOnce(tenantRoles(["a", "b"])), update: jest.fn() } } as unknown as PrismaTx;
+
+    await expect(roleReorderMutation.resolve({ roleIds: ["a", "a"] }, context([]), tx)).rejects.toThrow(BadRequestException);
+    expect((tx as unknown as { role: { update: jest.Mock } }).role.update).not.toHaveBeenCalled();
   });
 });

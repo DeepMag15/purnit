@@ -3,7 +3,7 @@ import { DataSourceRegistry } from "../../data-sources/data-source-registry.serv
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { PermissionResolverService } from "../../rbac/permission-resolver.service";
 import { rolesListDetailedDataSource, permissionsCatalogDataSource, createUsersEffectivePermissionsDataSource } from "./roles.data-sources";
-import { roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation } from "./roles.mutations";
+import { roleCreateCustomMutation, roleUpdateCustomMutation, roleCloneMutation, roleDeleteMutation, roleReorderMutation } from "./roles.mutations";
 import { delegationsListDataSource } from "./delegation.data-sources";
 import { delegationGrantMutation, delegationRevokeMutation } from "./delegation.mutations";
 
@@ -27,6 +27,7 @@ class RolesRegistrar implements OnModuleInit {
     this.mutations.register(roleUpdateCustomMutation);
     this.mutations.register(roleCloneMutation);
     this.mutations.register(roleDeleteMutation);
+    this.mutations.register(roleReorderMutation);
     this.mutations.register(delegationGrantMutation);
     this.mutations.register(delegationRevokeMutation);
   }

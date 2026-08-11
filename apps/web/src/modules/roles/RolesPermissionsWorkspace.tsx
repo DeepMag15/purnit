@@ -144,6 +144,7 @@ export function RolesPermissionsWorkspace({ actions }: Props & CommonRenderProps
             toast.show(err instanceof Error ? err.message : "Couldn't delete role", "danger");
           }
         }}
+        onReordered={refetchRoles}
       />
 
       {(editingRoleId !== null) && (
@@ -171,6 +172,7 @@ function RoleListPanel({
   onEdit,
   onClone,
   onDelete,
+  onReordered,
 }: {
   roles: RoleDetailed[];
   canManageRoles: boolean;
@@ -178,7 +180,28 @@ function RoleListPanel({
   onEdit: (roleId: string) => void;
   onClone: (roleId: string) => void;
   onDelete: (role: RoleDetailed) => void;
+  onReordered: () => void;
 }) {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const [reordering, setReordering] = useState(false);
+
+  async function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= roles.length) return;
+    const next = [...roles];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    setReordering(true);
+    try {
+      await callMutation("role.reorder", { roleIds: next.map((r) => r.id) });
+      onReordered();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't reorder roles", "danger");
+    } finally {
+      setReordering(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader
@@ -193,10 +216,32 @@ function RoleListPanel({
       />
       <CardBody className="flex flex-col gap-2">
         {roles.length === 0 && <div className="text-sm text-text-muted">No roles yet.</div>}
-        {roles.map((role) => {
+        {roles.map((role, index) => {
           const isCustom = role.sourceBlueprintRoleId === null;
           return (
             <div key={role.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+              {canManageRoles && (
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => move(index, -1)}
+                    disabled={index === 0 || reordering}
+                    aria-label={`Move ${role.label} up`}
+                    className="leading-none text-text-muted hover:text-text disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(index, 1)}
+                    disabled={index === roles.length - 1 || reordering}
+                    aria-label={`Move ${role.label} down`}
+                    className="leading-none text-text-muted hover:text-text disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+              )}
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{role.label}</span>
               {!isCustom && <Badge>System</Badge>}
               <Badge tone={role.assignmentCount > 0 ? "info" : "neutral"}>

@@ -7,11 +7,20 @@ model Role {
   // Resolved string[] of "resource:action:scope" — materialized at provisioning time,
   // not re-derived from blueprint JSON on every permission check (see ARCHITECTURE.md §8.1).
   permissions           Json
+  // Display order — lower shows first (0 = top). Set from the blueprint's own
+  // declared `rank` when a role is first materialized; deliberately NEVER
+  // touched by a reseed of an already-existing role (see
+  // materialize-roles.ts's own doc comment) so a Company Admin's own manual
+  // reordering (`role.reorder`) survives every future `pnpm run prisma:seed`.
+  // A new custom role (role.createCustom) defaults to appending at the end
+  // (current max + 1), not touching where existing roles already sit.
+  rank                  Int      @default(0)
   createdAt             DateTime @default(now()) @map("created_at")
 
   assignments RoleAssignment[]
 
   @@index([tenantId])
+  @@index([tenantId, rank])
   @@map("roles")
 }
 
