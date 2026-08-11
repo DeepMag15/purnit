@@ -258,13 +258,13 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                 type="button"
                 title="Browse channels"
                 onClick={() => setShowBrowse((v) => !v)}
-                className={cn("rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text", showBrowse && "text-accent")}
+                className={cn("rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text", showBrowse && "text-accent")}
               >
                 <Icon name="search" size={16} />
               </button>
               <Dropdown
                 trigger={({ toggle }) => (
-                  <button type="button" onClick={toggle} title="New direct message" className="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text">
+                  <button type="button" onClick={toggle} title="New direct message" className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text">
                     <Icon name="person_add" size={16} />
                   </button>
                 )}
@@ -291,7 +291,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                   type="button"
                   title="New channel"
                   onClick={() => setShowNewChannel((v) => !v)}
-                  className="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+                  className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
                 >
                   <Icon name="add" size={16} />
                 </button>
@@ -323,7 +323,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                   key={c.id}
                   type="button"
                   onClick={() => handleJoinChannel(c.id)}
-                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-hover"
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                 >
                   <span className="truncate">{c.name}</span>
                   <span className="text-xs text-accent">Join</span>
@@ -348,7 +348,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                 type="button"
                 onClick={() => selectConversation(c.id)}
                 className={cn(
-                  "flex w-full items-center gap-2 border-b border-border/60 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface-hover",
+                  "flex w-full items-center gap-2 border-b border-border/60 px-3 py-2.5 text-left transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover",
                   selectedId === c.id && "bg-accent/10",
                 )}
               >
@@ -377,7 +377,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                     type="button"
                     title="Archive conversation"
                     onClick={() => handleArchive(selectedConversation.id)}
-                    className="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-danger"
+                    className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-danger"
                   >
                     <Icon name="archive" size={16} />
                   </button>
@@ -407,7 +407,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                       <button
                         type="button"
                         onClick={() => handleDeleteMessage(m.id)}
-                        className="shrink-0 text-text-muted opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:text-danger"
+                        className="shrink-0 text-text-muted opacity-0 transition-opacity duration-[var(--duration-fast)] group-hover:opacity-100 hover:text-danger"
                         title="Delete message"
                       >
                         <Icon name="delete" size={14} />
@@ -439,7 +439,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                     placeholder="Write a message…"
                     rows={2}
                     className={cn(
-                      "flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-150",
+                      "flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent",
                     )}
                   />
@@ -449,7 +449,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
                         <button
                           type="button"
                           onClick={toggle}
-                          className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+                          className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                         >
                           <Icon name="alternate_email" size={12} />
                           Mention

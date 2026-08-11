@@ -156,7 +156,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                             close();
                             void handleReassign(m.id);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-hover"
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                         >
                           {m.displayName}
                           {data.assigneeId === m.id && <Badge tone="accent">current</Badge>}

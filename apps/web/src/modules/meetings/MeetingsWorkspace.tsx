@@ -258,7 +258,7 @@ export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
                 <button
                   type="button"
                   onClick={toggle}
-                  className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+                  className="inline-flex w-fit items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                 >
                   <Icon name="group" size={12} />
                   {participantIds.length > 0 ? `${participantIds.length} invited` : "Invite participants"}
@@ -271,7 +271,7 @@ export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
                   {candidates
                     .filter((c) => c.id !== user.id)
                     .map((c) => (
-                      <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-hover">
+                      <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
                         <input type="checkbox" checked={participantIds.includes(c.id)} onChange={() => toggleParticipant(c.id)} className="accent-accent" />
                         {c.displayName}
                       </label>
@@ -370,7 +370,7 @@ function MeetingRowView({
             </Button>
           )}
           {canManage && !isPast && (
-            <button type="button" onClick={onCancel} className="text-xs text-text-muted transition-colors duration-150 hover:text-danger">
+            <button type="button" onClick={onCancel} className="text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger">
               Cancel
             </button>
           )}
@@ -388,7 +388,7 @@ function MeetingRowView({
               <button
                 type="button"
                 onClick={toggle}
-                className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+                className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
               >
                 <Icon name="group" size={11} />
                 Manage
@@ -403,7 +403,7 @@ function MeetingRowView({
                   .map((c) => {
                     const isMember = meeting.participants.some((p) => p.id === c.id);
                     return (
-                      <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-hover">
+                      <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
                         <input type="checkbox" checked={isMember} onChange={() => onToggleParticipant(c.id, isMember)} className="accent-accent" />
                         {c.displayName}
                       </label>

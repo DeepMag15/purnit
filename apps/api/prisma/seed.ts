@@ -598,14 +598,14 @@ const IT_BLUEPRINT_V1 = {
               id: "k1",
               type: "KpiCard",
               version: 1,
-              props: { label: "Active Projects" },
+              props: { label: "Active Projects", tone: "accent" },
               bind: { source: "projects.count", params: { status: { const: "active" } } },
             },
             {
               id: "k2",
               type: "KpiCard",
               version: 1,
-              props: { label: "My Open Tasks" },
+              props: { label: "My Open Tasks", tone: "info" },
               bind: {
                 source: "tasks.count",
                 params: { assigneeId: { ref: "user.id" }, status: { const: "todo" } },
@@ -615,7 +615,7 @@ const IT_BLUEPRINT_V1 = {
               id: "k3",
               type: "KpiCard",
               version: 1,
-              props: { label: "Overdue Tasks" },
+              props: { label: "Overdue Tasks", tone: "danger" },
               bind: { source: "tasks.count", params: { overdue: { const: true } } },
             },
             {

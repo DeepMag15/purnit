@@ -27,7 +27,7 @@ export function Leaderboard({ title, nameKey, valueKey, limit, bind }: Props & C
   const ranked = [...rows].sort((a, b) => (Number(b[valueKey]) || 0) - (Number(a[valueKey]) || 0)).slice(0, limit);
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <CardHeader title={title} />
       <CardBody className="flex flex-col gap-1">
         {loading && <Skeleton className="h-40 w-full" />}
@@ -36,7 +36,7 @@ export function Leaderboard({ title, nameKey, valueKey, limit, bind }: Props & C
           <EmptyStateView message="No data yet." />
         ) : (
           ranked.map((row, i) => (
-            <div key={i} className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm">
+            <div key={i} className="flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm">
               <div className="flex items-center gap-2 truncate">
                 <span className="w-6 shrink-0 text-xs font-semibold text-text-muted">#{i + 1}</span>
                 <span className="truncate text-text">{String(row[nameKey] ?? "")}</span>

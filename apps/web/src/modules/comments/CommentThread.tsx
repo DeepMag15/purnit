@@ -115,7 +115,7 @@ export function CommentThread({
                 <button
                   type="button"
                   onClick={() => handleDelete(c.id)}
-                  className="shrink-0 text-text-muted transition-colors duration-150 hover:text-danger"
+                  className="shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
                   title="Delete comment"
                 >
                   <Icon name="delete" size={14} />
@@ -148,7 +148,7 @@ export function CommentThread({
           placeholder="Write a comment…"
           rows={2}
           className={cn(
-            "flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-150",
+            "flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent",
           )}
         />
@@ -159,7 +159,7 @@ export function CommentThread({
                 <button
                   type="button"
                   onClick={toggle}
-                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                 >
                   <Icon name="alternate_email" size={12} />
                   Mention
@@ -176,7 +176,7 @@ export function CommentThread({
                         close();
                         addMention(m);
                       }}
-                      className="flex w-full items-center px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-hover"
+                      className="flex w-full items-center px-3 py-1.5 text-left text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
                     >
                       {m.displayName}
                     </button>

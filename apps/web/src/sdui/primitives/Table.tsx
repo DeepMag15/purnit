@@ -51,7 +51,7 @@ export function Table({ columns, bind, actions }: Props & CommonRenderProps) {
             <tr
               key={String(row.id ?? i)}
               onClick={navigateAction ? () => dispatch(navigateAction, row) : undefined}
-              className={"transition-colors duration-150" + (navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
+              className={"transition-colors duration-[var(--duration-fast)]" + (navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
             >
               {columns.map((col) => (
                 <td key={col} className="whitespace-nowrap px-3 py-2.5 text-text">
@@ -234,7 +234,7 @@ export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind,
                     <tr
                       key={String(row.id ?? `${groupKey}-${i}`)}
                       onClick={onRowClick ? () => onRowClick(row) : navigateAction ? () => dispatch(navigateAction, row) : undefined}
-                      className={"transition-colors duration-150" + (onRowClick || navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
+                      className={"transition-colors duration-[var(--duration-fast)]" + (onRowClick || navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
                     >
                       {columns.map((col) => (
                         <td key={col} className="whitespace-nowrap px-3 py-2.5 text-text">

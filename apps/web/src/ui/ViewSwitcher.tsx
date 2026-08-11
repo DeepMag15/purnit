@@ -22,7 +22,7 @@ export function ViewSwitcher({ views, activeId, onChange }: { views: ViewOption[
             onClick={() => onChange(view.id)}
             aria-pressed={active}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors duration-[var(--duration-fast)]",
+              "inline-flex h-8 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors duration-[var(--duration-fast)]",
               active ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text",
             )}
           >

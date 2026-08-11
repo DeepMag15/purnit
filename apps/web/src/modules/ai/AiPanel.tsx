@@ -184,7 +184,7 @@ export function AiPanel({
                   type="button"
                   onClick={() => setActiveConversationId(c.id)}
                   className={cn(
-                    "block w-full truncate rounded-md px-2 py-1.5 text-left text-xs transition-colors duration-150 hover:bg-surface-hover",
+                    "block w-full truncate rounded-md px-2 py-1.5 text-left text-xs transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover",
                     c.id === activeConversationId ? "bg-surface-hover text-text" : "text-text-muted",
                   )}
                 >
@@ -248,7 +248,7 @@ export function AiPanel({
               placeholder="Ask a question…"
               rows={2}
               disabled={sending}
-              className="w-full flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
+              className="w-full flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
             />
             <Button size="sm" onClick={handleSend} disabled={sending || !draft.trim()}>
               <Icon name="send" size={14} />

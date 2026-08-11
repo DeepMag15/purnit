@@ -144,7 +144,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                         {tenantUsers.map((u) => {
                           const isMember = data.members.some((m) => m.id === u.id);
                           return (
-                            <label key={u.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-hover">
+                            <label key={u.id} className="flex items-center gap-2 px-3 py-1.5 text-sm text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
                               <input type="checkbox" checked={isMember} onChange={() => handleToggleMember(u.id, isMember)} className="accent-accent" />
                               {u.displayName}
                             </label>

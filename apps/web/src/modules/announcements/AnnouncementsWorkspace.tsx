@@ -137,7 +137,7 @@ export function AnnouncementsWorkspace({ actions }: Props & CommonRenderProps) {
               onChange={(e) => setBody(e.target.value)}
               placeholder="Write your announcement…"
               rows={4}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
             />
             <Select value={targetDepartmentId} onChange={(e) => setTargetDepartmentId(e.target.value)}>
               {canTargetWholeCompany && <option value="">Whole company</option>}
@@ -175,7 +175,7 @@ export function AnnouncementsWorkspace({ actions }: Props & CommonRenderProps) {
                     <button
                       type="button"
                       onClick={() => handleDelete(a.id)}
-                      className="shrink-0 text-text-muted transition-colors duration-150 hover:text-danger"
+                      className="shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
                       title="Delete announcement"
                     >
                       <Icon name="delete" size={14} />

@@ -51,7 +51,7 @@ function KanbanColumn({ id, cards, labelKey, draggable }: { id: string; cards: R
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-64 shrink-0 flex-col gap-2 rounded-lg border border-border p-2.5 transition-colors duration-150 ${isOver ? "bg-surface-hover" : "bg-surface-elevated"}`}
+      className={`flex w-64 shrink-0 flex-col gap-2 rounded-lg border border-border p-2.5 transition-colors duration-[var(--duration-fast)] ${isOver ? "bg-surface-hover" : "bg-surface-elevated"}`}
     >
       <div className="flex items-center justify-between px-0.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{id}</span>

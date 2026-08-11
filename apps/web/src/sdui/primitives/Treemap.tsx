@@ -6,6 +6,7 @@ import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { EmptyStateView } from "./EmptyState";
+import { CHART_SERIES_COLORS } from "./chart-colors";
 
 export const TreemapSchema = z.object({
   title: z.string().optional(),
@@ -14,7 +15,7 @@ export const TreemapSchema = z.object({
 });
 type Props = z.infer<typeof TreemapSchema>;
 
-const COLORS = ["var(--color-accent)", "var(--color-info)", "var(--color-success)", "var(--color-warning)", "var(--color-danger)"];
+const COLORS = CHART_SERIES_COLORS;
 const tooltipStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 };
 
 interface Row {
@@ -32,7 +33,7 @@ export function Treemap({ title, nameKey, valueKey, bind }: Props & CommonRender
   const total = rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0);
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <CardHeader title={title} />
       <CardBody>
         {loading && <Skeleton className="h-52 w-full" />}

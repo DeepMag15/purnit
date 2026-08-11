@@ -87,7 +87,7 @@ export function NotificationBell() {
         type="button"
         onClick={toggleOpen}
         aria-label="Notifications"
-        className="relative flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+        className="relative flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
       >
         <Icon name="notifications" size={17} />
         {unreadCount > 0 && (
@@ -118,7 +118,7 @@ export function NotificationBell() {
                 type="button"
                 onClick={() => !n.readAt && handleMarkRead(n.id)}
                 className={cn(
-                  "block w-full border-b border-border px-3.5 py-2.5 text-left transition-colors duration-150 last:border-b-0",
+                  "block w-full border-b border-border px-3.5 py-2.5 text-left transition-colors duration-[var(--duration-fast)] last:border-b-0",
                   n.readAt ? "cursor-default" : "cursor-pointer bg-accent/5 hover:bg-accent/10",
                 )}
               >

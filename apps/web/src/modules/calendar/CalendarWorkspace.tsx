@@ -209,7 +209,7 @@ export function CalendarWorkspace({ actions }: Props & CommonRenderProps) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description (optional)"
               rows={2}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent"
             />
             <div className="flex gap-2">
               <label className="flex-1 text-xs text-text-muted">
@@ -303,17 +303,17 @@ function MonthGrid({
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-text">{monthLabel}</div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={onPrev} className="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover">
+          <button type="button" onClick={onPrev} className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
             <Icon name="chevron_left" size={16} />
           </button>
           <button
             type="button"
             onClick={onToday}
-            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
           >
             Today
           </button>
-          <button type="button" onClick={onNext} className="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-hover">
+          <button type="button" onClick={onNext} className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
             <Icon name="chevron_right" size={16} />
           </button>
         </div>
@@ -417,7 +417,7 @@ function CalendarItemChip({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="shrink-0 text-text-muted transition-colors duration-150 hover:text-danger"
+          className="shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
           title="Delete calendar event"
         >
           <Icon name="delete" size={13} />

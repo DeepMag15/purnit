@@ -220,7 +220,7 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
                 <button
                   type="button"
                   onClick={() => openAiPanel("documents.summarize", { sourceType: "document", sourceId: documentId })}
-                  className="flex items-center gap-1.5 text-xs text-text-muted transition-colors duration-150 hover:text-text"
+                  className="flex items-center gap-1.5 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                 >
                   <Icon name="summarize" size={14} />
                   Summarize with AI
@@ -228,7 +228,7 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
                 <button
                   type="button"
                   onClick={() => openAiPanel("documents.qa", { sourceType: "document", sourceId: documentId })}
-                  className="flex items-center gap-1.5 text-xs text-text-muted transition-colors duration-150 hover:text-text"
+                  className="flex items-center gap-1.5 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                 >
                   <Icon name="auto_awesome" size={14} />
                   Ask AI about this document

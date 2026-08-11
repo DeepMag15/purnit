@@ -33,7 +33,7 @@ export function Heatmap({ title, rowKey, colKey, valueKey, bind }: Props & Commo
   const cellByKey = new Map(rows.map((r) => [`${r[rowKey]}::${r[colKey]}`, Number(r[valueKey]) || 0]));
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <CardHeader title={title} />
       <CardBody>
         {loading && <Skeleton className="h-52 w-full" />}

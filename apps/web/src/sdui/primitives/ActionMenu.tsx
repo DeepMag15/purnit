@@ -18,7 +18,7 @@ export function ActionMenu({ label = "Actions", actions }: Props & CommonRenderP
         <button
           type="button"
           onClick={toggle}
-          className="flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text transition-colors duration-150 hover:bg-surface-hover"
+          className="flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
         >
           {label}
           <Icon name="expand_more" size={13} />

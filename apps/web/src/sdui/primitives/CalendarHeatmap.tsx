@@ -60,7 +60,7 @@ export function CalendarHeatmap({ title, dateKey, valueKey, bind }: Props & Comm
   }
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <CardHeader title={title} />
       <CardBody>
         {loading && <Skeleton className="h-40 w-full" />}

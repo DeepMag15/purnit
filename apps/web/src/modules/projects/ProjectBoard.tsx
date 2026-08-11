@@ -21,7 +21,7 @@ import { Button } from "../../ui/Button";
 import { Alert } from "../../ui/Alert";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
-import { Avatar } from "../../ui/Avatar";
+import { Avatar, AVATAR_SIZE_CLASSES } from "../../ui/Avatar";
 
 export const ProjectBoardSchema = z.object({ title: z.string().optional() });
 type Props = z.infer<typeof ProjectBoardSchema>;
@@ -189,7 +189,9 @@ export function ProjectBoard({ title, bind, actions }: Props & CommonRenderProps
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span className="min-w-0 truncate text-sm font-medium text-text">{project.name}</span>
-                <Badge tone={STATUS_TONE[project.status] ?? "neutral"}>{project.status}</Badge>
+                <span className="shrink-0">
+                  <Badge tone={STATUS_TONE[project.status] ?? "neutral"}>{project.status}</Badge>
+                </span>
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 {project.owner && <span className="hidden text-xs text-text-muted sm:inline">{project.owner}</span>}
@@ -198,7 +200,9 @@ export function ProjectBoard({ title, bind, actions }: Props & CommonRenderProps
                     <Avatar key={m.id} name={m.displayName} size="sm" className="ring-2 ring-surface" />
                   ))}
                   {project.members.length > 3 && (
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-hover text-[10px] font-medium text-text-muted ring-2 ring-surface">
+                    <span
+                      className={`flex items-center justify-center rounded-full bg-surface-hover font-medium text-text-muted ring-2 ring-surface ${AVATAR_SIZE_CLASSES.sm}`}
+                    >
                       +{project.members.length - 3}
                     </span>
                   )}
@@ -207,7 +211,7 @@ export function ProjectBoard({ title, bind, actions }: Props & CommonRenderProps
                   <button
                     type="button"
                     onClick={(e) => handleDelete(e, project.id)}
-                    className="text-xs text-text-muted transition-colors duration-150 hover:text-danger"
+                    className="text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
                   >
                     <Icon name="delete" size={16} />
                   </button>

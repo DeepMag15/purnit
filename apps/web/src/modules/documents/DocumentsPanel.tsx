@@ -223,7 +223,7 @@ export function DocumentsPanel({
                         type="button"
                         onClick={() => openAiPanel("documents.summarize", { sourceType: "document", sourceId: d.id })}
                         title="Summarize with AI"
-                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                        className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                       >
                         <Icon name="summarize" size={14} />
                       </button>
@@ -231,13 +231,13 @@ export function DocumentsPanel({
                         type="button"
                         onClick={() => openAiPanel("documents.qa", { sourceType: "document", sourceId: d.id })}
                         title="Ask AI about this document"
-                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                        className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                       >
                         <Icon name="auto_awesome" size={14} />
                       </button>
                     </>
                   )}
-                  <button type="button" onClick={() => handleOpen(d.id, "download")} title="Download" className="text-text-muted transition-colors duration-150 hover:text-text">
+                  <button type="button" onClick={() => handleOpen(d.id, "download")} title="Download" className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text">
                     <Icon name="download" size={14} />
                   </button>
                   {canUpdate && (
@@ -248,7 +248,7 @@ export function DocumentsPanel({
                         replaceInputRef.current?.click();
                       }}
                       title="Replace"
-                      className="text-text-muted transition-colors duration-150 hover:text-text"
+                      className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                     >
                       <Icon name="publish" size={14} />
                     </button>
@@ -256,12 +256,12 @@ export function DocumentsPanel({
                   <Link
                     href={`/workspace/documents/${d.id}`}
                     title="View details"
-                    className="text-text-muted transition-colors duration-150 hover:text-text"
+                    className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                   >
                     <Icon name="open_in_new" size={14} />
                   </Link>
                   {canDelete && (
-                    <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-150 hover:text-danger">
+                    <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger">
                       <Icon name="delete" size={14} />
                     </button>
                   )}

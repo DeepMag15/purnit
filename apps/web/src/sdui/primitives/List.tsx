@@ -45,7 +45,7 @@ function ListRow({ ariaAttributes, index, style, rows, titleField, navigateActio
       style={style}
       onClick={navigateAction ? () => dispatch(navigateAction, row) : undefined}
       className={
-        "flex items-center border-b border-border text-sm text-text" + (navigateAction ? " cursor-pointer transition-colors duration-150 hover:text-accent" : "")
+        "flex items-center border-b border-border text-sm text-text" + (navigateAction ? " cursor-pointer transition-colors duration-[var(--duration-fast)] hover:text-accent" : "")
       }
     >
       {String(row[titleField] ?? "")}
@@ -87,7 +87,7 @@ export function List({ titleField = "name", title, limit, bind, actions }: Props
               key={String(row.id ?? i)}
               onClick={navigateAction ? () => dispatch(navigateAction, row) : undefined}
               className={
-                "py-2.5 text-sm text-text" + (navigateAction ? " cursor-pointer transition-colors duration-150 hover:text-accent" : "")
+                "py-2.5 text-sm text-text" + (navigateAction ? " cursor-pointer transition-colors duration-[var(--duration-fast)] hover:text-accent" : "")
               }
             >
               {String(row[titleField] ?? "")}

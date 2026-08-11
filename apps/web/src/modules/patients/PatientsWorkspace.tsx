@@ -235,7 +235,7 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
                         type="button"
                         onClick={() => toggleChart(p.id)}
                         title="Medical Record"
-                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                        className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                       >
                         <Icon name="description" size={14} />
                       </button>

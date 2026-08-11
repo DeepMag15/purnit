@@ -3,6 +3,7 @@ import type { CommonRenderProps } from "../registry";
 import { useDataBinding } from "../use-data-binding";
 import { Card } from "../../ui/Card";
 import { Skeleton } from "../../ui/Skeleton";
+import { cn } from "../../ui/utils";
 
 export const KpiCardSchema = z.object({
   label: z.string(),
@@ -14,8 +15,22 @@ export const KpiCardSchema = z.object({
   // visual slot.
   trend: z.array(z.number()).optional(),
   trendTone: z.enum(["success", "danger", "accent"]).optional(),
+  // Visual Polish & Consistency Pass — optional left-border accent so a KPI
+  // can visually communicate meaning (e.g. "Overdue Tasks" reads as
+  // attention-worthy). Reuses Badge's own 6-tone vocabulary/CSS variables;
+  // omitted renders byte-for-byte identical to before this prop existed.
+  tone: z.enum(["neutral", "success", "warning", "danger", "info", "accent"]).optional(),
 });
 type Props = z.infer<typeof KpiCardSchema>;
+
+const TONE_BORDER_CLASSES: Record<NonNullable<Props["tone"]>, string> = {
+  neutral: "border-l-2 border-l-border",
+  success: "border-l-2 border-l-success",
+  warning: "border-l-2 border-l-warning",
+  danger: "border-l-2 border-l-danger",
+  info: "border-l-2 border-l-info",
+  accent: "border-l-2 border-l-accent",
+};
 
 /** Plain inline SVG, not Recharts — a 64×24px trend line doesn't warrant
  * pulling in a charting library (see Chart.tsx for the one case that does).
@@ -40,7 +55,7 @@ function Sparkline({ values, tone }: { values: number[]; tone: "success" | "dang
   );
 }
 
-export function KpiCard({ label, bind, trend, trendTone }: Props & CommonRenderProps) {
+export function KpiCard({ label, bind, trend, trendTone, tone }: Props & CommonRenderProps) {
   const { data, loading, error } = useDataBinding(bind);
   const showTrend = !loading && !error && trend && trend.length > 1;
 
@@ -48,7 +63,7 @@ export function KpiCard({ label, bind, trend, trendTone }: Props & CommonRenderP
     // Frontend Structural Redesign, Phase 0 — the shared hover-elevation
     // convention (§2.7): reuses the existing --shadow-*/--duration-* tokens,
     // no new values.
-    <Card className="p-4 transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
+    <Card className={cn("p-4 transition-shadow duration-[var(--duration-fast)] hover:shadow-md", tone && TONE_BORDER_CLASSES[tone])}>
       <div className="text-xs font-medium text-text-muted">{label}</div>
       <div className="mt-1.5 flex items-baseline justify-between gap-3">
         <div className="font-mono text-2xl font-semibold tracking-tight text-text">

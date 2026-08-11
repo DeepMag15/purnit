@@ -45,7 +45,7 @@ export function QuickActions({ title, items }: Props & CommonRenderProps) {
             key={item.pageId}
             type="button"
             onClick={() => navigate(item.pageId)}
-            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border p-4 text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border p-4 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
           >
             <Icon name={item.icon} size={20} />
             <span className="text-[11px] font-medium">{item.label}</span>

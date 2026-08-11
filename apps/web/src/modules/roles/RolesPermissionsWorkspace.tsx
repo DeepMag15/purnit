@@ -12,6 +12,7 @@ import { Select } from "../../ui/Select";
 import { Badge } from "../../ui/Badge";
 import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
+import { SectionLabel } from "../../ui/SectionLabel";
 
 export const RolesPermissionsWorkspaceSchema = z.object({});
 type Props = z.infer<typeof RolesPermissionsWorkspaceSchema>;
@@ -290,7 +291,7 @@ function RoleEditorPanel({
         <div className="flex flex-col gap-3">
           {catalog.map((mod) => (
             <div key={mod.module}>
-              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{mod.module}</div>
+              <SectionLabel className="mb-1">{mod.module}</SectionLabel>
               <div className="flex flex-col gap-1">
                 {mod.entries.map((entry) => {
                   const key = permKey(entry.resource, entry.action);
@@ -447,7 +448,7 @@ function UserPermissionViewer({
               if (heldEntries.length === 0) return null;
               return (
                 <div key={mod.module}>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{mod.module}</div>
+                  <SectionLabel className="mb-1">{mod.module}</SectionLabel>
                   <div className="flex flex-wrap gap-1.5">
                     {heldEntries.map((e) => (
                       <Badge key={permKey(e.resource, e.action)} tone="success">
@@ -548,12 +549,12 @@ function DelegationGrantEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Delegate an extra permission</div>
+      <SectionLabel>Delegate an extra permission</SectionLabel>
       {error && <Alert tone="danger">{error}</Alert>}
       <div className="flex flex-col gap-3">
         {catalog.map((mod) => (
           <div key={mod.module}>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{mod.module}</div>
+            <SectionLabel className="mb-1">{mod.module}</SectionLabel>
             <div className="flex flex-col gap-1">
               {mod.entries.map((entry) => {
                 const key = permKey(entry.resource, entry.action);
@@ -621,7 +622,7 @@ function ActiveDelegationsList({ userId, onChanged }: { userId: string; onChange
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Delegated permissions</div>
+      <SectionLabel>Delegated permissions</SectionLabel>
       {delegations.length === 0 && <div className="text-sm text-text-muted">None active.</div>}
       {delegations.map((row) => (
         <div key={row.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">

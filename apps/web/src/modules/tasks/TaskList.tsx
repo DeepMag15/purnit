@@ -287,12 +287,14 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <span className="min-w-0 truncate text-sm font-medium text-text">{task.title}</span>
-                  <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>
-                  {task.dueDate && (
-                    <Badge tone={new Date(task.dueDate) < new Date() && task.status !== "done" ? "danger" : "neutral"}>
-                      {new Date(task.dueDate).toLocaleDateString()}
-                    </Badge>
-                  )}
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>
+                    {task.dueDate && (
+                      <Badge tone={new Date(task.dueDate) < new Date() && task.status !== "done" ? "danger" : "neutral"}>
+                        {new Date(task.dueDate).toLocaleDateString()}
+                      </Badge>
+                    )}
+                  </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <Badge tone={STATUS_TONE[task.status] ?? "neutral"}>{task.status}</Badge>

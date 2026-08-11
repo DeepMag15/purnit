@@ -26,6 +26,7 @@ import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { EmptyStateView } from "./EmptyState";
+import { CHART_SERIES_COLORS } from "./chart-colors";
 
 export const ChartSchema = z.object({
   title: z.string().optional(),
@@ -55,11 +56,7 @@ interface ExtraProps {
   yKey?: string;
 }
 
-// CSS var() strings, not fixed hex — theme-reactive for free (light/dark)
-// since SVG `fill` accepts custom properties in evergreen browsers, and it
-// keeps the chart in step with the same token palette as everything else
-// rather than a separate hardcoded chart palette.
-const COLORS = ["var(--color-accent)", "var(--color-info)", "var(--color-success)", "var(--color-warning)", "var(--color-danger)"];
+const COLORS = CHART_SERIES_COLORS;
 
 interface Row {
   [key: string]: unknown;
@@ -93,7 +90,7 @@ export function Chart({ title, type, nameKey, valueKey, bind, onSegmentClick, se
   const handleSegmentClick = onSegmentClick ? (payload: any) => onSegmentClick(String(payload?.[nameKey] ?? payload?.payload?.[nameKey])) : undefined;
 
   return (
-    <Card>
+    <Card className="transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <CardHeader title={title} />
       <CardBody>
         {loading && <Skeleton className="h-52 w-full" />}

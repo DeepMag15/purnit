@@ -1,6 +1,10 @@
 import { cn } from "./utils";
 
-const SIZE_CLASSES: Record<"sm" | "md" | "lg", string> = {
+// Exported (Visual Polish & Consistency Pass) so any hand-built "chip" the
+// same size as an Avatar (e.g. a "+N more" overflow indicator) can share
+// the exact dimensions instead of re-typing the pixel values as a separate
+// literal that can silently drift out of sync.
+export const AVATAR_SIZE_CLASSES: Record<"sm" | "md" | "lg", string> = {
   sm: "h-6 w-6 text-[10px]",
   md: "h-8 w-8 text-xs",
   lg: "h-10 w-10 text-sm",
@@ -20,7 +24,7 @@ function initials(name: string): string {
 export function Avatar({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
   return (
     <span
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-accent/15 font-semibold text-accent", SIZE_CLASSES[size], className)}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full bg-accent/15 font-semibold text-accent", AVATAR_SIZE_CLASSES[size], className)}
       title={name}
     >
       {initials(name)}
