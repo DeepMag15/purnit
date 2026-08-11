@@ -47,6 +47,7 @@ interface CourseDetailData {
   canCreateDocuments: boolean;
   canUpdateDocuments: boolean;
   canDeleteDocuments: boolean;
+  materialsVisible: boolean;
 }
 
 interface StudentOption {
@@ -145,8 +146,12 @@ export function CourseDetail({ courseId }: { courseId: string }) {
     { id: "overview", label: "Overview" },
     { id: "roster", label: "Roster" },
     ...(data.canReadAssignments ? [{ id: "assignments", label: "Assignments" }] : []),
-    { id: "materials", label: "Materials" },
-    { id: "discussion", label: "Discussion" },
+    // Course.materialsProjectId isn't visible to every role that can see the
+    // Course row itself — Registrar holds course:read:tenant but no
+    // project:read at all (never becomes the materials Project's member).
+    // Hidden entirely rather than shown-then-403ing silently empty inside
+    // DocumentsPanel/CommentThread.
+    ...(data.materialsVisible ? [{ id: "materials", label: "Materials" }, { id: "discussion", label: "Discussion" }] : []),
   ];
 
   return (
@@ -260,10 +265,10 @@ export function CourseDetail({ courseId }: { courseId: string }) {
       )}
 
       {activeTab === "assignments" && data.canReadAssignments && (
-        <AssignmentsGradebookTab courseId={courseId} canCreateAssignments={data.canCreateAssignments} />
+        <AssignmentsGradebookTab courseId={courseId} courseName={data.name} canCreateAssignments={data.canCreateAssignments} />
       )}
 
-      {activeTab === "materials" && (
+      {activeTab === "materials" && data.materialsVisible && (
         <DocumentsPanel
           projectId={data.materialsProjectId}
           canCreate={data.canCreateDocuments}
@@ -272,7 +277,7 @@ export function CourseDetail({ courseId }: { courseId: string }) {
         />
       )}
 
-      {activeTab === "discussion" && (
+      {activeTab === "discussion" && data.materialsVisible && (
         <CommentThread
           entityType="project"
           entityId={data.materialsProjectId}

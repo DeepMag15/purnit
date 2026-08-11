@@ -39,8 +39,16 @@ interface GradeRow {
  * null`) vs `grade.update` (correcting an already-graded row) per cell —
  * see grades.mutations.ts's own doc comment for why grade-entry is split
  * into two mutations. */
-export function AssignmentsGradebookTab({ courseId, canCreateAssignments }: { courseId: string; canCreateAssignments: boolean }) {
-  const { callMutation } = useRenderContext();
+export function AssignmentsGradebookTab({
+  courseId,
+  courseName,
+  canCreateAssignments,
+}: {
+  courseId: string;
+  courseName: string;
+  canCreateAssignments: boolean;
+}) {
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -52,6 +60,21 @@ export function AssignmentsGradebookTab({ courseId, canCreateAssignments }: { co
 
   const { data, isPending, error, refetch } = useDataSourceQuery<AssignmentRow[]>("assignments.list", { courseId });
   const assignments = Array.isArray(data) ? data : [];
+
+  function summarizeGradebook() {
+    const lines = [
+      `Course: ${courseName}`,
+      assignments.length > 0
+        ? `Assignments: ${assignments
+            .map((a) => `${a.title} (${a.dueDate ? `due ${new Date(a.dueDate).toLocaleDateString()}` : "no due date"}, ${a.maxScore} pts)`)
+            .join("; ")}`
+        : "No assignments yet.",
+    ];
+    openAiPanel(
+      "courses.summarizeGradebook",
+      `Summarize this course's assignment load. Do not suggest a grade or evaluate any individual student.\n\n${lines.join("\n")}`,
+    );
+  }
 
   function openCreate() {
     setNewTitle("");
@@ -92,11 +115,20 @@ export function AssignmentsGradebookTab({ courseId, canCreateAssignments }: { co
         <CardHeader
           title="Assignments"
           action={
-            canCreateAssignments && (
-              <Button size="sm" onClick={openCreate}>
-                <Icon name="add" size={14} />
-                Add Assignment
-              </Button>
+            (aiAvailable || canCreateAssignments) && (
+              <div className="flex gap-2">
+                {aiAvailable && (
+                  <Button size="sm" variant="secondary" onClick={summarizeGradebook}>
+                    Summarize Gradebook
+                  </Button>
+                )}
+                {canCreateAssignments && (
+                  <Button size="sm" onClick={openCreate}>
+                    <Icon name="add" size={14} />
+                    Add Assignment
+                  </Button>
+                )}
+              </div>
             )
           }
         />

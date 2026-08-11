@@ -105,4 +105,49 @@ describe("courses.detail", () => {
     )) as { roster: { studentName: string }[] };
     expect(data.roster).toEqual([{ enrollmentId: "e1", studentId: "s1", studentName: "Jane", status: "enrolled", finalGrade: null }]);
   });
+
+  function detailTx(overrides: Partial<{ projectFindFirst: jest.Mock }> = {}) {
+    return {
+      course: { findFirst: jest.fn().mockResolvedValue({ id: "c1", teacherId: null, materialsProjectId: "proj1" }) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+      student: { findMany: jest.fn().mockResolvedValue([]) },
+      assignment: { count: jest.fn().mockResolvedValue(0) },
+      document: { count: jest.fn().mockResolvedValue(0) },
+      project: { findFirst: overrides.projectFindFirst ?? jest.fn() },
+    } as unknown as PrismaTx;
+  }
+
+  describe("materialsVisible", () => {
+    // course:read and project:read are different permissions — a course
+    // being visible does NOT mean its materials Project is. Mirrors
+    // patients.data-sources.spec.ts's own withChartVisibility coverage.
+    it("is true for an actor holding project:read:tenant (Admin/Teacher/TA-shaped)", async () => {
+      const tx = detailTx({ projectFindFirst: jest.fn().mockResolvedValue({ id: "proj1" }) });
+      const data = (await courseDetailDataSource.resolve(
+        { id: "c1" },
+        context(["course:read:tenant", "project:read:tenant"]),
+        tx,
+      )) as { materialsVisible: boolean };
+      expect(data.materialsVisible).toBe(true);
+    });
+
+    it("is false for an actor with course:read but zero project:read at all (Registrar-shaped)", async () => {
+      const tx = detailTx();
+      const data = (await courseDetailDataSource.resolve({ id: "c1" }, context(["course:read:tenant", "enrollment:read:tenant"]), tx)) as {
+        materialsVisible: boolean;
+      };
+      expect(data.materialsVisible).toBe(false);
+      expect((tx as unknown as { project: { findFirst: jest.Mock } }).project.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("is false when project:read is held but doesn't actually reach this course's own materials project", async () => {
+      // e.g. project:read:own held by someone who doesn't own proj1.
+      const tx = detailTx({ projectFindFirst: jest.fn().mockResolvedValue(null) });
+      const data = (await courseDetailDataSource.resolve({ id: "c1" }, context(["course:read:tenant", "project:read:own"]), tx)) as {
+        materialsVisible: boolean;
+      };
+      expect(data.materialsVisible).toBe(false);
+    });
+  });
 });

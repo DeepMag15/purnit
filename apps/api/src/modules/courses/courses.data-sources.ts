@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NotFoundException } from "@nestjs/common";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { projectsWhere } from "../projects/projects.data-sources";
 
 /** Education Domain, Phase A. Same `*Where()` contract every module follows.
  * `own`/`team`/`department`/`department-subtree` all collapse to "courses I
@@ -83,6 +84,21 @@ export const coursesListDataSource: DataSourceDefinition<z.infer<typeof ListPara
 
 const DetailParamsSchema = z.object({ id: z.string() });
 
+/** `course:read` and `project:read` are different permissions — Registrar
+ * holds the former tenant-wide but zero of the latter (never becomes a
+ * course's materialsProject member, see EDUCATION_BLUEPRINT_V1's own role
+ * comment), so a Course being visible here does NOT mean its Materials
+ * Project's Documents/Comments are. Reuses `projectsWhere` unchanged, same
+ * technique `patients.data-sources.ts`'s own `withChartVisibility` already
+ * established for Healthcare's `chartVisible` — bounded to just this one
+ * course's own materialsProjectId, not every visible project tenant-wide. */
+async function materialsVisible(tx: PrismaTx, ctx: DataSourceContext, materialsProjectId: string): Promise<boolean> {
+  const where = await projectsWhere(tx, ctx, { id: materialsProjectId });
+  if (!where) return false;
+  const project = await tx.project.findFirst({ where });
+  return !!project;
+}
+
 /** Follows `project.detail`'s own precedent exactly. `roster` is computed
  * ungated by `enrollment:read` — visibility rides on reaching `course:read`
  * alone, the same "visibility rides on reaching the parent alone" precedent
@@ -129,6 +145,7 @@ export const courseDetailDataSource: DataSourceDefinition<z.infer<typeof DetailP
     const canCreateDocuments = !!ctx.effective.has("document", "create");
     const canUpdateDocuments = !!ctx.effective.has("document", "update");
     const canDeleteDocuments = !!ctx.effective.has("document", "delete");
+    const materialsAreVisible = await materialsVisible(tx, ctx, course.materialsProjectId);
 
     return {
       ...course,
@@ -144,6 +161,7 @@ export const courseDetailDataSource: DataSourceDefinition<z.infer<typeof DetailP
       canCreateDocuments,
       canUpdateDocuments,
       canDeleteDocuments,
+      materialsVisible: materialsAreVisible,
     };
   },
 };

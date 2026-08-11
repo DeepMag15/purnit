@@ -9,6 +9,7 @@ import { Tabs } from "../../ui/Tabs";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Badge } from "../../ui/Badge";
 import { Select } from "../../ui/Select";
+import { Button } from "../../ui/Button";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
@@ -49,7 +50,7 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * for this page. */
 export function StudentDetail({ studentId }: { studentId: string }) {
   const { data, loading, error, notFound, refetch } = useEntityDetail<StudentDetailData>("students.detail", studentId);
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -60,6 +61,18 @@ export function StudentDetail({ studentId }: { studentId: string }) {
     } catch (err) {
       toast.show(err instanceof Error ? err.message : "Couldn't update student status", "danger");
     }
+  }
+
+  function summarizeEnrollments() {
+    if (!data) return;
+    const lines = [
+      `Student: ${data.name}`,
+      `Status: ${data.status}`,
+      data.enrollments.length > 0
+        ? `Enrollments: ${data.enrollments.map((e) => `${e.courseName} (${e.status}${e.finalGrade ? `, final grade ${e.finalGrade}` : ""})`).join("; ")}`
+        : "Not enrolled in any courses yet.",
+    ];
+    openAiPanel("students.summarizeEnrollments", `Summarize this student's enrollment record.\n\n${lines.join("\n")}`);
   }
 
   if (loading) {
@@ -122,7 +135,16 @@ export function StudentDetail({ studentId }: { studentId: string }) {
       )}
       {activeTab === "enrollments" && data.canReadEnrollments && (
         <Card>
-          <CardHeader title="Enrollments" />
+          <CardHeader
+            title="Enrollments"
+            action={
+              aiAvailable && (
+                <Button size="sm" variant="secondary" onClick={summarizeEnrollments}>
+                  Summarize Enrollments
+                </Button>
+              )
+            }
+          />
           <CardBody>
             {data.enrollments.length === 0 && <EmptyStateView message="Not enrolled in any courses yet." />}
             {data.enrollments.length > 0 && (

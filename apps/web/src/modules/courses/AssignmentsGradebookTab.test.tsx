@@ -44,7 +44,7 @@ describe("AssignmentsGradebookTab grade dispatch rule", () => {
           }}
         >
           <ToastProvider>
-            <AssignmentsGradebookTab courseId="c1" canCreateAssignments={false} />
+            <AssignmentsGradebookTab courseId="c1" courseName="Test Course" canCreateAssignments={false} />
           </ToastProvider>
         </RenderContextProvider>
       </QueryClientProvider>,
