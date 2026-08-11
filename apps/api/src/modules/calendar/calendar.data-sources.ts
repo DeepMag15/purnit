@@ -6,6 +6,7 @@ import { meetingsWhere } from "../meetings/meetings.data-sources";
 import { tasksWhere } from "../tasks/tasks.data-sources";
 import { appointmentsWhere } from "../appointments/appointments.data-sources";
 import { assignmentsWhere } from "../assignments/assignments.data-sources";
+import { invoicesWhere } from "../invoices/invoices.data-sources";
 
 /**
  * Mirrors `announcementsWhere` exactly: resolves the reader's own ancestor
@@ -34,7 +35,7 @@ export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, 
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue";
   title: string;
   start: Date;
   end: Date | null;
@@ -63,7 +64,8 @@ const CalendarListParamsSchema = z.object({ from: z.coerce.date().optional(), to
  * `items` array. Read-only here, same as every other item type — booking/
  * status changes still only happen through `AppointmentsWorkspace`.
  * Education Domain, Phase B added a fifth branch (Assignment due dates),
- * the identical pattern again.
+ * the identical pattern again. Finance Domain, Phase B added a sixth
+ * (Invoice due dates).
  *
  * Deliberately sequential, never `Promise.all` — concurrent queries against
  * one shared transactional `tx` are unsafe (every data-source file in this
@@ -168,6 +170,31 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
           start: a.dueDate,
           end: null,
           meta: { courseId: a.courseId, maxScore: a.maxScore },
+        });
+      }
+    }
+
+    // Finance Domain, Phase B — a sixth branch (Invoice due dates), same
+    // structural pattern as the branches above. `Invoice.dueDate` is
+    // NON-nullable (unlike `Task`/`Assignment`), so this follows the
+    // appointment branch's shape — the date-range filter goes straight into
+    // `invoicesWhere`'s own `extra` param, no null-check loop needed.
+    // Invoice has no `title` field of its own, so the client name (a real
+    // Prisma relation join, `Invoice.clientId` has an actual FK) is required
+    // here, not optional disambiguation the way it was for Assignment.
+    // Read-only here — status/payment changes still only happen through
+    // InvoiceDetail.
+    const invoicesWhereClause = await invoicesWhere(tx, ctx, { dueDate: { gte: from, lte: to } });
+    if (invoicesWhereClause) {
+      const invoices = await tx.invoice.findMany({ where: invoicesWhereClause, include: { client: { select: { name: true } } } });
+      for (const inv of invoices) {
+        items.push({
+          id: inv.id,
+          itemType: "invoiceDue",
+          title: `Invoice — ${inv.client.name}`,
+          start: inv.dueDate,
+          end: null,
+          meta: { clientId: inv.clientId, total: inv.total, status: inv.status },
         });
       }
     }

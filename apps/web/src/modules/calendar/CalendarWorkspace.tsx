@@ -21,7 +21,7 @@ type Props = z.infer<typeof CalendarWorkspaceSchema>;
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue";
   title: string;
   start: string;
   end: string | null;
@@ -54,6 +54,10 @@ const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning" 
   // Read-only here too — status/grading changes only happen through
   // CourseDetail's own Assignments tab.
   assignmentDue: "warning",
+  // Finance Domain, Phase B — reuses Task's own tone too; "money due" is the
+  // same visual language as "work due." Read-only here — status/payment
+  // changes only happen through InvoiceDetail.
+  invoiceDue: "warning",
 };
 
 function startOfDay(d: Date): Date {
@@ -414,7 +418,9 @@ function CalendarItemChip({
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
-        <Badge tone={ITEM_TONE[item.itemType]}>{item.itemType === "task" || item.itemType === "assignmentDue" ? "Due" : item.itemType}</Badge>
+        <Badge tone={ITEM_TONE[item.itemType]}>
+          {item.itemType === "task" || item.itemType === "assignmentDue" || item.itemType === "invoiceDue" ? "Due" : item.itemType}
+        </Badge>
         <span className="truncate text-sm text-text">{item.title}</span>
         <span className="shrink-0 text-xs text-text-muted">{time}</span>
       </div>
