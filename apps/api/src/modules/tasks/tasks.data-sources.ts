@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -93,6 +94,46 @@ export const tasksListDataSource: DataSourceDefinition<z.infer<typeof ListParams
     // Phase 1: capped result set, no real cursor pagination yet — same
     // simplification as projects.list (see projects.data-sources.ts).
     return tx.task.findMany({ where, orderBy: { updatedAt: "desc" }, take: 50 });
+  },
+};
+
+const DetailParamsSchema = z.object({ id: z.string() });
+
+/**
+ * Frontend Structural Redesign, Phase 0 — backs the new `/workspace/tasks/[id]`
+ * route. Same `document.detail` precedent as `project.detail`: folds `id`
+ * into `tasksWhere`'s own scope where-clause (merged on top, since
+ * `tasksWhere`'s own params shape has no generic passthrough) rather than a
+ * separate existence-then-scope check, so "doesn't exist" and "exists but
+ * out of scope" both surface as one `NotFoundException`. No
+ * `requiredPermission` beyond what `tasksWhere` already enforces
+ * (`task:read`, same as `tasks.list`).
+ */
+export const taskDetailDataSource: DataSourceDefinition<z.infer<typeof DetailParamsSchema>> = {
+  name: "task.detail",
+  paramsSchema: DetailParamsSchema,
+  async resolve(params, ctx, tx) {
+    const scopeWhere = await tasksWhere(tx, ctx, {});
+    if (!scopeWhere) throw new NotFoundException(`No task "${params.id}"`);
+    const task = await tx.task.findFirst({ where: { ...scopeWhere, id: params.id } });
+    if (!task) throw new NotFoundException(`No task "${params.id}"`);
+
+    // Sequential, not Promise.all — same shared-tx rule as every other
+    // multi-query resolver in this codebase.
+    const assignee = task.assigneeId ? await tx.user.findFirst({ where: { id: task.assigneeId }, select: { displayName: true } }) : null;
+    const project = await tx.project.findFirst({ where: { id: task.projectId }, select: { name: true } });
+
+    // Same `chartVisible`-style computed-capability-flag precedent as
+    // `project.detail` — a hand-written route has no pruned `actions` array
+    // to read from.
+    const canUpdate = !!ctx.effective.has("task", "update");
+
+    return {
+      ...task,
+      canUpdate,
+      assigneeName: assignee?.displayName ?? null,
+      projectName: project?.name ?? null,
+    };
   },
 };
 

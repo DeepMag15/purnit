@@ -99,7 +99,21 @@ export const Table3Schema = z.object({
 });
 type Table3Props = z.infer<typeof Table3Schema>;
 
-export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind, actions }: Table3Props & CommonRenderProps) {
+// Frontend Structural Redesign, Phase 0 — `onRowClick` is a purely additive
+// escape hatch for a plain-React consumer (not a blueprint-authored node —
+// a function prop can't be Zod-validated/JSON-serialized, so it's outside
+// Table3Schema entirely) that needs to navigate to a *dynamic* per-row href
+// (e.g. `/workspace/projects/${row.id}`). The existing `navigateAction`
+// mechanism only ever resolves to a static blueprint pageId
+// (`ActionSpec.to: string`, dispatched via the SDUI `navigate(pageId)`
+// function) — it has no row-data interpolation, so it can't express "go to
+// this specific record's own route." When both are omitted, behavior is
+// byte-for-byte unchanged from before this prop existed.
+interface Table3ExtraProps {
+  onRowClick?: (row: Record<string, unknown>) => void;
+}
+
+export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind, actions, onRowClick }: Table3Props & CommonRenderProps & Table3ExtraProps) {
   const { data, loading, error, refetch } = useDataBinding(bind);
   const dispatch = useActionDispatch();
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -219,8 +233,8 @@ export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind,
                   groupRows.map((row, i) => (
                     <tr
                       key={String(row.id ?? `${groupKey}-${i}`)}
-                      onClick={navigateAction ? () => dispatch(navigateAction, row) : undefined}
-                      className={"transition-colors duration-150" + (navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
+                      onClick={onRowClick ? () => onRowClick(row) : navigateAction ? () => dispatch(navigateAction, row) : undefined}
+                      className={"transition-colors duration-150" + (onRowClick || navigateAction ? " cursor-pointer hover:bg-surface-hover" : "")}
                     >
                       {columns.map((col) => (
                         <td key={col} className="whitespace-nowrap px-3 py-2.5 text-text">

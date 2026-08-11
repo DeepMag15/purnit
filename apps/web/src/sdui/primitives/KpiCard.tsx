@@ -45,10 +45,13 @@ export function KpiCard({ label, bind, trend, trendTone }: Props & CommonRenderP
   const showTrend = !loading && !error && trend && trend.length > 1;
 
   return (
-    <Card className="p-4">
+    // Frontend Structural Redesign, Phase 0 — the shared hover-elevation
+    // convention (§2.7): reuses the existing --shadow-*/--duration-* tokens,
+    // no new values.
+    <Card className="p-4 transition-shadow duration-[var(--duration-fast)] hover:shadow-md">
       <div className="text-xs font-medium text-text-muted">{label}</div>
       <div className="mt-1.5 flex items-baseline justify-between gap-3">
-        <div className="font-mono text-2xl font-semibold text-text">
+        <div className="font-mono text-2xl font-semibold tracking-tight text-text">
           {loading ? <Skeleton className="h-7 w-16" /> : error ? <span className="text-sm text-danger">—</span> : String(data ?? "—")}
         </div>
         {showTrend && <Sparkline values={trend} tone={trendTone ?? "accent"} />}

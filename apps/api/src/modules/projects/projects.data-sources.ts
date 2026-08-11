@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -110,6 +111,65 @@ export const projectsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
       owner: p.ownerId ? (ownerNames.get(p.ownerId) ?? null) : null,
       members: membersByProject.get(p.id) ?? [],
     }));
+  },
+};
+
+const DetailParamsSchema = z.object({ id: z.string() });
+
+/**
+ * Frontend Structural Redesign, Phase 0 — backs the new `/workspace/projects/[id]`
+ * route. Follows `document.detail`'s own precedent exactly: folds the `id`
+ * into the same scope-check the row-list source already uses (`projectsWhere`,
+ * here via its `extra` passthrough) rather than a separate existence-then-
+ * scope check, so "doesn't exist" and "exists but out of scope" both surface
+ * as one `NotFoundException` — never leaking which. No `requiredPermission`
+ * beyond what `projectsWhere` itself already enforces (`project:read`, same
+ * as `projects.list`).
+ */
+export const projectDetailDataSource: DataSourceDefinition<z.infer<typeof DetailParamsSchema>> = {
+  name: "project.detail",
+  paramsSchema: DetailParamsSchema,
+  async resolve(params, ctx, tx) {
+    const where = await projectsWhere(tx, ctx, { id: params.id });
+    if (!where) throw new NotFoundException(`No project "${params.id}"`);
+    const project = await tx.project.findFirst({ where });
+    if (!project) throw new NotFoundException(`No project "${params.id}"`);
+
+    // Sequential, not Promise.all — same shared-tx rule as every other
+    // multi-query resolver in this codebase (concurrent queries against one
+    // transactional `tx` are unsafe).
+    const ownerNames = await withOwnerNames(tx, [project]);
+    const membersByProject = await withMembers(tx, [project]);
+    const department = project.departmentId ? await tx.department.findFirst({ where: { id: project.departmentId }, select: { name: true } }) : null;
+    const taskCount = await tx.task.count({ where: { projectId: project.id, deletedAt: null } });
+    const documentCount = await tx.document.count({ where: { projectId: project.id, deletedAt: null } });
+
+    // A hand-written detail-page route (unlike a blueprint-driven composite)
+    // has no `actions` array pruned server-side to read capability from —
+    // same reasoning `patients.list`'s own `chartVisible` flag already
+    // established: compute the booleans the frontend needs directly off
+    // `ctx.effective`, the identical primitive every mutation's own
+    // requiredPermission check already uses. No new authorization concept.
+    const canUpdate = !!ctx.effective.has("project", "update");
+    const canDelete = !!ctx.effective.has("project", "delete");
+    const canCreateDocuments = !!ctx.effective.has("document", "create");
+    const canUpdateDocuments = !!ctx.effective.has("document", "update");
+    const canDeleteDocuments = !!ctx.effective.has("document", "delete");
+
+    return {
+      ...project,
+      owner: project.ownerId ? (ownerNames.get(project.ownerId) ?? null) : null,
+      departmentName: department?.name ?? null,
+      members: membersByProject.get(project.id) ?? [],
+      taskCount,
+      documentCount,
+      canUpdate,
+      canDelete,
+      canManageMembers: canUpdate,
+      canCreateDocuments,
+      canUpdateDocuments,
+      canDeleteDocuments,
+    };
   },
 };
 

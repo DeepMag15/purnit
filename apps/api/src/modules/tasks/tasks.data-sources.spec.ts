@@ -1,5 +1,6 @@
+import { NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { tasksWhere } from "./tasks.data-sources";
+import { tasksWhere, taskDetailDataSource } from "./tasks.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -122,5 +123,79 @@ describe("tasksWhere", () => {
   it("a projectId filter is honored as a direct passthrough regardless of scope", async () => {
     const where = await tasksWhere(tx, context(["task:read:tenant"]), { projectId: "p1" });
     expect(where).toEqual({ tenantId: "t1", deletedAt: null, projectId: "p1" });
+  });
+});
+
+// Frontend Structural Redesign, Phase 0.
+describe("task.detail", () => {
+  it("throws NotFoundException when the actor has no task:read grant at all", async () => {
+    const detailTx = {} as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("throws NotFoundException when the task doesn't exist or is out of the actor's scope", async () => {
+    const detailTx = { task: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("scopes the lookup by the actor's own tasksWhere, merged with the requested id", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const detailTx = { task: { findFirst } } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:own"]), detailTx)).rejects.toThrow(NotFoundException);
+    expect(findFirst.mock.calls[0]![0].where).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1", id: "tk1" });
+  });
+
+  it("returns the task with resolved assignee/project names", async () => {
+    const detailTx = {
+      task: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: "tk1", title: "Fix bug", description: null, status: "todo", priority: "high", assigneeId: "u1", projectId: "p1" }),
+      },
+      user: { findFirst: jest.fn().mockResolvedValue({ displayName: "Alice" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const result = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as {
+      assigneeName: string | null;
+      projectName: string | null;
+    };
+
+    expect(result.assigneeName).toBe("Alice");
+    expect(result.projectName).toBe("Redesign");
+  });
+
+  it("returns a null assigneeName without querying user when the task is unassigned", async () => {
+    const userFindFirst = jest.fn();
+    const detailTx = {
+      task: {
+        findFirst: jest.fn().mockResolvedValue({ id: "tk1", title: "Unassigned", description: null, status: "todo", priority: "medium", assigneeId: null, projectId: "p1" }),
+      },
+      user: { findFirst: userFindFirst },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const result = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as { assigneeName: string | null };
+    expect(result.assigneeName).toBeNull();
+    expect(userFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("has no requiredPermission — visibility is enforced entirely by tasksWhere, same as tasks.list", () => {
+    expect(taskDetailDataSource.requiredPermission).toBeUndefined();
+  });
+
+  it("computes canUpdate from ctx.effective, not a hardcoded true", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", title: "Fix bug", assigneeId: null, projectId: "p1" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const readOnly = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as { canUpdate: boolean };
+    expect(readOnly.canUpdate).toBe(false);
+
+    const editable = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant", "task:update:tenant"]), detailTx)) as {
+      canUpdate: boolean;
+    };
+    expect(editable.canUpdate).toBe(true);
   });
 });

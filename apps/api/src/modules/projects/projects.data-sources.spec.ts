@@ -1,5 +1,6 @@
+import { NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { projectsWhere } from "./projects.data-sources";
+import { projectsWhere, projectDetailDataSource } from "./projects.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -67,5 +68,76 @@ describe("projectsWhere", () => {
   it("merges caller-supplied extra filters (e.g. status)", async () => {
     const where = await projectsWhere(tx, context(["project:read:tenant"]), { status: "active" });
     expect(where).toEqual({ tenantId: "t1", deletedAt: null, status: "active" });
+  });
+});
+
+// Frontend Structural Redesign, Phase 0.
+describe("project.detail", () => {
+  it("throws NotFoundException when the actor has no project:read grant at all", async () => {
+    const detailTx = {} as PrismaTx;
+    await expect(projectDetailDataSource.resolve({ id: "p1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("throws NotFoundException when the project doesn't exist or is out of the actor's scope", async () => {
+    const detailTx = { project: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
+    await expect(projectDetailDataSource.resolve({ id: "p1" }, context(["project:read:tenant"]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("returns the project with resolved owner/department names, members, and counts", async () => {
+    const detailTx = {
+      project: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: "p1", name: "Redesign", description: "A test project", status: "active", ownerId: "u1", departmentId: "d1" }),
+      },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "u1", displayName: "Alice" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ projectId: "p1", userId: "u1" }]) },
+      department: { findFirst: jest.fn().mockResolvedValue({ name: "Engineering" }) },
+      task: { count: jest.fn().mockResolvedValue(4) },
+      document: { count: jest.fn().mockResolvedValue(2) },
+    } as unknown as PrismaTx;
+
+    const result = (await projectDetailDataSource.resolve({ id: "p1" }, context(["project:read:tenant"]), detailTx)) as {
+      owner: string | null;
+      departmentName: string | null;
+      members: { id: string; displayName: string }[];
+      taskCount: number;
+      documentCount: number;
+    };
+
+    expect(result.owner).toBe("Alice");
+    expect(result.departmentName).toBe("Engineering");
+    expect(result.members).toEqual([{ id: "u1", displayName: "Alice" }]);
+    expect(result.taskCount).toBe(4);
+    expect(result.documentCount).toBe(2);
+  });
+
+  it("has no requiredPermission — visibility is enforced entirely by projectsWhere, same as projects.list", () => {
+    expect(projectDetailDataSource.requiredPermission).toBeUndefined();
+  });
+
+  it("computes canUpdate/canDelete/canManageMembers/document-capability flags from ctx.effective, not a hardcoded true", async () => {
+    const detailTx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", name: "Redesign", ownerId: null, departmentId: null }) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { count: jest.fn().mockResolvedValue(0) },
+      document: { count: jest.fn().mockResolvedValue(0) },
+    } as unknown as PrismaTx;
+
+    const readOnly = (await projectDetailDataSource.resolve({ id: "p1" }, context(["project:read:tenant"]), detailTx)) as {
+      canUpdate: boolean;
+      canDelete: boolean;
+      canManageMembers: boolean;
+      canCreateDocuments: boolean;
+    };
+    expect(readOnly).toMatchObject({ canUpdate: false, canDelete: false, canManageMembers: false, canCreateDocuments: false });
+
+    const full = (await projectDetailDataSource.resolve(
+      { id: "p1" },
+      context(["project:read:tenant", "project:update:tenant", "project:delete:tenant", "document:create:tenant"]),
+      detailTx,
+    )) as { canUpdate: boolean; canDelete: boolean; canManageMembers: boolean; canCreateDocuments: boolean };
+    expect(full).toMatchObject({ canUpdate: true, canDelete: true, canManageMembers: true, canCreateDocuments: true });
   });
 });

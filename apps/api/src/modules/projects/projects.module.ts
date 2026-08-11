@@ -2,7 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
-import { projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource } from "./projects.data-sources";
+import { projectDetailDataSource, projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource } from "./projects.data-sources";
 import { projectAddMemberMutation, projectCreateMutation, projectDeleteMutation, projectRemoveMemberMutation, projectUpdateMutation } from "./projects.mutations";
 import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric } from "./projects.metrics";
 
@@ -25,6 +25,7 @@ class ProjectsRegistrar implements OnModuleInit {
     this.dataSources.register(projectsListDataSource);
     this.dataSources.register(projectsCountDataSource);
     this.dataSources.register(projectsStatusBreakdownDataSource);
+    this.dataSources.register(projectDetailDataSource);
     this.mutations.register(projectCreateMutation);
     this.mutations.register(projectUpdateMutation);
     this.mutations.register(projectDeleteMutation);

@@ -2,7 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
-import { tasksCountDataSource, tasksListDataSource } from "./tasks.data-sources";
+import { taskDetailDataSource, tasksCountDataSource, tasksListDataSource } from "./tasks.data-sources";
 import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation, taskUpdateDueDateMutation } from "./tasks.mutations";
 import {
   tasksOpenCountMetric,
@@ -30,6 +30,7 @@ class TasksRegistrar implements OnModuleInit {
   onModuleInit() {
     this.dataSources.register(tasksListDataSource);
     this.dataSources.register(tasksCountDataSource);
+    this.dataSources.register(taskDetailDataSource);
     this.mutations.register(taskCreateMutation);
     this.mutations.register(taskUpdateStatusMutation);
     this.mutations.register(taskReassignMutation);

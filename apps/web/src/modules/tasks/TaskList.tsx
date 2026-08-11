@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../../ui/Icon";
 import type { CommonRenderProps } from "../../sdui/registry";
@@ -239,7 +240,13 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
                 <li key={task.id} className="flex flex-col gap-2 py-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm text-text">{task.title}</span>
+                      {/* Frontend Structural Redesign, Phase 0 — a minimal,
+                          additive navigation affordance to the new detail
+                          route; the rest of this row (comments/reassign/
+                          status) is unchanged, full redesign is Phase 1's job. */}
+                      <Link href={`/workspace/tasks/${task.id}`} className="truncate text-sm text-text hover:text-accent">
+                        {task.title}
+                      </Link>
                       {task.priority && <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>}
                       {task.dueDate && (
                         <Badge tone={new Date(task.dueDate) < new Date() && task.status !== "done" ? "danger" : "neutral"}>

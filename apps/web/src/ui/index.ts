@@ -17,4 +17,8 @@ export { Switch } from "./Switch";
 export { Textarea } from "./Textarea";
 export { Pagination } from "./Pagination";
 export { BulkActionBar } from "./BulkActionBar";
+export { Avatar } from "./Avatar";
+export { PageHeader } from "./PageHeader";
+export { ViewSwitcher, type ViewOption } from "./ViewSwitcher";
+export { DetailPageShell } from "./DetailPageShell";
 export { cn } from "./utils";

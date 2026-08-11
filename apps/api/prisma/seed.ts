@@ -563,7 +563,18 @@ const IT_BLUEPRINT_V1 = {
       type: "Page",
       version: 1,
       children: [
-        { id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } },
+        {
+          id: "hdr",
+          type: "Heading",
+          version: 1,
+          props: {
+            text: "Good morning, {{user.displayName}}",
+            // Frontend Structural Redesign, Phase 0 — the new hero band's
+            // one-line subtitle; a static, interpolated string (no live KPI
+            // summary — see Heading.tsx's own doc comment for why).
+            subtitle: "Here's what's happening across your workspace today.",
+          },
+        },
         // Platform UI/UX Redesign, Phase F — everything below is now a
         // DashboardGrid child (a customizable, drag/resize/save/reset grid,
         // reusing Analytics' own DashboardLayout persistence engine under a
@@ -752,6 +763,16 @@ const IT_BLUEPRINT_V1 = {
               mutation: "project.create",
               input: { ref: "form.newProject" },
               requiredPermission: "project:create",
+            },
+            // Frontend Structural Redesign, Phase 0 — the new Board view's
+            // drag-to-change-status calls this directly (KanbanBoard@1's own
+            // updateMutation prop); same permission the mutation itself
+            // already requires, no new grant.
+            {
+              kind: "mutation",
+              mutation: "project.update",
+              input: { ref: "row.id" },
+              requiredPermission: "project:update",
             },
             {
               kind: "mutation",
