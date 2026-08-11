@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
@@ -13,18 +14,9 @@ import { Input } from "../../ui/Input";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
-import { CommentThread } from "../comments/CommentThread";
 
 const DOCUMENTS_BUCKET = "documents";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  uploaded: "uploaded this document",
-  replaced: "uploaded a new version",
-  renamed: "renamed this document",
-  approval_status_changed: "changed the approval status",
-  deleted: "deleted this document",
-};
 
 interface DocumentRow {
   id: string;
@@ -37,11 +29,6 @@ interface DocumentRow {
   uploadedByName: string;
   createdAt: string;
   updatedAt: string;
-}
-
-interface MentionCandidate {
-  id: string;
-  displayName: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -64,23 +51,30 @@ function formatRelativeTime(iso: string): string {
 
 /**
  * Project Documents (Core Workspace Phase 2, Submodule 1) — a plain shared
- * component, not blueprint-registered, same "mounted per-row behind an
- * expand toggle" precedent as CommentThread. Permission gating comes from
- * `ProjectBoard`'s own `actions` array (document.create/update/delete),
- * passed down as booleans rather than re-deriving from render context here.
+ * component, not blueprint-registered, mounted inside `ProjectDetail`'s own
+ * Documents tab. Permission gating comes from `ProjectDetail`'s own
+ * `data.canCreateDocuments`/etc. flags, passed down as booleans rather than
+ * re-deriving from render context here.
+ *
+ * Frontend Structural Redesign, Phase 1 — the per-row expand toggle
+ * (activity history + comments) was removed: both are now redundant with
+ * the new `/workspace/documents/[id]` detail page's own Activity/Comments
+ * tabs, and this panel is already mounted one level inside a detail page
+ * (`ProjectDetail`), so a second nested expand-toggle for the same
+ * information was real clutter. Click-to-open-file/download/upload/
+ * replace/approval-status/delete all stay exactly as they were — genuinely
+ * fast, primary actions worth keeping inline, not moved to the detail page.
  */
 export function DocumentsPanel({
   projectId,
   canCreate,
   canUpdate,
   canDelete,
-  mentionCandidates,
 }: {
   projectId: string;
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
-  mentionCandidates: MentionCandidate[];
 }) {
   const { user, tenant, callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const queryClient = useQueryClient();
@@ -89,7 +83,6 @@ export function DocumentsPanel({
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const replaceTargetId = useRef<string | null>(null);
 
   const params = { projectId, search: search || undefined };
@@ -183,15 +176,6 @@ export function DocumentsPanel({
     }
   }
 
-  function toggleExpanded(id: string) {
-    setExpandedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface/50 p-2">
       <div className="flex items-center gap-2">
@@ -269,9 +253,13 @@ export function DocumentsPanel({
                       <Icon name="publish" size={14} />
                     </button>
                   )}
-                  <button type="button" onClick={() => toggleExpanded(d.id)} title="Comments & history" className="text-text-muted transition-colors duration-150 hover:text-text">
-                    <Icon name="chat_bubble" size={14} />
-                  </button>
+                  <Link
+                    href={`/workspace/documents/${d.id}`}
+                    title="View details"
+                    className="text-text-muted transition-colors duration-150 hover:text-text"
+                  >
+                    <Icon name="open_in_new" size={14} />
+                  </Link>
                   {canDelete && (
                     <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-150 hover:text-danger">
                       <Icon name="delete" size={14} />
@@ -295,47 +283,12 @@ export function DocumentsPanel({
                   )}
                 </div>
               )}
-
-              {expandedIds.has(d.id) && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <DocumentActivityFeed documentId={d.id} />
-                  <CommentThread entityType="document" entityId={d.id} mentionCandidates={mentionCandidates} />
-                </div>
-              )}
             </div>
           ))}
         </div>
       )}
 
       <input ref={replaceInputRef} type="file" onChange={handleReplace} className="hidden" disabled={uploading} />
-    </div>
-  );
-}
-
-/** Mounted only while a document row is expanded — same "don't fetch what
- * nobody's looking at" discipline as CommentThread's own mount timing. */
-function DocumentActivityFeed({ documentId }: { documentId: string }) {
-  const { data } = useDataSourceQuery<{
-    versions: { id: string; version: number; sizeBytes: number; createdByName: string; createdAt: string }[];
-    activities: { id: string; type: string; detail: string | null; actorName: string; createdAt: string }[];
-  }>("document.detail", { id: documentId });
-
-  if (!data) return null;
-
-  return (
-    <div className="rounded-md border border-border bg-bg p-2 text-xs text-text-muted">
-      {data.activities.length === 0 ? (
-        <div>No activity yet.</div>
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {data.activities.map((a) => (
-            <li key={a.id}>
-              <span className="text-text">{a.actorName}</span> {ACTIVITY_LABELS[a.type] ?? a.type}
-              {a.detail ? ` (${a.detail})` : ""} — {formatRelativeTime(a.createdAt)}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

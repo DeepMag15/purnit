@@ -88,13 +88,7 @@ function PatientChartSection({
           Summarize Patient Notes
         </Button>
       )}
-      <DocumentsPanel
-        projectId={patient.chartProjectId}
-        canCreate={canCreateDocuments}
-        canUpdate={canUpdateDocuments}
-        canDelete={canDeleteDocuments}
-        mentionCandidates={patient.assignedDoctorId ? [{ id: patient.assignedDoctorId, displayName: patient.assignedDoctorName ?? "Doctor" }] : []}
-      />
+      <DocumentsPanel projectId={patient.chartProjectId} canCreate={canCreateDocuments} canUpdate={canUpdateDocuments} canDelete={canDeleteDocuments} />
     </div>
   );
 }

@@ -83,7 +83,17 @@ export const documentDetailDataSource: DataSourceDefinition<z.infer<typeof Detai
     const actors = await tx.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true } });
     const nameById = new Map(actors.map((a) => [a.id, a.displayName]));
 
+    // Frontend Structural Redesign, Phase 1 — same computed-capability-flag
+    // precedent project.detail/task.detail already established (Phase 0): a
+    // hand-written detail-page route has no pruned `actions` array to read
+    // capability from the way DocumentsPanel (a blueprint-driven composite)
+    // does.
+    const canUpdate = !!ctx.effective.has("document", "update");
+    const canDelete = !!ctx.effective.has("document", "delete");
+
     return {
+      canUpdate,
+      canDelete,
       document: {
         id: document.id,
         projectId: document.projectId,

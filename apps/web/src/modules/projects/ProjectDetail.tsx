@@ -184,7 +184,6 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           canCreate={data.canCreateDocuments}
           canUpdate={data.canUpdateDocuments}
           canDelete={data.canDeleteDocuments}
-          mentionCandidates={data.members}
         />
       )}
       {activeTab === "comments" && <CommentThread entityType="project" entityId={projectId} mentionCandidates={data.members} />}

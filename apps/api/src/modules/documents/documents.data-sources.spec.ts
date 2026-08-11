@@ -102,4 +102,27 @@ describe("document.detail", () => {
     expect(result.versions[0]!.createdByName).toBe("Alice");
     expect(result.activities[0]!.actorName).toBe("Bob");
   });
+
+  // Frontend Structural Redesign, Phase 1.
+  it("computes canUpdate/canDelete from ctx.effective, not a hardcoded true", async () => {
+    const tx = {
+      document: {
+        findFirst: jest.fn().mockResolvedValue({ id: "d1", projectId: "p1", name: "Spec.pdf", mimeType: "application/pdf", sizeBytes: 100, version: 1, approvalStatus: null, uploadedById: "u1", createdAt: new Date(), updatedAt: new Date() }),
+      },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", ownerId: null, departmentId: null }) },
+      documentVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      documentActivity: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "u1", displayName: "Alice" }]) },
+    } as unknown as PrismaTx;
+
+    const readOnly = (await documentDetailDataSource.resolve({ id: "d1" }, context(["project:read:tenant"]), tx)) as { canUpdate: boolean; canDelete: boolean };
+    expect(readOnly).toMatchObject({ canUpdate: false, canDelete: false });
+
+    const full = (await documentDetailDataSource.resolve(
+      { id: "d1" },
+      context(["project:read:tenant", "document:update:tenant", "document:delete:tenant"]),
+      tx,
+    )) as { canUpdate: boolean; canDelete: boolean };
+    expect(full).toMatchObject({ canUpdate: true, canDelete: true });
+  });
 });
