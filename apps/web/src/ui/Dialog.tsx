@@ -33,6 +33,17 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const titleId = useId();
+  // Callers pass onClose as an inline arrow function, so its identity
+  // changes on every parent render (e.g. every keystroke in a form field
+  // above updates the form's state and re-renders the parent). Reading it
+  // through a ref, updated every render but never a dependency itself,
+  // keeps the effect below tied only to `open` actually transitioning —
+  // not to every unrelated parent re-render — while still always calling
+  // the latest onClose. Previously the effect re-ran on every keystroke,
+  // yanking focus back to the trigger button and then back into the
+  // dialog on every single character typed.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +54,7 @@ export function Dialog({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !panel) return;
@@ -64,7 +75,7 @@ export function Dialog({
       document.removeEventListener("keydown", handleKeyDown);
       previouslyFocused.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
