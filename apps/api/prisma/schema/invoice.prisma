@@ -1,0 +1,35 @@
+/// Finance Domain, Phase A. `status` is deliberately a narrow workflow field
+/// ("draft"|"sent"|"void" only) — "paid"/"overdue" are NEVER stored, always
+/// derived live from `sum(Payment.amount)` vs `total` and `dueDate` vs now
+/// (see invoices.data-sources.ts's own doc comment), same "derive, don't
+/// duplicate" discipline `course.detail`'s `assignmentCount`/`documentCount`
+/// already established — avoids needing any scheduled job to flip a status.
+/// `lineItems` is a Json array (`{description, quantity, unitPrice, amount}[]`,
+/// a shared TS interface, not a separate relational model) — a disclosed
+/// Phase A simplification, no per-line-item independent audit trail needed
+/// yet. Money fields are `Int`, stored in minor currency units (cents) —
+/// never a float, standard fintech convention avoiding rounding drift.
+model Invoice {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  clientId    String    @map("client_id") @db.Uuid
+  client      Client    @relation(fields: [clientId], references: [id])
+  status      String    @default("draft")
+  issueDate   DateTime  @map("issue_date")
+  dueDate     DateTime  @map("due_date")
+  lineItems   Json      @map("line_items")
+  subtotal    Int
+  tax         Int       @default(0)
+  total       Int
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  payments Payment[]
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, status])
+  @@map("invoices")
+}

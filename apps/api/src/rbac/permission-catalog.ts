@@ -182,6 +182,31 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "grade", action: "update", label: "Correct grades" },
     ],
   },
+  // Finance Domain, Phase A — the platform's third industry blueprint. Same
+  // shape/discipline as every module above.
+  {
+    module: "Clients",
+    entries: [
+      { resource: "client", action: "create", label: "Register new clients" },
+      { resource: "client", action: "read", label: "View client records" },
+      { resource: "client", action: "update", label: "Update client profile/status/account manager" },
+    ],
+  },
+  {
+    module: "Invoices",
+    entries: [
+      { resource: "invoice", action: "create", label: "Create invoices" },
+      { resource: "invoice", action: "read", label: "View invoices" },
+      { resource: "invoice", action: "update", label: "Send/void invoices" },
+    ],
+  },
+  {
+    module: "Payments",
+    entries: [
+      { resource: "payment", action: "create", label: "Record payments" },
+      { resource: "payment", action: "read", label: "View payment history" },
+    ],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));

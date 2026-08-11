@@ -22,8 +22,10 @@ export default function SignupPage() {
   // new industry blueprint is added to make it provisionable at all
   // (everything else — nav, pages, widgets — is already 100% manifest-
   // driven, zero industry-conditional code anywhere else in this app).
-  // Education Domain, Phase A added "Education".
-  const [industry, setIndustry] = useState<"IT" | "Healthcare" | "Education">("IT");
+  // Education Domain, Phase A added "Education". Finance Domain, Phase A
+  // added "Finance" — done in this same commit this time, not a follow-up
+  // hotfix (Education's own launch missed it once).
+  const [industry, setIndustry] = useState<"IT" | "Healthcare" | "Education" | "Finance">("IT");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Held only in memory, only between signup succeeding and the user
@@ -106,10 +108,11 @@ export default function SignupPage() {
         <h1 className="text-center text-lg font-semibold text-text">Create your workspace</h1>
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
           <Input placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required autoFocus />
-          <Select value={industry} onChange={(e) => setIndustry(e.target.value as "IT" | "Healthcare" | "Education")} aria-label="Industry">
+          <Select value={industry} onChange={(e) => setIndustry(e.target.value as "IT" | "Healthcare" | "Education" | "Finance")} aria-label="Industry">
             <option value="IT">IT</option>
             <option value="Healthcare">Healthcare</option>
             <option value="Education">Education</option>
+            <option value="Finance">Finance</option>
           </Select>
           <Input placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
           <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />

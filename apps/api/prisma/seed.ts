@@ -2159,6 +2159,395 @@ const EDUCATION_BLUEPRINT_V1 = {
   },
 };
 
+const FINANCE_BLUEPRINT_V1 = {
+  id: "finance",
+  version: 1,
+  industry: "Finance",
+  // 4 flat roles, no `extends` chains — same precedent Healthcare/Education
+  // both established. Designed around a real accounting control (separation
+  // of duties), not an arbitrary read/write split: Accountant is the only
+  // role holding both invoice AND payment authority; Billing Clerk can
+  // issue/manage invoices but can never record a payment against one — the
+  // person who creates an invoice must not also be the one who marks it
+  // paid. Sales Rep owns client relationships and sees only their own
+  // clients' invoices, with zero billing/payment authority at all.
+  roles: [
+    {
+      id: "role.admin",
+      label: "Finance Director",
+      rank: 0,
+      permissions: [
+        "client:create:tenant",
+        "client:read:tenant",
+        "client:update:tenant",
+        "invoice:create:tenant",
+        "invoice:read:tenant",
+        "invoice:update:tenant",
+        "payment:create:tenant",
+        "payment:read:tenant",
+        "project:create:tenant",
+        "project:read:tenant",
+        "project:update:tenant",
+        "project:delete:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "task:delete:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "document:delete:tenant",
+        "role:manage:tenant",
+        "role:assign:tenant",
+        "user:invite:tenant",
+        "user:manage:tenant",
+        "department:manage:tenant",
+        "settings:manage:tenant",
+        "meeting:create:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:tenant",
+        "attendance:create:tenant",
+        "attendance:read:tenant",
+        "attendance:update:tenant",
+      ],
+    },
+    {
+      // The only role holding both invoice AND payment authority — the real
+      // financial-operations tier, mirrors Doctor's/Teacher's core-authority
+      // role in the prior two domains.
+      id: "role.accountant",
+      label: "Accountant",
+      rank: 1,
+      permissions: [
+        "client:read:tenant",
+        "invoice:create:tenant",
+        "invoice:read:tenant",
+        "invoice:update:tenant",
+        "payment:create:tenant",
+        "payment:read:tenant",
+        // project:read:tenant (not :own) — an Accountant legitimately needs
+        // cross-account visibility into client files for collections/
+        // reconciliation work, unlike Sales Rep's confidentiality-scoped :own.
+        "project:read:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      // Separation-of-duties role: can issue/manage invoices (AR clerk
+      // duties) but holds ZERO payment:* — cannot record a payment against
+      // an invoice it created. Also holds no project:read at all — a
+      // billing clerk has no legitimate need to see client correspondence/
+      // contracts, the concrete "structurally excluded" proof for this
+      // domain (mirrors Receptionist/Registrar's own precedent).
+      id: "role.billing-clerk",
+      label: "Billing Clerk",
+      rank: 2,
+      permissions: [
+        "client:read:tenant",
+        "invoice:create:tenant",
+        "invoice:read:tenant",
+        "invoice:update:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      // Owns client relationships (accountManagerId) — a REAL, non-inert
+      // :own scope (client:create is tenant-wide for this role, so a Sales
+      // Rep genuinely owns the clients they create). Sees only their own
+      // clients' invoices (invoice:read:own, resolved transitively through
+      // Client via salesRepOwnedClientIds) — zero billing/payment authority
+      // at all, a pure relationship-owner role.
+      id: "role.sales-rep",
+      label: "Account Manager",
+      rank: 3,
+      permissions: [
+        "client:create:tenant",
+        "client:read:tenant",
+        "client:update:own",
+        "invoice:read:own",
+        // project:read:own — confidentiality-scoped: a Sales Rep sees only
+        // the Files Project backing clients they themselves created/own,
+        // never a colleague's. Real because client:create makes them the
+        // Project's ownerId (see client.create's own doc comment).
+        "project:read:own",
+        "document:create:tenant",
+        "document:update:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+  ],
+  // No Finance department taxonomy in Phase A — same disclosed MVP
+  // narrowing as Healthcare/Education's own Phase A; none of the 3 new
+  // models have a departmentId column.
+  departmentTypes: [],
+  navigation: [
+    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
+    {
+      id: "nav.clients",
+      label: "Clients",
+      icon: "group",
+      pageId: "page.clients",
+      requiredPermission: "client:read",
+      moduleKey: "clients",
+    },
+    {
+      id: "nav.invoices",
+      label: "Invoices",
+      icon: "receipt",
+      pageId: "page.invoices",
+      requiredPermission: "invoice:read",
+      moduleKey: "invoices",
+    },
+    // Everything below reuses an existing module's own nav entry verbatim
+    // (same pageId-bearing composite, same permission gate where one
+    // exists) — zero new code, only blueprint content, same "reuse as many
+    // existing modules as possible" mandate every prior domain used.
+    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
+    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
+    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
+    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
+    {
+      id: "nav.attendance",
+      label: "Attendance",
+      icon: "attendance",
+      pageId: "page.attendance",
+      requiredPermission: "attendance:read",
+    },
+    {
+      id: "nav.roles-permissions",
+      label: "Roles & Permissions",
+      icon: "roles-permissions",
+      pageId: "page.roles-permissions",
+      requiredPermission: "role:manage",
+    },
+    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
+    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+  ],
+  dashboards: { default: "page.dashboard" },
+  modules: ["clients", "invoices"],
+  pages: {
+    "page.dashboard": {
+      id: "page.dashboard",
+      type: "Page",
+      version: 1,
+      // Deliberately minimal, same treatment as every prior domain's own
+      // page.dashboard — no requiredPermission (must never be
+      // permission-gated, see main()'s own sanity check below). Role-specific
+      // widget curation belongs on page.analytics via
+      // DEFAULT_DASHBOARD_WIDGET_KEYS in a later phase, not duplicated here.
+      children: [{ id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } }],
+    },
+    "page.clients": {
+      id: "page.clients",
+      type: "Page",
+      version: 1,
+      requiredPermission: "client:read",
+      children: [
+        {
+          id: "clients-workspace",
+          type: "ClientsWorkspace",
+          version: 1,
+          props: { title: "Clients" },
+          bind: { source: "clients.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "client.create", input: { ref: "form.newClient" }, requiredPermission: "client:create" },
+            { kind: "mutation", mutation: "client.updateStatus", input: { ref: "row.id" }, requiredPermission: "client:update" },
+          ],
+        },
+      ],
+    },
+    "page.invoices": {
+      id: "page.invoices",
+      type: "Page",
+      version: 1,
+      requiredPermission: "invoice:read",
+      children: [
+        {
+          id: "invoices-workspace",
+          type: "InvoicesWorkspace",
+          version: 1,
+          props: { title: "Invoices" },
+          bind: { source: "invoices.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "invoice.create", input: { ref: "form.newInvoice" }, requiredPermission: "invoice:create" },
+            { kind: "mutation", mutation: "invoice.updateStatus", input: { ref: "row.id" }, requiredPermission: "invoice:update" },
+          ],
+        },
+      ],
+    },
+    // Everything below reuses an existing blueprint page's own real content
+    // verbatim (same composite type, same actions/mutations) — copied, not
+    // referenced, since `pages` is a per-blueprint map; zero new frontend
+    // code either way, only JSON. Detail-page mutations (client.assignAccountManager,
+    // payment.record, comment.create, document.*) are triggered directly
+    // from ClientDetail/InvoiceDetail via useRenderContext().callMutation,
+    // not declared here — exactly how ProjectDetail.tsx already calls
+    // project.addMember/removeMember today without them appearing in
+    // page.projects's own actions.
+    "page.analytics": {
+      id: "page.analytics",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
+        {
+          id: "analytics-activity",
+          type: "ActivityFeed",
+          version: 1,
+          props: { title: "Recent Activity", limit: 10 },
+          bind: { source: "notifications.list" },
+        },
+        { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
+      ],
+    },
+    "page.chat": {
+      id: "page.chat",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "chat-workspace",
+          type: "ChatWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "conversation.createChannel", input: { ref: "form.newChannel" } },
+            { kind: "mutation", mutation: "conversation.createDm", input: { ref: "form.newDm" } },
+            { kind: "mutation", mutation: "conversation.addMember", input: { ref: "form.addMember" } },
+            { kind: "mutation", mutation: "conversation.archive", input: { ref: "row.conversationId" } },
+            { kind: "mutation", mutation: "message.send", input: { ref: "form.newMessage" } },
+            { kind: "mutation", mutation: "message.delete", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "conversation.markRead", input: { ref: "row.conversationId" } },
+          ],
+        },
+      ],
+    },
+    "page.meetings": {
+      id: "page.meetings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "meetings-workspace",
+          type: "MeetingsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "meeting.create", input: { ref: "form.scheduleMeeting" }, requiredPermission: "meeting:create" },
+            { kind: "mutation", mutation: "meeting.cancel", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "meeting.addParticipant", input: { ref: "form.addParticipant" } },
+            { kind: "mutation", mutation: "meeting.removeParticipant", input: { ref: "row.userId" } },
+            { kind: "mutation", mutation: "meeting.getJoinInfo", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.calendar": {
+      id: "page.calendar",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "calendar-workspace",
+          type: "CalendarWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "calendarEvent.create", input: { ref: "form.newCalendarEvent" }, requiredPermission: "calendarEvent:create" },
+            { kind: "mutation", mutation: "calendarEvent.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.attendance": {
+      id: "page.attendance",
+      type: "Page",
+      version: 1,
+      requiredPermission: "attendance:read",
+      children: [
+        {
+          id: "attendance-workspace",
+          type: "AttendanceWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "attendance.mark", input: { ref: "form.markAttendance" }, requiredPermission: "attendance:create" },
+            { kind: "mutation", mutation: "attendance.correct", input: { ref: "form.correctAttendance" }, requiredPermission: "attendance:update" },
+          ],
+        },
+      ],
+    },
+    "page.roles-permissions": {
+      id: "page.roles-permissions",
+      type: "Page",
+      version: 1,
+      requiredPermission: "role:manage",
+      children: [
+        {
+          id: "roles-permissions-workspace",
+          type: "RolesPermissionsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "role.createCustom", input: { ref: "form.newRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.grant", input: { ref: "form.grantDelegation" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.revoke", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+          ],
+        },
+      ],
+    },
+    "page.settings": {
+      id: "page.settings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "workspace-settings",
+          type: "WorkspaceSettings",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "tenant.updateBranding", input: { ref: "form.branding" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.updateWorkspaceId", input: { ref: "form.workspaceId" }, requiredPermission: "settings:manage" },
+            {
+              kind: "mutation",
+              mutation: "workspaceConfig.updateNavigationLabel",
+              input: { ref: "form.navLabel" },
+              requiredPermission: "settings:manage",
+            },
+            { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+          ],
+        },
+      ],
+    },
+    "page.account": {
+      id: "page.account",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
+        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
+      ],
+    },
+  },
+};
+
 // Shared by all blueprints — the default dashboard must never be
 // permission-gated for any tier, or a real user whose effective permissions
 // fail that gate would hit compileWorkspace's unguarded
@@ -2178,10 +2567,12 @@ async function main() {
   BlueprintDefinitionSchema.parse(IT_BLUEPRINT_V1);
   BlueprintDefinitionSchema.parse(HEALTHCARE_BLUEPRINT_V1);
   BlueprintDefinitionSchema.parse(EDUCATION_BLUEPRINT_V1);
+  BlueprintDefinitionSchema.parse(FINANCE_BLUEPRINT_V1);
 
   assertDefaultDashboardUngated(IT_BLUEPRINT_V1);
   assertDefaultDashboardUngated(HEALTHCARE_BLUEPRINT_V1);
   assertDefaultDashboardUngated(EDUCATION_BLUEPRINT_V1);
+  assertDefaultDashboardUngated(FINANCE_BLUEPRINT_V1);
 
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL }),
@@ -2212,6 +2603,15 @@ async function main() {
     update: { definition: EDUCATION_BLUEPRINT_V1 },
   });
   console.log("Seeded blueprint: Education v1");
+
+  // Finance Domain, Phase A — the platform's third non-IT blueprint, same
+  // zero-collision coexistence as Healthcare/Education above.
+  await prisma.blueprint.upsert({
+    where: { industry_version: { industry: "Finance", version: 1 } },
+    create: { industry: "Finance", version: 1, definition: FINANCE_BLUEPRINT_V1 },
+    update: { definition: FINANCE_BLUEPRINT_V1 },
+  });
+  console.log("Seeded blueprint: Finance v1");
 
   // Roles are materialized at tenant provisioning (AuthService.signup) —
   // a `Role` row's `permissions` is a snapshot copied from the blueprint at
@@ -2268,6 +2668,18 @@ async function main() {
     syncedEducationTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedEducationTenants} existing Education tenant(s) to the current blueprint`);
+
+  // Same re-sync, scoped to Finance tenants.
+  const financeTenantIds = (
+    await prisma.tenant.findMany({ where: { industry: FINANCE_BLUEPRINT_V1.industry }, select: { id: true } })
+  ).map((t) => t.id);
+  let syncedFinanceTenants = 0;
+  for (const tenantId of financeTenantIds) {
+    const roleIds = await materializeBlueprintRoles(prisma, tenantId, FINANCE_BLUEPRINT_V1.roles);
+    await materializeDepartmentTypeLabels(prisma, tenantId, FINANCE_BLUEPRINT_V1.departmentTypes, roleIds);
+    syncedFinanceTenants++;
+  }
+  console.log(`Re-synced roles + department-type labels for ${syncedFinanceTenants} existing Finance tenant(s) to the current blueprint`);
 
   await prisma.$disconnect();
 }

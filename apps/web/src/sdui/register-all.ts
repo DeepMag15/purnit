@@ -16,6 +16,8 @@ import { PatientsWorkspace, PatientsWorkspaceSchema } from "../modules/patients/
 import { AppointmentsWorkspace, AppointmentsWorkspaceSchema } from "../modules/appointments/AppointmentsWorkspace";
 import { StudentsWorkspace, StudentsWorkspaceSchema } from "../modules/students/StudentsWorkspace";
 import { CoursesWorkspace, CoursesWorkspaceSchema } from "../modules/courses/CoursesWorkspace";
+import { ClientsWorkspace, ClientsWorkspaceSchema } from "../modules/clients/ClientsWorkspace";
+import { InvoicesWorkspace, InvoicesWorkspaceSchema } from "../modules/invoices/InvoicesWorkspace";
 
 let registered = false;
 
@@ -41,4 +43,6 @@ export function registerAllComponents(): void {
   registerPrimitive("AppointmentsWorkspace", 1, AppointmentsWorkspaceSchema, AppointmentsWorkspace);
   registerPrimitive("StudentsWorkspace", 1, StudentsWorkspaceSchema, StudentsWorkspace);
   registerPrimitive("CoursesWorkspace", 1, CoursesWorkspaceSchema, CoursesWorkspace);
+  registerPrimitive("ClientsWorkspace", 1, ClientsWorkspaceSchema, ClientsWorkspace);
+  registerPrimitive("InvoicesWorkspace", 1, InvoicesWorkspaceSchema, InvoicesWorkspace);
 }

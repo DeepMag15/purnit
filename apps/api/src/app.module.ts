@@ -34,6 +34,9 @@ import { CoursesModule } from "./modules/courses/courses.module";
 import { EnrollmentsModule } from "./modules/enrollments/enrollments.module";
 import { AssignmentsModule } from "./modules/assignments/assignments.module";
 import { GradesModule } from "./modules/grades/grades.module";
+import { ClientsModule } from "./modules/clients/clients.module";
+import { InvoicesModule } from "./modules/invoices/invoices.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -71,6 +74,9 @@ import { MeController } from "./me/me.controller";
     EnrollmentsModule,
     AssignmentsModule,
     GradesModule,
+    ClientsModule,
+    InvoicesModule,
+    PaymentsModule,
   ],
   controllers: [HealthController, MeController],
 })
