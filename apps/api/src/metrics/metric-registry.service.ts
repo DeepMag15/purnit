@@ -2,7 +2,13 @@ import { Injectable } from "@nestjs/common";
 import type { DataSourceContext } from "../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../tenancy/tenant-prisma.service";
 
-export type MetricFormat = "count" | "percent" | "duration";
+// Finance Domain, Phase C — "currency" added. Value is always in minor
+// currency units (cents), same convention every money field in this
+// codebase already uses (see invoice.prisma's own doc comment) — the
+// frontend divides by 100 and formats via Intl.NumberFormat, never the
+// backend (same "compute, don't pre-format" discipline every other metric
+// already follows for count/percent).
+export type MetricFormat = "count" | "percent" | "duration" | "currency";
 
 /** Analytics-scoped filter values, threaded from `analytics.dashboard`'s
  * params through to each metric's `computeLive`. A metric applies whichever

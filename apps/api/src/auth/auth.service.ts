@@ -103,6 +103,25 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }
     blueprintRoleId: "role.registrar",
     keys: ["students.totalCount", "students.statusBreakdown", "enrollments.activeCount", "attendance.rateThisMonth"],
   },
+  // Finance Domain, Phase C. role.admin (Finance Director) shares the entry
+  // above across industries — untouched here, same precedent Healthcare/
+  // Education Phase C both established; the 5 new metrics auto-append below
+  // it for a Finance admin.
+  {
+    blueprintRoleId: "role.accountant",
+    keys: ["invoices.totalOutstanding", "invoices.overdueCount", "payments.collectedThisMonth", "clients.totalCount"],
+  },
+  {
+    blueprintRoleId: "role.billing-clerk",
+    keys: ["invoices.overdueCount", "invoices.totalOutstanding", "clients.totalCount"],
+  },
+  // Both invoice metrics correctly narrow to this Sales Rep's own clients
+  // via invoicesWhere's :own scope (salesRepOwnedClientIds) — a real, useful
+  // "how much do my clients owe" signal, not just Admin/Accountant's.
+  {
+    blueprintRoleId: "role.sales-rep",
+    keys: ["invoices.totalOutstanding", "invoices.overdueCount", "clients.totalCount"],
+  },
 ];
 
 /** A simple flowing 12-column grid — 2 widgets per row, `w: 6, h: 4` each.

@@ -16,6 +16,7 @@ import { AnalyticsWidgetCard, type AnalyticsWidget } from "./AnalyticsWidgetCard
 import { AnalyticsFilterProvider, useAnalyticsFilters } from "./analytics-filter-state";
 import { AnalyticsFilterBar } from "./AnalyticsFilterBar";
 import { AnalyticsViewTabs } from "./AnalyticsViewTabs";
+import { formatCents } from "../invoices/money";
 
 export const AnalyticsDashboardSchema = z.object({});
 type Props = z.infer<typeof AnalyticsDashboardSchema>;
@@ -71,7 +72,17 @@ function autoLayout(keys: string[]): WidgetLayoutEntry[] {
 function formatWidgetsForAi(widgets: AnalyticsWidget[]): string {
   const lines = widgets.map((w) => {
     if (w.kind === "scalar") {
-      const value = w.format === "percent" ? `${w.value}${w.unit ?? "%"}` : w.unit ? `${w.value} ${w.unit}` : String(w.value);
+      // Finance Domain, Phase C — "currency" values are cents; formatted the
+      // same way every other dollar amount in the app is, not left raw, so
+      // the AI prompt doesn't see a misleading bare number like "105000".
+      const value =
+        w.format === "percent"
+          ? `${w.value}${w.unit ?? "%"}`
+          : w.format === "currency"
+            ? formatCents(w.value)
+            : w.unit
+              ? `${w.value} ${w.unit}`
+              : String(w.value);
       return `- ${w.label}: ${value}`;
     }
     const top = w.rows

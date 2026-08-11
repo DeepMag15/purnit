@@ -47,7 +47,13 @@ async function withClientNames(tx: PrismaTx, invoices: { clientId: string }[]) {
   return new Map(clients.map((c) => [c.id, c.name]));
 }
 
-async function withAmountsPaid(tx: PrismaTx, tenantId: string, invoices: { id: string }[]) {
+/** Exported for reuse by invoices.metrics.ts (Finance Domain, Phase C) —
+ * `invoicesOverdueCountMetric`/`invoicesTotalOutstandingMetric` both need
+ * the same per-invoice paid-amount aggregate this list source already
+ * computes, same "reuse the owning module's own already-scoped builder"
+ * discipline `*Where()` functions already follow, extended here to a
+ * shared aggregation helper too. */
+export async function withAmountsPaid(tx: PrismaTx, tenantId: string, invoices: { id: string }[]) {
   if (invoices.length === 0) return new Map<string, number>();
   const grouped = await tx.payment.groupBy({
     by: ["invoiceId"],

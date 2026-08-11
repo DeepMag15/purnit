@@ -10,13 +10,14 @@ import { TimelineChart } from "../../sdui/primitives/TimelineChart";
 import { Leaderboard } from "../../sdui/primitives/Leaderboard";
 import { ProgressGoal } from "../../sdui/primitives/ProgressGoal";
 import { AnalyticsDrillDown } from "./AnalyticsDrillDown";
+import { formatCents } from "../invoices/money";
 
 interface ScalarWidget {
   kind: "scalar";
   key: string;
   module: string;
   label: string;
-  format: "count" | "percent" | "duration";
+  format: "count" | "percent" | "duration" | "currency";
   unit?: string;
   value: number;
   trend?: number[];
@@ -99,6 +100,10 @@ const PROGRESS_TARGETS: Record<string, number> = {
 
 function formatValue(widget: ScalarWidget): string {
   if (widget.format === "percent") return `${widget.value}${widget.unit ?? "%"}`;
+  // Finance Domain, Phase C — value is cents, same convention every money
+  // field in this app already uses; reuses the one shared cents<->dollars
+  // formatter (money.ts) rather than a second implementation.
+  if (widget.format === "currency") return formatCents(widget.value);
   if (widget.unit) return `${widget.value} ${widget.unit}`;
   return String(widget.value);
 }
