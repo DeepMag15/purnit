@@ -122,6 +122,27 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }
     blueprintRoleId: "role.sales-rep",
     keys: ["invoices.totalOutstanding", "invoices.overdueCount", "clients.totalCount"],
   },
+  // Manufacturing Domain, Phase C. role.admin (Plant Manager) shares the
+  // entry above across industries — untouched here, same precedent
+  // Healthcare/Education/Finance Phase C all established; the 7 new
+  // metrics auto-append below it for a Manufacturing admin. Every key below
+  // was checked against each role's own Phase A permission grants — no role
+  // lists a key for a metric it structurally can't see.
+  {
+    blueprintRoleId: "role.production-planner",
+    keys: ["workOrders.inProgressCount", "inventoryItems.lowStockCount", "inventoryItems.typeBreakdown"],
+  },
+  {
+    blueprintRoleId: "role.procurement-officer",
+    keys: ["purchaseOrders.totalOpenValue", "purchaseOrders.openCount", "inventoryItems.lowStockCount", "suppliers.totalCount"],
+  },
+  // The one role holding all 3 non-supplier module reads (inventoryItem,
+  // purchaseOrder, workOrder) — deliberately omits suppliers.totalCount, it
+  // holds no supplier:read at all.
+  {
+    blueprintRoleId: "role.warehouse-staff",
+    keys: ["inventoryItems.lowStockCount", "purchaseOrders.openCount", "workOrders.inProgressCount", "inventoryItems.totalValue"],
+  },
 ];
 
 /** A simple flowing 12-column grid — 2 widgets per row, `w: 6, h: 4` each.
