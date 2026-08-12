@@ -30,9 +30,15 @@ interface InventoryItemOption {
  * "Bill of Materials" tab, mirrors `PaymentsTab.tsx`'s own "nested inside a
  * detail page's own tab, own data fetch, not SDUI-registered itself"
  * pattern exactly. The recipe: each row is `quantityRequired` units of
- * `component` needed to build 1 unit of this item. */
-export function BomTab({ itemId, canUpdate }: { itemId: string; canUpdate: boolean }) {
-  const { callMutation } = useRenderContext();
+ * `component` needed to build 1 unit of this item.
+ *
+ * Manufacturing Domain, Phase D — "Summarize Recipe" (gated on `aiAvailable`)
+ * formats the already-fetched `lines` array, using the new `itemName` prop
+ * (the same "one small prop, not a duplicate fetch" shape `invoiceTotal`
+ * already established on `PaymentsTab.tsx`) for a real title instead of a
+ * generic "this item." */
+export function BomTab({ itemId, itemName, canUpdate }: { itemId: string; itemName: string; canUpdate: boolean }) {
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const [addOpen, setAddOpen] = useState(false);
   const [componentItemId, setComponentItemId] = useState("");
   const [quantityRequired, setQuantityRequired] = useState("1");
@@ -44,6 +50,19 @@ export function BomTab({ itemId, canUpdate }: { itemId: string; canUpdate: boole
 
   const { data: itemOptionsData } = useDataSourceQuery<InventoryItemOption[]>("inventoryItems.list", {}, { enabled: canUpdate && addOpen });
   const itemOptions = (Array.isArray(itemOptionsData) ? itemOptionsData : []).filter((i) => i.id !== itemId);
+
+  function summarizeRecipe() {
+    const componentLines =
+      lines.length > 0
+        ? lines
+            .map((l) => `${l.quantityRequired} ${l.component?.unitOfMeasure ?? "unit(s)"} of ${l.component?.name ?? "unknown item"} (${l.component?.currentStock ?? 0} in stock)`)
+            .join("; ")
+        : "No components on this recipe yet.";
+    openAiPanel(
+      "inventoryItems.summarizeRecipe",
+      `Summarize this item's bill of materials (recipe). Do not suggest production timelines, costs, or whether to proceed — only summarize the recipe and current stock levels.\n\nItem: ${itemName}\nComponents needed per unit: ${componentLines}`,
+    );
+  }
 
   function openAdd() {
     setComponentItemId("");
@@ -86,11 +105,20 @@ export function BomTab({ itemId, canUpdate }: { itemId: string; canUpdate: boole
       <CardHeader
         title="Bill of Materials"
         action={
-          canUpdate && (
-            <Button size="sm" onClick={openAdd}>
-              <Icon name="add" size={14} />
-              Add Component
-            </Button>
+          (aiAvailable || canUpdate) && (
+            <div className="flex gap-2">
+              {aiAvailable && (
+                <Button size="sm" variant="secondary" onClick={summarizeRecipe}>
+                  Summarize Recipe
+                </Button>
+              )}
+              {canUpdate && (
+                <Button size="sm" onClick={openAdd}>
+                  <Icon name="add" size={14} />
+                  Add Component
+                </Button>
+              )}
+            </div>
           )
         }
       />

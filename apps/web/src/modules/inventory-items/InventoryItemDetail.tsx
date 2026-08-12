@@ -141,7 +141,7 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
         </Card>
       )}
 
-      {activeTab === "bom" && data.canReadBom && <BomTab itemId={itemId} canUpdate={data.canUpdate} />}
+      {activeTab === "bom" && data.canReadBom && <BomTab itemId={itemId} itemName={data.name} canUpdate={data.canUpdate} />}
 
       {activeTab === "files" && data.filesVisible && (
         <DocumentsPanel

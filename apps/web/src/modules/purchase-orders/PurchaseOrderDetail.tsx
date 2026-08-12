@@ -49,12 +49,33 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * procurement half of this domain's real segregation-of-duties control:
  * gated on `canReceive` (`purchaseOrder:receive`, held by Warehouse
  * Staff/Admin only — Procurement Officer can create/submit but never
- * receive its own order), and only enabled once "submitted". */
+ * receive its own order), and only enabled once "submitted".
+ *
+ * Manufacturing Domain, Phase D — "Summarize Purchase Order" (gated on
+ * `aiAvailable`) formats the already-fetched `data` (supplier, line items,
+ * status, total) — zero new fetch needed. */
 export function PurchaseOrderDetail({ purchaseOrderId }: { purchaseOrderId: string }) {
   const { data, loading, error, notFound, refetch } = useEntityDetail<PurchaseOrderDetailData>("purchaseOrders.detail", purchaseOrderId);
-  const { callMutation } = useRenderContext();
+  const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
   const [receiving, setReceiving] = useState(false);
+
+  function summarizePurchaseOrder() {
+    if (!data) return;
+    const lines = [
+      `Supplier: ${data.supplierName}`,
+      `Status: ${data.status}`,
+      `Expected date: ${new Date(data.expectedDate).toLocaleDateString()}`,
+      data.lineItems.length > 0
+        ? `Line items: ${data.lineItems.map((li) => `${li.description} (qty ${li.quantity} @ ${formatCents(li.unitCost)} = ${formatCents(li.amount)})`).join("; ")}`
+        : "No line items.",
+      `Total: ${formatCents(data.total)}`,
+    ];
+    openAiPanel(
+      "purchaseOrders.summarize",
+      `Summarize this purchase order. Do not recommend contract terms, pricing negotiations, or vendor selection — only summarize this order's contents and status.\n\n${lines.join("\n")}`,
+    );
+  }
 
   async function handleStatusChange(status: string) {
     try {
@@ -101,6 +122,11 @@ export function PurchaseOrderDetail({ purchaseOrderId }: { purchaseOrderId: stri
       status={!data.canUpdate ? { label: data.status, tone: STATUS_TONE[data.status] ?? "neutral" } : undefined}
       actions={
         <div className="flex items-center gap-2">
+          {aiAvailable && (
+            <Button size="sm" variant="secondary" onClick={summarizePurchaseOrder}>
+              Summarize Purchase Order
+            </Button>
+          )}
           {data.canUpdate && data.status !== "received" && (
             <Select value={data.status} onChange={(e) => handleStatusChange(e.target.value)} className="h-8 text-xs">
               {STATUSES.map((s) => (
