@@ -423,4 +423,139 @@ describe("calendar.list — aggregation", () => {
     const call = (tx as unknown as { meeting: { findMany: jest.Mock } }).meeting.findMany.mock.calls[0]![0];
     expect(call.where.scheduledStart).toEqual({ gte: FROM, lte: TO });
   });
+
+  // Manufacturing Domain, Phase B — work order due dates as calendar.list's 7th source type.
+  it("skips work orders entirely with no workOrder:read grant, no crash, never touches tx.workOrder", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    const items = await calendarListDataSource.resolve({ from: FROM, to: TO }, context([], null), tx);
+    expect(items).toEqual([]);
+  });
+
+  it("includes work orders due in range when the actor holds workOrder:read, tagged and titled by item name", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+      workOrder: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "wo1",
+            itemId: "i1",
+            item: { name: "Widget" },
+            dueDate: new Date("2026-08-15T00:00:00Z"),
+            quantity: 5,
+            status: "in_progress",
+            assignedToId: "u2",
+          },
+        ]),
+      },
+    } as unknown as PrismaTx;
+
+    const items = (await calendarListDataSource.resolve({ from: FROM, to: TO }, context(["workOrder:read:tenant"], null), tx)) as Array<{
+      id: string;
+      itemType: string;
+      title: string;
+      meta: Record<string, unknown>;
+    }>;
+
+    expect(items).toEqual([
+      {
+        id: "wo1",
+        itemType: "workOrderDue",
+        title: "Work Order — Widget",
+        start: new Date("2026-08-15T00:00:00Z"),
+        end: null,
+        meta: { itemId: "i1", quantity: 5, status: "in_progress", assignedToId: "u2" },
+      },
+    ]);
+    const call = (tx as unknown as { workOrder: { findMany: jest.Mock } }).workOrder.findMany.mock.calls[0]![0];
+    expect(call.where.dueDate).toEqual({ gte: FROM, lte: TO });
+  });
+
+  // Manufacturing Domain, Phase B — purchase order expected dates as calendar.list's 8th source type.
+  it("skips purchase orders entirely with no purchaseOrder:read grant, no crash, never touches tx.purchaseOrder", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+    } as unknown as PrismaTx;
+
+    const items = await calendarListDataSource.resolve({ from: FROM, to: TO }, context([], null), tx);
+    expect(items).toEqual([]);
+  });
+
+  it("includes purchase orders expected in range when the actor holds purchaseOrder:read, tagged and titled by supplier name", async () => {
+    const tx = {
+      meeting: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+      purchaseOrder: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "po1",
+            supplierId: "s1",
+            supplier: { name: "Acme Steel Co" },
+            expectedDate: new Date("2026-08-20T00:00:00Z"),
+            total: 10000,
+            status: "submitted",
+          },
+        ]),
+      },
+    } as unknown as PrismaTx;
+
+    const items = (await calendarListDataSource.resolve({ from: FROM, to: TO }, context(["purchaseOrder:read:tenant"], null), tx)) as Array<{
+      id: string;
+      itemType: string;
+      title: string;
+      meta: Record<string, unknown>;
+    }>;
+
+    expect(items).toEqual([
+      {
+        id: "po1",
+        itemType: "purchaseOrderExpected",
+        title: "Purchase Order — Acme Steel Co",
+        start: new Date("2026-08-20T00:00:00Z"),
+        end: null,
+        meta: { supplierId: "s1", total: 10000, status: "submitted" },
+      },
+    ]);
+    const call = (tx as unknown as { purchaseOrder: { findMany: jest.Mock } }).purchaseOrder.findMany.mock.calls[0]![0];
+    expect(call.where.expectedDate).toEqual({ gte: FROM, lte: TO });
+  });
+
+  it("interleaves all 8 item types correctly sorted by start time", async () => {
+    const tx = {
+      meeting: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: "m1", title: "Standup", scheduledStart: new Date("2026-08-10T09:00:00Z"), scheduledEnd: null, organizerId: "u1", cancelledAt: null }]),
+      },
+      calendarEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      task: { findMany: jest.fn() },
+      workOrder: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: "wo1", itemId: "i1", item: { name: "Widget" }, dueDate: new Date("2026-08-05T00:00:00Z"), quantity: 5, status: "planned", assignedToId: null }]),
+      },
+      purchaseOrder: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: "po1", supplierId: "s1", supplier: { name: "Acme" }, expectedDate: new Date("2026-08-20T00:00:00Z"), total: 500, status: "draft" }]),
+      },
+    } as unknown as PrismaTx;
+
+    const items = (await calendarListDataSource.resolve(
+      { from: FROM, to: TO },
+      context(["workOrder:read:tenant", "purchaseOrder:read:tenant"], null),
+      tx,
+    )) as Array<{ id: string }>;
+
+    expect(items.map((i) => i.id)).toEqual(["wo1", "m1", "po1"]);
+  });
 });

@@ -21,7 +21,7 @@ type Props = z.infer<typeof CalendarWorkspaceSchema>;
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue" | "workOrderDue" | "purchaseOrderExpected";
   title: string;
   start: string;
   end: string | null;
@@ -58,6 +58,15 @@ const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning" 
   // same visual language as "work due." Read-only here — status/payment
   // changes only happen through InvoiceDetail.
   invoiceDue: "warning",
+  // Manufacturing Domain, Phase B — reuses Task's own tone too; "production
+  // due" is the same visual language as "work due." Read-only here —
+  // status/completion changes only happen through WorkOrderDetail.
+  workOrderDue: "warning",
+  // Manufacturing Domain, Phase B — deliberately NOT "warning": goods
+  // arriving is a scheduled event, not an obligation, so this reuses
+  // Meeting's own "info" tone instead. Read-only here — status/receipt
+  // changes only happen through PurchaseOrderDetail.
+  purchaseOrderExpected: "info",
 };
 
 function startOfDay(d: Date): Date {
@@ -419,7 +428,11 @@ function CalendarItemChip({
     <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
         <Badge tone={ITEM_TONE[item.itemType]}>
-          {item.itemType === "task" || item.itemType === "assignmentDue" || item.itemType === "invoiceDue" ? "Due" : item.itemType}
+          {item.itemType === "task" || item.itemType === "assignmentDue" || item.itemType === "invoiceDue" || item.itemType === "workOrderDue"
+            ? "Due"
+            : item.itemType === "purchaseOrderExpected"
+              ? "Expected"
+              : item.itemType}
         </Badge>
         <span className="truncate text-sm text-text">{item.title}</span>
         <span className="shrink-0 text-xs text-text-muted">{time}</span>

@@ -7,6 +7,8 @@ import { tasksWhere } from "../tasks/tasks.data-sources";
 import { appointmentsWhere } from "../appointments/appointments.data-sources";
 import { assignmentsWhere } from "../assignments/assignments.data-sources";
 import { invoicesWhere } from "../invoices/invoices.data-sources";
+import { workOrdersWhere } from "../work-orders/work-orders.data-sources";
+import { purchaseOrdersWhere } from "../purchase-orders/purchase-orders.data-sources";
 
 /**
  * Mirrors `announcementsWhere` exactly: resolves the reader's own ancestor
@@ -35,7 +37,7 @@ export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, 
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue";
+  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue" | "workOrderDue" | "purchaseOrderExpected";
   title: string;
   start: Date;
   end: Date | null;
@@ -65,7 +67,8 @@ const CalendarListParamsSchema = z.object({ from: z.coerce.date().optional(), to
  * status changes still only happen through `AppointmentsWorkspace`.
  * Education Domain, Phase B added a fifth branch (Assignment due dates),
  * the identical pattern again. Finance Domain, Phase B added a sixth
- * (Invoice due dates).
+ * (Invoice due dates). Manufacturing Domain, Phase B added a seventh
+ * (Work Order due dates) and eighth (Purchase Order expected dates).
  *
  * Deliberately sequential, never `Promise.all` — concurrent queries against
  * one shared transactional `tx` are unsafe (every data-source file in this
@@ -195,6 +198,57 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
           start: inv.dueDate,
           end: null,
           meta: { clientId: inv.clientId, total: inv.total, status: inv.status },
+        });
+      }
+    }
+
+    // Manufacturing Domain, Phase B — a seventh branch (Work Order due
+    // dates), same structural pattern as the branches above.
+    // `WorkOrder.dueDate` is NON-nullable (unlike `Task`/`Assignment`), so
+    // this follows the appointment/invoiceDue branches' shape — the
+    // date-range filter goes straight into `workOrdersWhere`'s own `extra`
+    // param, no null-check loop needed. WorkOrder has no `title` field of
+    // its own, so the produced item's name (a real Prisma relation join,
+    // `WorkOrder.itemId` has an actual FK) is required disambiguation.
+    // Read-only here — status/completion changes still only happen through
+    // WorkOrderDetail.
+    const workOrdersWhereClause = await workOrdersWhere(tx, ctx, { dueDate: { gte: from, lte: to } });
+    if (workOrdersWhereClause) {
+      const workOrders = await tx.workOrder.findMany({ where: workOrdersWhereClause, include: { item: { select: { name: true } } } });
+      for (const wo of workOrders) {
+        items.push({
+          id: wo.id,
+          itemType: "workOrderDue",
+          title: `Work Order — ${wo.item.name}`,
+          start: wo.dueDate,
+          end: null,
+          meta: { itemId: wo.itemId, quantity: wo.quantity, status: wo.status, assignedToId: wo.assignedToId },
+        });
+      }
+    }
+
+    // Manufacturing Domain, Phase B — an eighth branch (Purchase Order
+    // expected dates), same structural pattern again. `PurchaseOrder.expectedDate`
+    // is also non-nullable, so this follows the same shape as the
+    // workOrderDue branch above — straight into `purchaseOrdersWhere`'s own
+    // `extra` param. PurchaseOrder has no `title` field either, so the
+    // supplier name (a real Prisma relation join, `PurchaseOrder.supplierId`
+    // has an actual FK) is required disambiguation. Deliberately NOT tagged
+    // as a "due" concept in the frontend's own label — goods arriving is a
+    // scheduled event, not an obligation, unlike every other date-based
+    // branch so far. Read-only here — status/receipt changes still only
+    // happen through PurchaseOrderDetail.
+    const purchaseOrdersWhereClause = await purchaseOrdersWhere(tx, ctx, { expectedDate: { gte: from, lte: to } });
+    if (purchaseOrdersWhereClause) {
+      const purchaseOrders = await tx.purchaseOrder.findMany({ where: purchaseOrdersWhereClause, include: { supplier: { select: { name: true } } } });
+      for (const po of purchaseOrders) {
+        items.push({
+          id: po.id,
+          itemType: "purchaseOrderExpected",
+          title: `Purchase Order — ${po.supplier.name}`,
+          start: po.expectedDate,
+          end: null,
+          meta: { supplierId: po.supplierId, total: po.total, status: po.status },
         });
       }
     }
