@@ -1,0 +1,21 @@
+/// Manufacturing Domain, Phase A. Vendor master data — no backing Project
+/// (unlike InventoryItem, the domain's one Documents/Comments hub). Referenced
+/// by PurchaseOrder.
+model Supplier {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  name         String
+  contactEmail String?   @map("contact_email")
+  contactPhone String?   @map("contact_phone")
+  status       String    @default("active") // free-text: active/inactive, no DB enum
+  createdById  String    @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("suppliers")
+}

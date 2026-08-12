@@ -1,0 +1,33 @@
+/// Manufacturing Domain, Phase A. The one entity that owns a "files"-equivalent
+/// backing Project (`filesProjectId`) — spec sheets/QC docs/photos + discussion
+/// per SKU, mirrors Client/Patient/Course exactly. `currentStock` is a directly
+/// mutated Int, not derived from a ledger (there's no other source of truth to
+/// derive it from without a full StockMovement model — a disclosed Phase A
+/// simplification) — moved transactionally by exactly two mutations,
+/// `purchaseOrder.receive` (+) and `workOrder.complete` (BOM math, +/-).
+model InventoryItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  filesProjectId String    @unique @map("files_project_id") @db.Uuid
+  sku            String
+  name           String
+  type           String // free-text: raw_material/finished_good, no DB enum
+  unitOfMeasure  String    @map("unit_of_measure") // free-text: each/kg/liter/..., no DB enum
+  unitCost       Int       @default(0) @map("unit_cost") // cents
+  currentStock   Int       @default(0) @map("current_stock")
+  reorderPoint   Int       @default(0) @map("reorder_point")
+  status         String    @default("active") // free-text: active/discontinued, no DB enum
+  createdById    String    @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  workOrders          WorkOrder[]
+  bomLinesAsParent     BOMLine[] @relation("BOMParent")
+  bomLinesAsComponent  BOMLine[] @relation("BOMComponent")
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("inventory_items")
+}

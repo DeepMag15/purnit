@@ -207,6 +207,53 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "payment", action: "read", label: "View payment history" },
     ],
   },
+  // Manufacturing Domain, Phase A — the platform's fourth industry blueprint.
+  // Same shape/discipline as every module above. `receive`/`complete` are
+  // custom non-CRUD actions, the same established pattern `role:assign`/
+  // `user:invite`/`department:manage` already use — not a new mechanism.
+  {
+    module: "Suppliers",
+    entries: [
+      { resource: "supplier", action: "create", label: "Register new suppliers" },
+      { resource: "supplier", action: "read", label: "View supplier records" },
+      { resource: "supplier", action: "update", label: "Update supplier profile/status" },
+    ],
+  },
+  {
+    module: "Inventory",
+    entries: [
+      { resource: "inventoryItem", action: "create", label: "Add inventory items" },
+      { resource: "inventoryItem", action: "read", label: "View inventory items" },
+      { resource: "inventoryItem", action: "update", label: "Edit items & adjust stock" },
+    ],
+  },
+  {
+    module: "Bill of Materials",
+    entries: [
+      { resource: "bomLine", action: "create", label: "Add BOM component lines" },
+      { resource: "bomLine", action: "read", label: "View bills of materials" },
+      { resource: "bomLine", action: "update", label: "Edit BOM component quantities" },
+      { resource: "bomLine", action: "delete", label: "Remove BOM component lines" },
+    ],
+  },
+  {
+    module: "Purchase Orders",
+    entries: [
+      { resource: "purchaseOrder", action: "create", label: "Create purchase orders" },
+      { resource: "purchaseOrder", action: "read", label: "View purchase orders" },
+      { resource: "purchaseOrder", action: "update", label: "Submit/cancel purchase orders" },
+      { resource: "purchaseOrder", action: "receive", label: "Receive purchase orders (adjusts stock)" },
+    ],
+  },
+  {
+    module: "Work Orders",
+    entries: [
+      { resource: "workOrder", action: "create", label: "Create work orders" },
+      { resource: "workOrder", action: "read", label: "View work orders" },
+      { resource: "workOrder", action: "update", label: "Schedule/cancel work orders" },
+      { resource: "workOrder", action: "complete", label: "Complete work orders (adjusts stock)" },
+    ],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));

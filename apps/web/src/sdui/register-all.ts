@@ -18,6 +18,10 @@ import { StudentsWorkspace, StudentsWorkspaceSchema } from "../modules/students/
 import { CoursesWorkspace, CoursesWorkspaceSchema } from "../modules/courses/CoursesWorkspace";
 import { ClientsWorkspace, ClientsWorkspaceSchema } from "../modules/clients/ClientsWorkspace";
 import { InvoicesWorkspace, InvoicesWorkspaceSchema } from "../modules/invoices/InvoicesWorkspace";
+import { SuppliersWorkspace, SuppliersWorkspaceSchema } from "../modules/suppliers/SuppliersWorkspace";
+import { InventoryItemsWorkspace, InventoryItemsWorkspaceSchema } from "../modules/inventory-items/InventoryItemsWorkspace";
+import { PurchaseOrdersWorkspace, PurchaseOrdersWorkspaceSchema } from "../modules/purchase-orders/PurchaseOrdersWorkspace";
+import { WorkOrdersWorkspace, WorkOrdersWorkspaceSchema } from "../modules/work-orders/WorkOrdersWorkspace";
 
 let registered = false;
 
@@ -45,4 +49,8 @@ export function registerAllComponents(): void {
   registerPrimitive("CoursesWorkspace", 1, CoursesWorkspaceSchema, CoursesWorkspace);
   registerPrimitive("ClientsWorkspace", 1, ClientsWorkspaceSchema, ClientsWorkspace);
   registerPrimitive("InvoicesWorkspace", 1, InvoicesWorkspaceSchema, InvoicesWorkspace);
+  registerPrimitive("SuppliersWorkspace", 1, SuppliersWorkspaceSchema, SuppliersWorkspace);
+  registerPrimitive("InventoryItemsWorkspace", 1, InventoryItemsWorkspaceSchema, InventoryItemsWorkspace);
+  registerPrimitive("PurchaseOrdersWorkspace", 1, PurchaseOrdersWorkspaceSchema, PurchaseOrdersWorkspace);
+  registerPrimitive("WorkOrdersWorkspace", 1, WorkOrdersWorkspaceSchema, WorkOrdersWorkspace);
 }

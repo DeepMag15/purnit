@@ -37,6 +37,11 @@ import { GradesModule } from "./modules/grades/grades.module";
 import { ClientsModule } from "./modules/clients/clients.module";
 import { InvoicesModule } from "./modules/invoices/invoices.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
+import { SuppliersModule } from "./modules/suppliers/suppliers.module";
+import { InventoryItemsModule } from "./modules/inventory-items/inventory-items.module";
+import { BomLinesModule } from "./modules/bom-lines/bom-lines.module";
+import { PurchaseOrdersModule } from "./modules/purchase-orders/purchase-orders.module";
+import { WorkOrdersModule } from "./modules/work-orders/work-orders.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -77,6 +82,11 @@ import { MeController } from "./me/me.controller";
     ClientsModule,
     InvoicesModule,
     PaymentsModule,
+    SuppliersModule,
+    InventoryItemsModule,
+    BomLinesModule,
+    PurchaseOrdersModule,
+    WorkOrdersModule,
   ],
   controllers: [HealthController, MeController],
 })

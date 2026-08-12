@@ -2548,6 +2548,469 @@ const FINANCE_BLUEPRINT_V1 = {
   },
 };
 
+const MANUFACTURING_BLUEPRINT_V1 = {
+  id: "manufacturing",
+  version: 1,
+  industry: "Manufacturing",
+  // 4 flat roles, no `extends` chains — but a genuinely different
+  // segregation-of-duties shape than Finance's (which had one "does-both"
+  // Accountant tier). Manufacturing instead has three narrow non-admin
+  // tiers that each own exactly one leg of a real three-way-match control:
+  // the person who orders materials (Procurement Officer) is never the
+  // person who confirms they arrived (Warehouse Staff); the person who
+  // schedules production (Production Planner) is never the person who
+  // confirms it's done (Warehouse Staff again) — nobody but Admin can both
+  // create a purchase order and receive it, or both schedule a work order
+  // and complete it.
+  roles: [
+    {
+      id: "role.admin",
+      label: "Plant Manager",
+      rank: 0,
+      permissions: [
+        "supplier:create:tenant",
+        "supplier:read:tenant",
+        "supplier:update:tenant",
+        "inventoryItem:create:tenant",
+        "inventoryItem:read:tenant",
+        "inventoryItem:update:tenant",
+        "bomLine:create:tenant",
+        "bomLine:read:tenant",
+        "bomLine:update:tenant",
+        "bomLine:delete:tenant",
+        "purchaseOrder:create:tenant",
+        "purchaseOrder:read:tenant",
+        "purchaseOrder:update:tenant",
+        "purchaseOrder:receive:tenant",
+        "workOrder:create:tenant",
+        "workOrder:read:tenant",
+        "workOrder:update:tenant",
+        "workOrder:complete:tenant",
+        "project:create:tenant",
+        "project:read:tenant",
+        "project:update:tenant",
+        "project:delete:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "task:delete:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "document:delete:tenant",
+        "role:manage:tenant",
+        "role:assign:tenant",
+        "user:invite:tenant",
+        "user:manage:tenant",
+        "department:manage:tenant",
+        "settings:manage:tenant",
+        "meeting:create:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:tenant",
+        "attendance:create:tenant",
+        "attendance:read:tenant",
+        "attendance:update:tenant",
+      ],
+    },
+    {
+      // Schedules and manages production, owns the recipes (BOM) — but
+      // holds ZERO purchaseOrder:* (can't order materials) and, crucially,
+      // ZERO workOrder:complete: this role can schedule a work order but
+      // can never be the one to confirm it's done. `workOrder:update` is a
+      // REAL, non-inert `:own` (assignedToId defaults to the creator on
+      // workOrder.create) — a planner can only reschedule/cancel their own
+      // work orders, though everyone sees the full shared floor schedule
+      // via `:read:tenant`.
+      id: "role.production-planner",
+      label: "Production Planner",
+      rank: 1,
+      permissions: [
+        "workOrder:create:tenant",
+        "workOrder:read:tenant",
+        "workOrder:update:own",
+        "bomLine:create:tenant",
+        "bomLine:read:tenant",
+        "bomLine:update:tenant",
+        "bomLine:delete:tenant",
+        "inventoryItem:read:tenant",
+        "project:read:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      // Orders materials from suppliers — but holds ZERO
+      // purchaseOrder:receive: this role can create and submit a purchase
+      // order but can never be the one to confirm the goods arrived and
+      // adjust stock. Also holds zero workOrder:*/bomLine:* — a pure
+      // procurement role, structurally excluded from the production side.
+      id: "role.procurement-officer",
+      label: "Procurement Officer",
+      rank: 2,
+      permissions: [
+        "purchaseOrder:create:tenant",
+        "purchaseOrder:read:tenant",
+        "purchaseOrder:update:tenant",
+        "supplier:create:tenant",
+        "supplier:read:tenant",
+        "supplier:update:tenant",
+        "inventoryItem:read:tenant",
+        "project:read:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "task:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+    {
+      // The physical-floor role: the ONLY non-admin role holding
+      // purchaseOrder:receive (confirms goods arrived, increments stock)
+      // and workOrder:complete (confirms production is done, runs the BOM
+      // stock math) — both stock-moving confirmations belong to whoever is
+      // actually handling goods, never the role that ordered or scheduled
+      // them. Zero purchaseOrder:create/update, zero workOrder:create/update,
+      // zero bomLine:*, zero supplier:* — cannot originate any of the
+      // paperwork it confirms.
+      id: "role.warehouse-staff",
+      label: "Warehouse Staff",
+      rank: 3,
+      permissions: [
+        "purchaseOrder:receive:tenant",
+        "purchaseOrder:read:tenant",
+        "workOrder:complete:tenant",
+        "workOrder:read:tenant",
+        "inventoryItem:read:tenant",
+        "inventoryItem:update:tenant",
+        "project:read:tenant",
+        "document:create:tenant",
+        "task:read:tenant",
+        "task:update:tenant",
+        "meeting:read:tenant",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+      ],
+    },
+  ],
+  // No Manufacturing department taxonomy in Phase A — same disclosed MVP
+  // narrowing as Healthcare/Education/Finance's own Phase A; none of the 5
+  // new models have a departmentId column.
+  departmentTypes: [],
+  navigation: [
+    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
+    {
+      id: "nav.suppliers",
+      label: "Suppliers",
+      icon: "local_shipping",
+      pageId: "page.suppliers",
+      requiredPermission: "supplier:read",
+      moduleKey: "suppliers",
+    },
+    {
+      id: "nav.inventory-items",
+      label: "Inventory",
+      icon: "inventory_2",
+      pageId: "page.inventory-items",
+      requiredPermission: "inventoryItem:read",
+      moduleKey: "inventory-items",
+    },
+    {
+      id: "nav.purchase-orders",
+      label: "Purchase Orders",
+      icon: "shopping_cart",
+      pageId: "page.purchase-orders",
+      requiredPermission: "purchaseOrder:read",
+      moduleKey: "purchase-orders",
+    },
+    {
+      id: "nav.work-orders",
+      label: "Work Orders",
+      icon: "precision_manufacturing",
+      pageId: "page.work-orders",
+      requiredPermission: "workOrder:read",
+      moduleKey: "work-orders",
+    },
+    // Everything below reuses an existing module's own nav entry verbatim
+    // (same pageId-bearing composite, same permission gate where one
+    // exists) — zero new code, only blueprint content, same "reuse as many
+    // existing modules as possible" mandate every prior domain used.
+    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
+    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
+    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
+    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
+    {
+      id: "nav.attendance",
+      label: "Attendance",
+      icon: "attendance",
+      pageId: "page.attendance",
+      requiredPermission: "attendance:read",
+    },
+    {
+      id: "nav.roles-permissions",
+      label: "Roles & Permissions",
+      icon: "roles-permissions",
+      pageId: "page.roles-permissions",
+      requiredPermission: "role:manage",
+    },
+    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
+    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+  ],
+  dashboards: { default: "page.dashboard" },
+  modules: ["suppliers", "inventory-items", "purchase-orders", "work-orders"],
+  pages: {
+    "page.dashboard": {
+      id: "page.dashboard",
+      type: "Page",
+      version: 1,
+      // Deliberately minimal, same treatment as every prior domain's own
+      // page.dashboard — no requiredPermission (must never be
+      // permission-gated, see main()'s own sanity check below). Role-specific
+      // widget curation belongs on page.analytics via
+      // DEFAULT_DASHBOARD_WIDGET_KEYS in a later phase, not duplicated here.
+      children: [{ id: "hdr", type: "Heading", version: 1, props: { text: "Good morning, {{user.displayName}}" } }],
+    },
+    "page.suppliers": {
+      id: "page.suppliers",
+      type: "Page",
+      version: 1,
+      requiredPermission: "supplier:read",
+      children: [
+        {
+          id: "suppliers-workspace",
+          type: "SuppliersWorkspace",
+          version: 1,
+          props: { title: "Suppliers" },
+          bind: { source: "suppliers.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "supplier.create", input: { ref: "form.newSupplier" }, requiredPermission: "supplier:create" },
+            { kind: "mutation", mutation: "supplier.updateStatus", input: { ref: "row.id" }, requiredPermission: "supplier:update" },
+          ],
+        },
+      ],
+    },
+    "page.inventory-items": {
+      id: "page.inventory-items",
+      type: "Page",
+      version: 1,
+      requiredPermission: "inventoryItem:read",
+      children: [
+        {
+          id: "inventory-items-workspace",
+          type: "InventoryItemsWorkspace",
+          version: 1,
+          props: { title: "Inventory" },
+          bind: { source: "inventoryItems.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "inventoryItem.create", input: { ref: "form.newInventoryItem" }, requiredPermission: "inventoryItem:create" },
+            { kind: "mutation", mutation: "inventoryItem.update", input: { ref: "row.id" }, requiredPermission: "inventoryItem:update" },
+          ],
+        },
+      ],
+    },
+    "page.purchase-orders": {
+      id: "page.purchase-orders",
+      type: "Page",
+      version: 1,
+      requiredPermission: "purchaseOrder:read",
+      children: [
+        {
+          id: "purchase-orders-workspace",
+          type: "PurchaseOrdersWorkspace",
+          version: 1,
+          props: { title: "Purchase Orders" },
+          bind: { source: "purchaseOrders.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "purchaseOrder.create", input: { ref: "form.newPurchaseOrder" }, requiredPermission: "purchaseOrder:create" },
+            { kind: "mutation", mutation: "purchaseOrder.updateStatus", input: { ref: "row.id" }, requiredPermission: "purchaseOrder:update" },
+          ],
+        },
+      ],
+    },
+    "page.work-orders": {
+      id: "page.work-orders",
+      type: "Page",
+      version: 1,
+      requiredPermission: "workOrder:read",
+      children: [
+        {
+          id: "work-orders-workspace",
+          type: "WorkOrdersWorkspace",
+          version: 1,
+          props: { title: "Work Orders" },
+          bind: { source: "workOrders.list", params: {} },
+          actions: [
+            { kind: "mutation", mutation: "workOrder.create", input: { ref: "form.newWorkOrder" }, requiredPermission: "workOrder:create" },
+            { kind: "mutation", mutation: "workOrder.updateStatus", input: { ref: "row.id" }, requiredPermission: "workOrder:update" },
+          ],
+        },
+      ],
+    },
+    // Everything below reuses an existing blueprint page's own real content
+    // verbatim (same composite type, same actions/mutations) — copied, not
+    // referenced, since `pages` is a per-blueprint map; zero new frontend
+    // code either way, only JSON. Detail-page mutations (purchaseOrder.receive,
+    // workOrder.complete, bomLine.*, comment.create, document.*) are triggered
+    // directly from the detail composites via useRenderContext().callMutation,
+    // not declared here — exactly how ClientDetail/InvoiceDetail already call
+    // their own detail mutations today without them appearing in
+    // page.clients/page.invoices's own actions.
+    "page.analytics": {
+      id: "page.analytics",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
+        {
+          id: "analytics-activity",
+          type: "ActivityFeed",
+          version: 1,
+          props: { title: "Recent Activity", limit: 10 },
+          bind: { source: "notifications.list" },
+        },
+        { id: "analytics-dashboard", type: "AnalyticsDashboard", version: 1 },
+      ],
+    },
+    "page.chat": {
+      id: "page.chat",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "chat-workspace",
+          type: "ChatWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "conversation.createChannel", input: { ref: "form.newChannel" } },
+            { kind: "mutation", mutation: "conversation.createDm", input: { ref: "form.newDm" } },
+            { kind: "mutation", mutation: "conversation.addMember", input: { ref: "form.addMember" } },
+            { kind: "mutation", mutation: "conversation.archive", input: { ref: "row.conversationId" } },
+            { kind: "mutation", mutation: "message.send", input: { ref: "form.newMessage" } },
+            { kind: "mutation", mutation: "message.delete", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "conversation.markRead", input: { ref: "row.conversationId" } },
+          ],
+        },
+      ],
+    },
+    "page.meetings": {
+      id: "page.meetings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "meetings-workspace",
+          type: "MeetingsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "meeting.create", input: { ref: "form.scheduleMeeting" }, requiredPermission: "meeting:create" },
+            { kind: "mutation", mutation: "meeting.cancel", input: { ref: "row.id" } },
+            { kind: "mutation", mutation: "meeting.addParticipant", input: { ref: "form.addParticipant" } },
+            { kind: "mutation", mutation: "meeting.removeParticipant", input: { ref: "row.userId" } },
+            { kind: "mutation", mutation: "meeting.getJoinInfo", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.calendar": {
+      id: "page.calendar",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "calendar-workspace",
+          type: "CalendarWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "calendarEvent.create", input: { ref: "form.newCalendarEvent" }, requiredPermission: "calendarEvent:create" },
+            { kind: "mutation", mutation: "calendarEvent.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+    "page.attendance": {
+      id: "page.attendance",
+      type: "Page",
+      version: 1,
+      requiredPermission: "attendance:read",
+      children: [
+        {
+          id: "attendance-workspace",
+          type: "AttendanceWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "attendance.mark", input: { ref: "form.markAttendance" }, requiredPermission: "attendance:create" },
+            { kind: "mutation", mutation: "attendance.correct", input: { ref: "form.correctAttendance" }, requiredPermission: "attendance:update" },
+          ],
+        },
+      ],
+    },
+    "page.roles-permissions": {
+      id: "page.roles-permissions",
+      type: "Page",
+      version: 1,
+      requiredPermission: "role:manage",
+      children: [
+        {
+          id: "roles-permissions-workspace",
+          type: "RolesPermissionsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "role.createCustom", input: { ref: "form.newRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.updateCustom", input: { ref: "form.editRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.clone", input: { ref: "form.cloneRole" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "role.delete", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.grant", input: { ref: "form.grantDelegation" }, requiredPermission: "role:manage" },
+            { kind: "mutation", mutation: "delegation.revoke", input: { ref: "row.id" }, requiredPermission: "role:manage" },
+          ],
+        },
+      ],
+    },
+    "page.settings": {
+      id: "page.settings",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "workspace-settings",
+          type: "WorkspaceSettings",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "tenant.updateBranding", input: { ref: "form.branding" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.updateWorkspaceId", input: { ref: "form.workspaceId" }, requiredPermission: "settings:manage" },
+            {
+              kind: "mutation",
+              mutation: "workspaceConfig.updateNavigationLabel",
+              input: { ref: "form.navLabel" },
+              requiredPermission: "settings:manage",
+            },
+            { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
+            { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+          ],
+        },
+      ],
+    },
+    "page.account": {
+      id: "page.account",
+      type: "Page",
+      version: 1,
+      children: [
+        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
+        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
+      ],
+    },
+  },
+};
+
 // Shared by all blueprints — the default dashboard must never be
 // permission-gated for any tier, or a real user whose effective permissions
 // fail that gate would hit compileWorkspace's unguarded
@@ -2568,11 +3031,13 @@ async function main() {
   BlueprintDefinitionSchema.parse(HEALTHCARE_BLUEPRINT_V1);
   BlueprintDefinitionSchema.parse(EDUCATION_BLUEPRINT_V1);
   BlueprintDefinitionSchema.parse(FINANCE_BLUEPRINT_V1);
+  BlueprintDefinitionSchema.parse(MANUFACTURING_BLUEPRINT_V1);
 
   assertDefaultDashboardUngated(IT_BLUEPRINT_V1);
   assertDefaultDashboardUngated(HEALTHCARE_BLUEPRINT_V1);
   assertDefaultDashboardUngated(EDUCATION_BLUEPRINT_V1);
   assertDefaultDashboardUngated(FINANCE_BLUEPRINT_V1);
+  assertDefaultDashboardUngated(MANUFACTURING_BLUEPRINT_V1);
 
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL }),
@@ -2612,6 +3077,15 @@ async function main() {
     update: { definition: FINANCE_BLUEPRINT_V1 },
   });
   console.log("Seeded blueprint: Finance v1");
+
+  // Manufacturing Domain, Phase A — the platform's fourth non-IT blueprint,
+  // same zero-collision coexistence as Healthcare/Education/Finance above.
+  await prisma.blueprint.upsert({
+    where: { industry_version: { industry: "Manufacturing", version: 1 } },
+    create: { industry: "Manufacturing", version: 1, definition: MANUFACTURING_BLUEPRINT_V1 },
+    update: { definition: MANUFACTURING_BLUEPRINT_V1 },
+  });
+  console.log("Seeded blueprint: Manufacturing v1");
 
   // Roles are materialized at tenant provisioning (AuthService.signup) —
   // a `Role` row's `permissions` is a snapshot copied from the blueprint at
@@ -2680,6 +3154,18 @@ async function main() {
     syncedFinanceTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedFinanceTenants} existing Finance tenant(s) to the current blueprint`);
+
+  // Same re-sync, scoped to Manufacturing tenants.
+  const manufacturingTenantIds = (
+    await prisma.tenant.findMany({ where: { industry: MANUFACTURING_BLUEPRINT_V1.industry }, select: { id: true } })
+  ).map((t) => t.id);
+  let syncedManufacturingTenants = 0;
+  for (const tenantId of manufacturingTenantIds) {
+    const roleIds = await materializeBlueprintRoles(prisma, tenantId, MANUFACTURING_BLUEPRINT_V1.roles);
+    await materializeDepartmentTypeLabels(prisma, tenantId, MANUFACTURING_BLUEPRINT_V1.departmentTypes, roleIds);
+    syncedManufacturingTenants++;
+  }
+  console.log(`Re-synced roles + department-type labels for ${syncedManufacturingTenants} existing Manufacturing tenant(s) to the current blueprint`);
 
   await prisma.$disconnect();
 }
