@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { AuthService } from "./auth.service";
 import { SignupSchema } from "./signup.schema";
 import { JwtAuthGuard } from "../tenancy/jwt-auth.guard";
+import { StrictThrottle } from "../throttling/throttle.config";
 import { CurrentUserService } from "../tenancy/current-user.service";
 
 // `.trim()` matters here specifically: this is a public, unauthenticated
@@ -21,6 +22,11 @@ export class AuthController {
     private readonly currentUser: CurrentUserService,
   ) {}
 
+  // Go-Live, Phase 04 — the tight unauthenticated bucket. Signup is both an
+  // enumeration surface and the most expensive public operation in the app
+  // (it provisions a whole tenant and creates a Supabase Auth user), so it
+  // gets the strict limit rather than the generous global default.
+  @StrictThrottle()
   @Post("signup")
   async signup(@Body() body: unknown) {
     let input;
@@ -39,6 +45,11 @@ export class AuthController {
   // login page before it ever attempts a Supabase sign-in (see
   // AuthService.verifyWorkspace for why this doesn't change how tenant_id
   // ends up in the JWT).
+  // The login pre-flight check — a deliberate anti-enumeration surface
+  // (§5.1: one generic rejection for every failure mode). Rate limiting is
+  // the other half of that defence: a generic error still leaks information
+  // if an attacker can try it thousands of times a minute.
+  @StrictThrottle()
   @Post("verify-workspace")
   @HttpCode(200) // A verification check, not a creation — same reasoning as DataSourcesController.
   async verifyWorkspace(@Body() body: unknown) {

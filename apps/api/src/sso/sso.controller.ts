@@ -1,5 +1,5 @@
-import { BadRequestException, Controller, Get, Logger, Query, Req, Res, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { BadRequestException, Controller, Get, Logger, Query, Req, Res } from "@nestjs/common";
+import { SsoThrottle } from "../throttling/throttle.config";
 import type { Request, Response } from "express";
 import { z, ZodError } from "zod";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
@@ -54,15 +54,14 @@ function readCookie(req: Request, name: string): string | undefined {
  * custom-access-token-hook Postgres function need zero changes — see the
  * plan's own "why this stays modular" note.
  *
- * `@UseGuards(ThrottlerGuard)` scopes rate limiting to just these 3 routes
- * (via SsoModule's own `ThrottlerModule.forRoot`) — no rate limiting exists
- * anywhere else in this codebase today, and this isn't retrofitting it onto
- * signup/verify-workspace, only bounding this module's own new public
- * surface (`/auth/sso/callback` can trigger a real `supabaseAdmin.createUser`
- * call from unauthenticated traffic, bounded but not zero-cost).
+ * `@SsoThrottle()` keeps these 3 routes at their original 20/min. Rate
+ * limiting is global as of Go-Live Phase 04, so this no longer registers a
+ * throttler of its own — it only narrows the global default, which matters
+ * because `/auth/sso/callback` can trigger a real `supabaseAdmin.createUser`
+ * call from unauthenticated traffic (bounded, but not zero-cost).
  */
 @Controller("auth")
-@UseGuards(ThrottlerGuard)
+@SsoThrottle()
 export class SsoController {
   private readonly logger = new Logger(SsoController.name);
 

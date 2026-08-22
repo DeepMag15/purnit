@@ -4,6 +4,12 @@ packages:
 allowBuilds:
   '@google/genai': true
   '@prisma/engines': true
+  # Go-Live Phase 04 — @sentry/cli's postinstall downloads a binary used only
+  # to upload source maps at build time. We don't upload source maps (no
+  # Sentry project or auth token exists yet), so it's dead weight and a
+  # network dependency in CI. Revisit in Phase 06: readable production stack
+  # traces need source-map upload, which needs this binary + SENTRY_AUTH_TOKEN.
+  '@sentry/cli': false
   esbuild: true
   prisma: true
   protobufjs: true

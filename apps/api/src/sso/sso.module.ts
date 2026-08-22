@@ -1,5 +1,4 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
-import { ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "../auth/auth.module";
 import { DataSourceRegistry } from "../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../mutations/mutation-registry.service";
@@ -26,10 +25,11 @@ class SsoRegistrar implements OnModuleInit {
 
 @Module({
   imports: [
-    // Scoped to just this module's own 3 public routes (see SsoController's
-    // own doc comment) — no rate limiting exists anywhere else in this
-    // codebase, and this isn't retrofitting it onto signup/verify-workspace.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }]),
+    // Go-Live, Phase 04 — this module's own `ThrottlerModule.forRoot` is
+    // gone. Rate limiting is now global (AppModule), and registering a second
+    // root here would give SSO routes two independent guards with separate
+    // budgets. The same 20/min limit still applies, via the `sso` named
+    // throttler declared in throttling/throttle.config.ts.
     // SupabaseAdminService (SsoJitProvisionService's own JIT-provisioning +
     // generateMagicLink/verifyMagicLinkOtp calls) — AuthModule already
     // exports it as the one reusable service-role Supabase client.

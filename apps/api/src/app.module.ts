@@ -1,6 +1,12 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { SentryGlobalFilter, SentryModule } from "@sentry/nestjs/setup";
 import { HealthController } from "./health.controller";
+import { THROTTLERS } from "./throttling/throttle.config";
+import { ScopedThrottlerGuard } from "./throttling/scoped-throttler.guard";
+import { RequestLoggingInterceptor } from "./observability/request-logging.interceptor";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { AuthContextMiddleware } from "./tenancy/auth-context.middleware";
 import { AuthModule } from "./auth/auth.module";
@@ -54,7 +60,17 @@ import { MeController } from "./me/me.controller";
 
 @Module({
   imports: [
+    // Go-Live, Phase 04 — error tracking. Harmless when SENTRY_DSN is unset:
+    // `Sentry.init` is never called (observability/sentry.ts), so this
+    // registers a module that reports nowhere rather than changing behaviour.
+    SentryModule.forRoot(),
     ScheduleModule.forRoot(),
+    // Go-Live, Phase 04 — rate limiting, registered ONCE here rather than
+    // per-module. The in-memory store is correct for a single always-on API
+    // process (which is what Render runs); if the API is ever scaled to
+    // multiple instances this needs a shared store, or each instance will
+    // enforce its own separate budget.
+    ThrottlerModule.forRoot(THROTTLERS),
     TenancyModule,
     AuthModule,
     RbacModule,
@@ -105,6 +121,20 @@ import { MeController } from "./me/me.controller";
     DigestModule,
   ],
   controllers: [HealthController, MeController],
+  providers: [
+    // Global by default — the point of Phase 04 is that rate limiting stops
+    // being opt-in. Routes that must not be limited (the health probe, the
+    // Stripe webhook) opt OUT explicitly with @SkipThrottle, which is a much
+    // safer default than opting in and forgetting one.
+    { provide: APP_GUARD, useClass: ScopedThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: RequestLoggingInterceptor },
+    // Extends Nest's own `BaseExceptionFilter`, so response shapes are
+    // unchanged — it reports to Sentry on the way past and otherwise behaves
+    // exactly as the default handler this app has always used. Expected
+    // errors (`HttpException` — every 400/403/404 this app throws
+    // deliberately) are not reported; only genuine unhandled failures are.
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

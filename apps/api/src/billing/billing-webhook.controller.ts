@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Headers, HttpCode, Logger, Post, Req } from "@nestjs/common";
 import type { RawBodyRequest } from "@nestjs/common";
 import type { Request } from "express";
+import { SkipThrottle } from "@nestjs/throttler";
 import type Stripe from "stripe";
 import { Prisma } from "../generated/prisma/client";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
@@ -22,6 +23,13 @@ import { StripeService } from "./stripe.service";
  * what it hopes Stripe will confirm. That is what makes a dropped browser
  * redirect or a closed tab harmless.
  */
+// Go-Live, Phase 04 — deliberately exempt from rate limiting. Stripe retries
+// aggressively on any non-2xx and delivers from its own pool of addresses, so
+// a per-IP limit here would throttle legitimate webhook delivery and turn a
+// traffic spike into lost subscription state. This endpoint is not
+// unauthenticated in the way the limit protects against: every request must
+// carry a valid Stripe signature, and the idempotency table bounds repeats.
+@SkipThrottle()
 @Controller("api/webhooks/stripe")
 export class BillingWebhookController {
   private readonly logger = new Logger("BillingWebhookController");
