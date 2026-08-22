@@ -56,6 +56,8 @@ import { BomLinesModule } from "./modules/bom-lines/bom-lines.module";
 import { PurchaseOrdersModule } from "./modules/purchase-orders/purchase-orders.module";
 import { WorkOrdersModule } from "./modules/work-orders/work-orders.module";
 import { DigestModule } from "./modules/digest/digest.module";
+import { AccountModule } from "./modules/account/account.module";
+import { RetentionModule } from "./retention/retention.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -119,6 +121,10 @@ import { MeController } from "./me/me.controller";
     PurchaseOrdersModule,
     WorkOrdersModule,
     DigestModule,
+    // Go-Live, Phase 05 — data protection: self-service account deletion,
+    // workspace closure, own-data export, and the retention purge.
+    AccountModule,
+    RetentionModule,
   ],
   controllers: [HealthController, MeController],
   providers: [

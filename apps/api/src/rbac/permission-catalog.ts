@@ -300,6 +300,18 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
     module: "Enterprise SSO",
     entries: [{ resource: "sso", action: "manage", label: "Manage Enterprise SSO" }],
   },
+  {
+    // Go-Live, Phase 05 — workspace closure. Deliberately its OWN permission
+    // rather than folded into `settings:manage`, which every Company Admin
+    // also holds for editing branding and nav labels. Closing a workspace
+    // deletes every record in it after the retention window; that is not the
+    // same authority as renaming a nav item, and this codebase's standing
+    // rule is to default to the narrowest permission matching the capability
+    // (ARCHITECTURE.md §5.9) — splitting later is far more disruptive than
+    // starting narrow.
+    module: "Workspace lifecycle",
+    entries: [{ resource: "tenant", action: "delete", label: "Close the workspace permanently" }],
+  },
 ];
 
 const KNOWN_PERMISSIONS = new Set(PERMISSION_CATALOG.flatMap((m) => m.entries.map((e) => `${e.resource}:${e.action}`)));
