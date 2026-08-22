@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -24,7 +24,6 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 
 export const CoursesWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof CoursesWorkspaceSchema>;
 
 interface CourseRow {
   id: string;
@@ -56,9 +55,10 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * (Frontend Structural Redesign, Pattern B). Row click on Table/List
  * navigates to the new `/workspace/courses/[id]` detail page.
  */
-export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function CoursesWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "courses.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<CourseRow[]>("courses.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -68,14 +68,16 @@ export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderP
   const { pending: creating, error: createError, run: runCreate, clearError } = useAsyncAction();
   const { fieldErrors, validate, clearFieldError } = useFormValidation<{ name: string }>({ name: required("Course name is required") });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "course.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("courses.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "course.updateStatus", input: { const: null } }] : [];
 
   // A course needs a teacher option list — fetched directly (not via `bind`)
   // since it's this composite's own UI need, not the node's bound data.
   const { data: teacherOptionsData } = useDataSourceQuery<TeacherOption[]>("courses.teacherOptions", {}, { enabled: canCreate });
   const teacherOptions = Array.isArray(teacherOptionsData) ? teacherOptionsData : [];
 
-  const rows = Array.isArray(data) ? (data as CourseRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((c) => c.status))];
 
   function openCreate() {
@@ -107,7 +109,7 @@ export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderP
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Courses"}
+        title="Courses"
         description="Manage your school's courses and rosters."
         actions={
           canCreate && (
@@ -151,11 +153,11 @@ export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderP
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load courses: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No courses yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load courses: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No courses yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="courses-board-kanban"
           groupKey="status"
@@ -169,7 +171,7 @@ export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderP
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="courses-table"
           columns={["name", "status", "teacherName"]}
@@ -183,7 +185,7 @@ export function CoursesWorkspace({ title, bind, actions }: Props & CommonRenderP
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((course) => (
             <li

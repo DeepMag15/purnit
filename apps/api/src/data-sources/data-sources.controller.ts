@@ -6,7 +6,7 @@ import { assertPasswordChanged } from "../tenancy/assert-password-changed";
 import { TenantContextService } from "../tenancy/tenant-context.service";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { PermissionResolverService } from "../rbac/permission-resolver.service";
-import { DataSourceRegistry, type DataSourceContext } from "./data-source-registry.service";
+import { DataSourceRegistry, hasRequiredPermission, type DataSourceContext } from "./data-source-registry.service";
 
 const BatchRequestSchema = z.object({
   requests: z.array(z.object({ source: z.string(), params: z.unknown().optional() })).max(20),
@@ -73,12 +73,9 @@ export class DataSourcesController {
           out.push({ error: `Data source "${source}" is not registered` });
           continue;
         }
-        if (def.requiredPermission) {
-          const [resource, action] = def.requiredPermission.split(":");
-          if (effective.has(resource!, action!) === null) {
-            out.push({ error: `Missing permission "${def.requiredPermission}"` });
-            continue;
-          }
+        if (!hasRequiredPermission(def, effective)) {
+          out.push({ error: `Missing permission "${def.requiredPermission}"` });
+          continue;
         }
         const params = parseOrBadRequest(def.paramsSchema, rawParams ?? {});
         const ctx: DataSourceContext = { tenantId, userId: user.id, userDepartmentId: user.departmentId, effective };
@@ -110,11 +107,8 @@ export class DataSourcesController {
       assertPasswordChanged(user);
       const effective = await this.permissionResolver.resolveEffectivePermissionsWithTx(tx, tenantId, user.id);
 
-      if (def.requiredPermission) {
-        const [resource, action] = def.requiredPermission.split(":");
-        if (effective.has(resource!, action!) === null) {
-          throw new ForbiddenException(`Missing permission "${def.requiredPermission}"`);
-        }
+      if (!hasRequiredPermission(def, effective)) {
+        throw new ForbiddenException(`Missing permission "${def.requiredPermission}"`);
       }
 
       const params = parseOrBadRequest(def.paramsSchema, body ?? {});

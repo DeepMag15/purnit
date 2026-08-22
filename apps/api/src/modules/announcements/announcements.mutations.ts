@@ -1,10 +1,11 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { logAudit } from "../../audit/log-audit";
 
 /** Only resolved when actually needed — see department-subtree.ts. Same
  * local-helper precedent as meetings.mutations.ts's own resolveSubtreeIds. */
@@ -96,6 +97,15 @@ export const announcementDeleteMutation: MutationDefinition<z.infer<typeof Delet
     if (!existing) throw new NotFoundException(`No announcement "${input.id}"`);
     if (existing.authorId !== ctx.userId) throw new ForbiddenException("You can only delete your own announcements");
 
-    return tx.announcement.update({ where: { id: input.id }, data: { deletedAt: new Date() } });
+    const updated = await tx.announcement.update({ where: { id: input.id }, data: { deletedAt: new Date() } });
+
+    // Audit Logs (module 6 of 6) — included despite being ownership-gated,
+    // not permission-gated (unlike this list's other deletes): an
+    // announcement is tenant-wide visible content, so "who deleted this and
+    // when" carries real accountability value regardless of what authority
+    // let them do it.
+    await logAudit(tx, ctx, { action: "announcement.delete", resource: "announcement", resourceId: input.id, before: { title: existing.title } });
+
+    return updated;
   },
 };

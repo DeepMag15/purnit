@@ -7,7 +7,7 @@ import type { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 import { assertProjectVisible } from "./documents.data-sources";
-import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
+import { enqueueDocumentEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 // Defense-in-depth alongside the "documents" bucket's own server-side
 // allowedMimeTypes/fileSizeLimit config — this check runs first, before any
@@ -158,7 +158,7 @@ export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInp
       },
     });
     await logActivity(tx, ctx.tenantId, document.id, ctx.userId, "uploaded");
-    await enqueueEmbeddingJob(tx, ctx.tenantId, "document", document.id, document.mimeType);
+    await enqueueDocumentEmbeddingJob(tx, ctx.tenantId, document.id, document.mimeType);
     return document;
   },
 };
@@ -251,7 +251,7 @@ export const documentFinalizeReplaceMutation: MutationDefinition<z.infer<typeof 
       },
     });
     await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "replaced", `v${existing.version} -> v${existing.version + 1}`);
-    await enqueueEmbeddingJob(tx, ctx.tenantId, "document", updated.id, updated.mimeType);
+    await enqueueDocumentEmbeddingJob(tx, ctx.tenantId, updated.id, updated.mimeType);
     return updated;
   },
 };

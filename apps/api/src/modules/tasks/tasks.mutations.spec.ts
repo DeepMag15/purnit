@@ -46,6 +46,7 @@ describe("task.create — reminder enqueue", () => {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", ownerId: "u1" }) },
       task: { create: jest.fn().mockResolvedValue({ id: "tk1", title: "Report", dueDate, projectId: "p1" }) },
       calendarReminder: { createMany: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await taskCreateMutation.resolve({ projectId: "p1", title: "Report", dueDate: dueDate.toISOString(), reminderMinutesBefore: 60 }, context(), tx);
@@ -62,6 +63,7 @@ describe("task.create — reminder enqueue", () => {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", ownerId: "u1" }) },
       task: { create: jest.fn().mockResolvedValue({ id: "tk1", title: "Report", dueDate: null, projectId: "p1" }) },
       calendarReminder: { createMany: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await taskCreateMutation.resolve({ projectId: "p1", title: "Report" }, context(), tx);

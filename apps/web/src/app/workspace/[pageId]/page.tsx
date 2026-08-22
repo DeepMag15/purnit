@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import type { UINode } from "@antigravity/manifest-schema";
+import type { UINode } from "@purnit/manifest-schema";
 import { getWorkspacePage, ApiError } from "../../../lib/api-client";
 import { Renderer } from "../../../sdui/renderer";
 import { FilterStateProvider } from "../../../sdui/filter-state";

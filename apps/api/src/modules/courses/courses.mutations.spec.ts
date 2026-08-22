@@ -21,6 +21,7 @@ describe("course.create", () => {
       course: { create: courseCreate },
       user: { findFirst: jest.fn() },
       projectMember: { create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await courseCreateMutation.resolve({ name: "Algebra" }, context(["course:create:tenant"]), tx);
@@ -35,6 +36,7 @@ describe("course.create", () => {
       course: { create: jest.fn().mockResolvedValue({ id: "c1" }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: "teach1" }) },
       projectMember: { create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await courseCreateMutation.resolve({ name: "Algebra", teacherId: "teach1" }, context(["course:create:tenant"]), tx);
@@ -58,6 +60,7 @@ describe("course.create", () => {
       project: { create: jest.fn().mockResolvedValue({ id: "proj1" }) },
       course: { create: jest.fn().mockResolvedValue({ id: "c1" }) },
       projectMember: { create: projectMemberCreate },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await courseCreateMutation.resolve({ name: "Algebra" }, context(["course:create:tenant"]), tx);
@@ -76,6 +79,7 @@ describe("course.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "c1", teacherId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "c1", status: "archived" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await courseUpdateStatusMutation.resolve({ id: "c1", status: "archived" }, context(["course:update:own"]), tx);

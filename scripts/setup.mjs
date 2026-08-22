@@ -124,7 +124,7 @@ function setAppRuntimePassword(directUrl, password) {
 
 function prismaDeploy() {
   console.log("→ Applying database migrations (prisma migrate deploy + generate)...");
-  run("pnpm", ["--filter", "@antigravity/api", "run", "prisma:deploy"]);
+  run("pnpm", ["--filter", "@purnit/api", "run", "prisma:deploy"]);
 }
 
 function createStorageBuckets() {
@@ -134,7 +134,7 @@ function createStorageBuckets() {
 
 function seed() {
   console.log("→ Seeding the IT industry blueprint...");
-  run("pnpm", ["--filter", "@antigravity/api", "run", "prisma:seed"]);
+  run("pnpm", ["--filter", "@purnit/api", "run", "prisma:seed"]);
 }
 
 async function main() {

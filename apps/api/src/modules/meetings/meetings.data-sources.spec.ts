@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { meetingsWhere } from "./meetings.data-sources";
+import { meetingsWhere, meetingsCapabilitiesDataSource } from "./meetings.data-sources";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
 function context(grants: string[] = [], userDepartmentId: string | null = null) {
@@ -45,5 +45,19 @@ describe("meetingsWhere", () => {
       cancelledAt: null,
       OR: [{ organizerId: "u1" }, { participants: { some: { userId: "u1" } } }],
     });
+  });
+});
+
+describe("meetings.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("canSchedule is false with no meeting:create grant", async () => {
+    const result = await meetingsCapabilitiesDataSource.resolve({}, context([]), tx);
+    expect(result).toEqual({ canSchedule: false });
+  });
+
+  it("canSchedule is true with a meeting:create grant at any scope", async () => {
+    const result = await meetingsCapabilitiesDataSource.resolve({}, context(["meeting:create:team"]), tx);
+    expect(result).toEqual({ canSchedule: true });
   });
 });

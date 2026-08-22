@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
@@ -126,5 +126,30 @@ export const attendanceRosterDataSource: DataSourceDefinition<z.infer<typeof Ros
       orderBy: { date: "asc" },
     });
     return { roster, records };
+  },
+};
+
+const CapabilitiesParamsSchema = z.object({});
+
+/**
+ * Frontend Redesign, Phase 02 — `AttendanceWorkspace.tsx` moved off the SDUI
+ * Renderer onto a dedicated route, so it no longer gets a permission-pruned
+ * `actions` array. Same `project.detail`-style precedent as
+ * `calendar.capabilities`'s own doc comment — no `requiredPermission`
+ * (callable by anyone). `canViewTeam` replaces a hardcoded client-side
+ * role-label list (`["Department Head","Executive","HR Manager","Company
+ * Admin"]`) with the real resolved scope, mirroring `attendance.roster`'s
+ * own `ctx.effective.has("attendance","read")` check two lines above — a
+ * real correctness fix, same class as `calendar.capabilities`'s.
+ */
+export const attendanceCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof CapabilitiesParamsSchema>> = {
+  name: "attendance.capabilities",
+  paramsSchema: CapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    const readScope = ctx.effective.has("attendance", "read");
+    return {
+      canViewTeam: readScope !== null && readScope !== "own",
+      canCorrect: !!ctx.effective.has("attendance", "update"),
+    };
   },
 };

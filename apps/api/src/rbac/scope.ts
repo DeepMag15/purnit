@@ -1,4 +1,4 @@
-import { SCOPES, type Scope } from "@antigravity/manifest-schema";
+import { SCOPES, type Scope } from "@purnit/manifest-schema";
 
 const SCOPE_RANK: Record<Scope, number> = { own: 0, team: 1, department: 2, "department-subtree": 3, tenant: 4 };
 

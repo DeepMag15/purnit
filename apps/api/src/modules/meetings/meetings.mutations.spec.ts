@@ -90,6 +90,7 @@ describe("meeting.create", () => {
       meeting: { create: jest.fn().mockResolvedValue({ id: "m1", title: "Standup" }) },
       meetingParticipant: { create: jest.fn().mockResolvedValue({}) },
       notification: { create: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await meetingCreateMutation.resolve(
@@ -115,6 +116,7 @@ describe("meeting.create", () => {
       meetingParticipant: { create: jest.fn().mockResolvedValue({}) },
       notification: { create: jest.fn().mockResolvedValue({}) },
       calendarReminder: { createMany: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await meetingCreateMutation.resolve(

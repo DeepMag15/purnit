@@ -41,6 +41,7 @@ describe("bomLine.create", () => {
         findFirst: jest.fn().mockResolvedValueOnce({ id: "i1" }).mockResolvedValueOnce({ id: "i2" }),
       },
       bOMLine: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "bl1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await bomLineCreateMutation.resolve({ parentItemId: "i1", componentItemId: "i2", quantityRequired: 3 }, context(["bomLine:create:tenant"]), tx);
@@ -63,6 +64,7 @@ describe("bomLine.update", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "bl1" }),
         update: jest.fn().mockResolvedValue({ id: "bl1", quantityRequired: 5 }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await bomLineUpdateMutation.resolve({ id: "bl1", quantityRequired: 5 }, context(["bomLine:update:tenant"]), tx);
     expect((tx as unknown as { bOMLine: { update: jest.Mock } }).bOMLine.update).toHaveBeenCalledWith({

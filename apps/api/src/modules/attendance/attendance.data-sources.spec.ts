@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { attendanceListDataSource, attendanceRosterDataSource } from "./attendance.data-sources";
+import { attendanceListDataSource, attendanceRosterDataSource, attendanceCapabilitiesDataSource } from "./attendance.data-sources";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
 function context(grants: string[] = [], userDepartmentId: string | null = null) {
@@ -103,5 +103,29 @@ describe("attendance.roster", () => {
     const userCall = (tx as unknown as { user: { findMany: jest.Mock } }).user.findMany.mock.calls[0][0];
     expect(userCall.where.tenantId).toBe("t1");
     expect(userCall.where.departmentId).toBeUndefined();
+  });
+});
+
+describe("attendance.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("both false with no attendance grants at all", async () => {
+    const result = await attendanceCapabilitiesDataSource.resolve({}, context([]), tx);
+    expect(result).toEqual({ canViewTeam: false, canCorrect: false });
+  });
+
+  it("canViewTeam false but canCorrect true is impossible in practice, but the two flags are independently derived — verified here: :own read scope never yields canViewTeam even with a broader update grant", async () => {
+    const result = await attendanceCapabilitiesDataSource.resolve({}, context(["attendance:read:own", "attendance:update:department"]), tx);
+    expect(result).toEqual({ canViewTeam: false, canCorrect: true });
+  });
+
+  it("canViewTeam true at :department read scope; canCorrect requires its own separate attendance:update grant", async () => {
+    const result = await attendanceCapabilitiesDataSource.resolve({}, context(["attendance:read:department"]), tx);
+    expect(result).toEqual({ canViewTeam: true, canCorrect: false });
+  });
+
+  it("both true for a role holding tenant-wide read and update (e.g. Company Admin)", async () => {
+    const result = await attendanceCapabilitiesDataSource.resolve({}, context(["attendance:read:tenant", "attendance:update:tenant"]), tx);
+    expect(result).toEqual({ canViewTeam: true, canCorrect: true });
   });
 });

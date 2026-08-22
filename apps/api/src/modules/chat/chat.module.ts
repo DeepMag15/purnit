@@ -1,7 +1,9 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
+import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { conversationsListDataSource, channelsListDataSource, messagesListDataSource } from "./chat.data-sources";
+import { messageRagHandler } from "./chat.rag";
 import {
   conversationCreateChannelMutation,
   conversationCreateDmMutation,
@@ -18,6 +20,7 @@ class ChatRegistrar implements OnModuleInit {
   constructor(
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
+    private readonly ragSources: RagSourceRegistry,
   ) {}
 
   onModuleInit() {
@@ -31,6 +34,7 @@ class ChatRegistrar implements OnModuleInit {
     this.mutations.register(messageSendMutation);
     this.mutations.register(messageDeleteMutation);
     this.mutations.register(conversationMarkReadMutation);
+    this.ragSources.register(messageRagHandler); // AI RAG Phase C
   }
 }
 

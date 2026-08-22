@@ -23,7 +23,7 @@ export class WorkspaceController {
   async bootstrap(@Headers("if-none-match") ifNoneMatch: string | undefined, @Res() res: Response) {
     const user = await this.currentUser.get();
     assertPasswordChanged(user);
-    const compilerUser = { id: user.id, displayName: user.displayName };
+    const compilerUser = { id: user.id, displayName: user.displayName, digestOptOut: user.digestOptOut };
 
     // Performance-audit consolidation (CONTEXT.md §47): identity is now
     // resolved exactly once per request — `getIdentity()` already carries
@@ -56,7 +56,7 @@ export class WorkspaceController {
   async page(@Param("pageId") pageId: string, @Headers("if-none-match") ifNoneMatch: string | undefined, @Res() res: Response) {
     const user = await this.currentUser.get();
     assertPasswordChanged(user);
-    const compilerUser = { id: user.id, displayName: user.displayName };
+    const compilerUser = { id: user.id, displayName: user.displayName, digestOptOut: user.digestOptOut };
 
     // See the matching comment in bootstrap() above.
     const identity = await this.configEngine.getIdentity(user.tenantId, compilerUser);

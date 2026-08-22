@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { appointmentsWhere, appointmentsListDataSource } from "./appointments.data-sources";
+import { appointmentsWhere, appointmentsListDataSource, appointmentsCapabilitiesDataSource } from "./appointments.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -62,5 +62,34 @@ describe("appointments.list", () => {
     await appointmentsListDataSource.resolve({ patientId: "p1" }, context(["appointment:read:tenant"]), tx);
     const call = (tx as unknown as { appointment: { findMany: jest.Mock } }).appointment.findMany.mock.calls[0]![0];
     expect(call.where).toMatchObject({ patientId: "p1" });
+  });
+});
+
+describe("appointments.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await appointmentsCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only appointment:create", async () => {
+    expect(await appointmentsCapabilitiesDataSource.resolve({}, context(["appointment:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only appointment:update — a genuinely different resource action from appointment:create", async () => {
+    expect(await appointmentsCapabilitiesDataSource.resolve({}, context(["appointment:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await appointmentsCapabilitiesDataSource.resolve({}, context(["appointment:create:tenant", "appointment:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
+    });
   });
 });

@@ -17,6 +17,7 @@ describe("role.createCustom", () => {
   it("succeeds when every requested triple is within the actor's own effective grants", async () => {
     const tx = {
       role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleCreateCustomMutation.resolve(
@@ -38,6 +39,7 @@ describe("role.createCustom", () => {
   it("defaults the new role's rank to one past the tenant's current max", async () => {
     const tx = {
       role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: 8 } }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleCreateCustomMutation.resolve({ label: "Custom", permissions: [] }, context([]), tx);
@@ -49,6 +51,7 @@ describe("role.createCustom", () => {
   it("defaults rank to 0 for the very first role in a tenant with no existing roles", async () => {
     const tx = {
       role: { create: jest.fn().mockResolvedValue({ id: "r1" }), aggregate: jest.fn().mockResolvedValue({ _max: { rank: null } }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleCreateCustomMutation.resolve({ label: "Custom", permissions: [] }, context([]), tx);
@@ -99,6 +102,7 @@ describe("role.updateCustom", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "r1", sourceBlueprintRoleId: null, permissions: ["project:read:own"] }),
         update: jest.fn().mockResolvedValue({ id: "r1" }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleUpdateCustomMutation.resolve({ roleId: "r1", label: "New label", permissions: ["project:read:department"] }, context(["project:read:tenant"]), tx);
@@ -115,6 +119,7 @@ describe("role.updateCustom", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "r1", sourceBlueprintRoleId: null, permissions: ["settings:manage:tenant"] }),
         update: jest.fn().mockResolvedValue({ id: "r1" }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     // Actor holds nothing — would fail escalation if `permissions` were
@@ -136,6 +141,7 @@ describe("role.clone", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "src", sourceBlueprintRoleId: "role.executive", permissions: sourcePermissions }),
         create: jest.fn().mockResolvedValue({ id: "new" }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleCloneMutation.resolve({ sourceRoleId: "src", label: "Executive copy" }, context(sourcePermissions), tx);
@@ -183,6 +189,7 @@ describe("role.delete", () => {
     const tx = {
       role: { findFirst: jest.fn().mockResolvedValue({ id: "r1", sourceBlueprintRoleId: null }), delete: jest.fn().mockResolvedValue({ id: "r1" }) },
       roleAssignment: { count: jest.fn().mockResolvedValue(0) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await roleDeleteMutation.resolve({ roleId: "r1" }, context([]), tx);

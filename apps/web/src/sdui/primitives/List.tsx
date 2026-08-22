@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ReactNode } from "react";
 import { List as VirtualList, type RowComponentProps } from "react-window";
-import type { ActionSpec } from "@antigravity/manifest-schema";
+import type { ActionSpec } from "@purnit/manifest-schema";
 import type { CommonRenderProps } from "../registry";
 import { useDataBinding } from "../use-data-binding";
 import { useActionDispatch } from "../use-action-dispatch";

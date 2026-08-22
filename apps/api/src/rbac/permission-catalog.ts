@@ -21,9 +21,9 @@
  *   including it here would let an Admin hand out a permission that does
  *   nothing, which would look like a bug in this module rather than a
  *   pre-existing one.
- * - Notifications, Comments, Chat, AI Assistant — zero RBAC resource
- *   anywhere (ownership/membership-scoped only). Nothing to render for
- *   these; noted so the omission doesn't look like an oversight.
+ * - Notifications, Comments, Chat, AI Assistant, Presence — zero RBAC
+ *   resource anywhere (ownership/membership/tenancy-scoped only). Nothing to
+ *   render for these; noted so the omission doesn't look like an oversight.
  */
 
 export interface PermissionCatalogEntry {
@@ -72,6 +72,26 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "attendance", action: "create", label: "Mark own attendance" },
       { resource: "attendance", action: "read", label: "View attendance records" },
       { resource: "attendance", action: "update", label: "Correct attendance records" },
+    ],
+  },
+  {
+    module: "Leave",
+    entries: [
+      { resource: "leave", action: "create", label: "Submit leave requests" },
+      { resource: "leave", action: "read", label: "View leave requests and balances" },
+      { resource: "leave", action: "approve", label: "Approve or reject leave requests" },
+      { resource: "leave", action: "manageTypes", label: "Manage leave types" },
+    ],
+  },
+  {
+    module: "CRM",
+    entries: [
+      { resource: "contact", action: "create", label: "Create contacts" },
+      { resource: "contact", action: "read", label: "View contacts" },
+      { resource: "contact", action: "update", label: "Edit contacts" },
+      { resource: "deal", action: "create", label: "Create deals" },
+      { resource: "deal", action: "read", label: "View deals" },
+      { resource: "deal", action: "update", label: "Edit deals" },
     ],
   },
   {
@@ -253,6 +273,32 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "workOrder", action: "update", label: "Schedule/cancel work orders" },
       { resource: "workOrder", action: "complete", label: "Complete work orders (adjusts stock)" },
     ],
+  },
+  {
+    // Audit Logs (module 6 of 6, the last of the approved 6-module backlog)
+    // — Company-Admin-only, tenant-wide, presence-only (no row-level scope
+    // check needed, same shape as role:manage/settings:manage).
+    module: "Audit Logs",
+    entries: [{ resource: "audit", action: "read", label: "View audit logs" }],
+  },
+  {
+    // Stripe Billing — Company-Admin-only, tenant-wide, presence-only, same
+    // shape as role:manage/audit:read.
+    module: "Billing",
+    entries: [{ resource: "billing", action: "manage", label: "Manage billing & subscription" }],
+  },
+  {
+    // Feature Flags (module 3 of the 4-initiative backlog) — Company-Admin-
+    // only, tenant-wide, presence-only, same shape as billing:manage.
+    module: "Feature Flags",
+    entries: [{ resource: "featureFlag", action: "manage", label: "Manage feature flags" }],
+  },
+  {
+    // Enterprise SSO/SAML (initiative 2 of the 4-initiative backlog) —
+    // Company-Admin-only, tenant-wide, presence-only, same shape as
+    // billing:manage/featureFlag:manage.
+    module: "Enterprise SSO",
+    entries: [{ resource: "sso", action: "manage", label: "Manage Enterprise SSO" }],
   },
 ];
 

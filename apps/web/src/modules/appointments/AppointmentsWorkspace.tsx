@@ -2,11 +2,11 @@
 
 import { z } from "zod";
 import { useState } from "react";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
+import { Card, CardBody } from "../../ui/Card";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
@@ -17,8 +17,18 @@ import { useToast } from "../../ui/Toast";
 
 // Healthcare Domain, Phase A. Mirrors TaskList.tsx/PatientsWorkspace.tsx's
 // same shape — inline booking form above a list, presence-gated controls.
+//
+// Frontend Redesign Phase 05 — a dedicated route, replacing the generic
+// `/workspace/page.appointments` catch-all. `bind`/`actions` are gone;
+// `appointments.list` is fetched directly (identical query — the old bind
+// had no dynamic params), `appointments.capabilities` (new, additive,
+// read-only) replaces `actions`.
 export const AppointmentsWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof AppointmentsWorkspaceSchema>;
+
+interface AppointmentsCapabilities {
+  canCreate: boolean;
+  canUpdateStatus: boolean;
+}
 
 interface AppointmentRow {
   id: string;
@@ -63,13 +73,14 @@ function formatAppointmentsForAi(rows: AppointmentRow[]): string {
   return `Here are the currently visible appointments. Summarize what stands out (busy periods, cancellations, no-shows) — do not suggest a diagnosis or treatment for any patient.\n\n${lines.join("\n")}`;
 }
 
-export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
-  const { data, loading, error, refetch } = useDataBinding(bind);
+export function AppointmentsWorkspace() {
+  const { data, isPending, error, refetch } = useDataSourceQuery<AppointmentRow[]>("appointments.list");
   const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "appointment.create") ?? false;
-  const canUpdateStatus = actions?.some((a) => a.kind === "mutation" && a.mutation === "appointment.updateStatus") ?? false;
+  const { data: caps } = useDataSourceQuery<AppointmentsCapabilities>("appointments.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const canUpdateStatus = caps?.canUpdateStatus ?? false;
 
   const { data: patientsData } = useDataSourceQuery<PatientOption[]>("patients.list", {}, { enabled: canCreate });
   const patients = Array.isArray(patientsData) ? patientsData : [];
@@ -119,12 +130,13 @@ export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRe
     }
   }
 
-  const rows = Array.isArray(data) ? (data as AppointmentRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
 
   return (
-    <Card>
-      <CardHeader title={title} />
-      <CardBody className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Appointments" />
+      <Card>
+        <CardBody className="flex flex-col gap-3">
         {aiAvailable && rows.length > 0 && (
           <div>
             <Button size="sm" variant="secondary" onClick={() => openAiPanel("appointments.summarize", formatAppointmentsForAi(rows))}>
@@ -160,10 +172,10 @@ export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRe
         )}
         {createError && <Alert tone="danger">{createError}</Alert>}
 
-        {loading && <SkeletonRows />}
-        {error && <Alert tone="danger">Couldn&apos;t load appointments: {error}</Alert>}
-        {!loading && !error && rows.length === 0 && <EmptyStateView message="No appointments booked yet." />}
-        {!loading && !error && rows.length > 0 && (
+        {isPending && <SkeletonRows />}
+        {error && <Alert tone="danger">Couldn&apos;t load appointments: {error.message}</Alert>}
+        {!isPending && !error && rows.length === 0 && <EmptyStateView message="No appointments booked yet." />}
+        {!isPending && !error && rows.length > 0 && (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-2 py-2.5">
@@ -191,7 +203,8 @@ export function AppointmentsWorkspace({ title, bind, actions }: Props & CommonRe
             ))}
           </ul>
         )}
-      </CardBody>
-    </Card>
+        </CardBody>
+      </Card>
+    </div>
   );
 }

@@ -12,6 +12,7 @@ describe("invoice.create", () => {
     const tx = {
       client: { findFirst: jest.fn().mockResolvedValue({ id: "c1" }) },
       invoice: { create: jest.fn().mockResolvedValue({ id: "i1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await invoiceCreateMutation.resolve(
@@ -44,6 +45,7 @@ describe("invoice.create", () => {
     const tx = {
       client: { findFirst: jest.fn().mockResolvedValue({ id: "c1" }) },
       invoice: { create: jest.fn().mockResolvedValue({ id: "i1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await invoiceCreateMutation.resolve(
@@ -83,6 +85,7 @@ describe("invoice.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "i1", status: "draft" }),
         update: jest.fn().mockResolvedValue({ id: "i1", status: "sent" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await invoiceUpdateStatusMutation.resolve({ id: "i1", status: "sent" }, context(["invoice:update:tenant"]), tx);
     expect((tx as unknown as { invoice: { update: jest.Mock } }).invoice.update).toHaveBeenCalledWith({
@@ -97,6 +100,7 @@ describe("invoice.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "i1", status: "sent" }),
         update: jest.fn().mockResolvedValue({ id: "i1", status: "void" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await invoiceUpdateStatusMutation.resolve({ id: "i1", status: "void" }, context(["invoice:update:tenant"]), tx);
     expect((tx as unknown as { invoice: { update: jest.Mock } }).invoice.update).toHaveBeenCalled();

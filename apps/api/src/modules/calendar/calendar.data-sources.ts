@@ -35,7 +35,11 @@ export async function calendarEventsWhere(tx: PrismaTx, ctx: DataSourceContext, 
   };
 }
 
-interface CalendarItem {
+// Exported for digest-content.ts (Phase E) — a read-only consumer of
+// calendarListDataSource's resolve() output, needs the item shape to filter
+// out itemType "task" (already covered by the digest's own dedicated
+// overdue/due-soon task queries) without duplicating this interface.
+export interface CalendarItem {
   id: string;
   itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue" | "workOrderDue" | "purchaseOrderExpected";
   title: string;
@@ -255,5 +259,37 @@ export const calendarListDataSource: DataSourceDefinition<z.infer<typeof Calenda
 
     items.sort((a, b) => a.start.getTime() - b.start.getTime());
     return items;
+  },
+};
+
+const CapabilitiesParamsSchema = z.object({});
+
+/**
+ * Frontend Redesign, Phase 02 — `CalendarWorkspace.tsx` moved off the SDUI
+ * Renderer onto a dedicated route, so it no longer receives a
+ * permission-pruned `actions` array to derive its own create/broadcast
+ * affordances from. Same reasoning `project.detail`'s own capability flags
+ * already established (see that data source's own doc comment): compute
+ * directly off `ctx.effective`, no `requiredPermission` here (callable by
+ * anyone — a caller who holds nothing just gets every flag back `false`).
+ *
+ * All three flags fall out of one scope check, matching exactly how
+ * `calendarEvent.create`'s own mutation (calendar.mutations.ts) already
+ * resolves broadcast eligibility — `canBroadcast`/`canTargetWholeCompany`
+ * replace what used to be a hardcoded client-side role-label list
+ * (`["Department Head","Executive","HR Manager","Company Admin"]`), a real
+ * correctness fix: a custom role with the same effective scope but a
+ * different label would have been silently denied under the old check.
+ */
+export const calendarCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof CapabilitiesParamsSchema>> = {
+  name: "calendar.capabilities",
+  paramsSchema: CapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    const scope = ctx.effective.has("calendarEvent", "create");
+    return {
+      canCreate: !!scope,
+      canBroadcast: scope !== null && scope !== "own",
+      canTargetWholeCompany: scope === "tenant",
+    };
   },
 };

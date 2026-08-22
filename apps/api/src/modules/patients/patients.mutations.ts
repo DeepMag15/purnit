@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Shared scope-check for row-level patient mutations — same
  * `requireTaskInScope`/`requireDocumentInScope` shape every module in this
@@ -69,6 +70,7 @@ export const patientRegisterMutation: MutationDefinition<z.infer<typeof Register
       await tx.projectMember.create({ data: { tenantId: ctx.tenantId, projectId: chartProject.id, userId: input.assignedDoctorId } });
     }
 
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "patient", patient.id); // AI RAG Phase C
     return patient;
   },
 };
@@ -81,7 +83,9 @@ export const patientUpdateStatusMutation: MutationDefinition<z.infer<typeof Upda
   requiredPermission: "patient:update",
   async resolve(input, ctx, tx) {
     const existing = await requirePatientInScope(tx, ctx, input.id);
-    return tx.patient.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.patient.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "patient", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 

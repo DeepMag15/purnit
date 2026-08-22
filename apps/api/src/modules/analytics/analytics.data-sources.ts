@@ -171,3 +171,37 @@ export function createAnalyticsTrendDataSource(metricRegistry: MetricRegistry): 
     },
   };
 }
+
+const CapabilitiesParamsSchema = z.object({});
+
+/**
+ * Frontend Redesign, Phase 03 — `AnalyticsFilterBar.tsx` moved off the SDUI
+ * Renderer onto a dedicated route, and (independently) had its own
+ * pre-existing bug: `departments.list`/`teams.list`/`users.list`/
+ * `projects.list` were all gated behind one hardcoded client-side
+ * `["Company Admin","HR Manager"].includes(role)` check, even though
+ * `projects.list` actually requires `project:read` (held from Practitioner
+ * tier up) while the other three require `department:manage`/`user:manage`
+ * (Admin/HR-tier only) — two genuinely different gates collapsed into one,
+ * silently hiding the Project filter from every mid-tier role that could
+ * actually use it. Same `project.detail`-style capability-flag precedent as
+ * `calendar.capabilities`'s own doc comment — no `requiredPermission`
+ * (callable by anyone). `department:manage`/`user:manage` are always
+ * granted together in every blueprint today (confirmed directly), so one
+ * `canBrowseOrg` for both remains correct; `project:read` gets its own flag.
+ */
+export const analyticsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof CapabilitiesParamsSchema>> = {
+  name: "analytics.capabilities",
+  paramsSchema: CapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canBrowseOrg: ctx.effective.has("department", "manage") !== null || ctx.effective.has("user", "manage") !== null,
+      canBrowseProjects: !!ctx.effective.has("project", "read"),
+      // UI-wiring pass — gates AnalyticsDashboard.tsx's "Save as Team
+      // Default" control (dashboardLayout.saveAsTemplate, previously built
+      // with no UI to trigger it), same real-permission-not-shown-to-
+      // everyone discipline as the two flags above.
+      canManageRoleTemplates: !!ctx.effective.has("role", "manage"),
+    };
+  },
+};

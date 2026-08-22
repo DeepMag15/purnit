@@ -1,11 +1,12 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 import { enqueueReminders } from "../calendar/reminder-outbox";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Who (if anyone) should be notified of an assignee-affecting task change.
  * `null` covers both "no assignee" and "the actor is the assignee" —
@@ -108,6 +109,8 @@ export const taskCreateMutation: MutationDefinition<z.infer<typeof CreateInputSc
         dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       },
     });
+
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "task", task.id); // AI RAG Phase C
 
     const recipient = notificationRecipientFor(assigneeId, ctx.userId);
     if (recipient) {

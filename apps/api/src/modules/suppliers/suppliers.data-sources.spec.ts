@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { suppliersWhere, suppliersListDataSource, supplierDetailDataSource } from "./suppliers.data-sources";
+import { suppliersWhere, suppliersListDataSource, supplierDetailDataSource, suppliersCapabilitiesDataSource } from "./suppliers.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -56,5 +56,34 @@ describe("suppliers.detail", () => {
     )) as { canUpdate: boolean; canReadPurchaseOrders: boolean };
     expect(data.canUpdate).toBe(false);
     expect(data.canReadPurchaseOrders).toBe(true);
+  });
+});
+
+describe("suppliers.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await suppliersCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only supplier:create", async () => {
+    expect(await suppliersCapabilitiesDataSource.resolve({}, context(["supplier:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only supplier:update — a genuinely different resource action from supplier:create", async () => {
+    expect(await suppliersCapabilitiesDataSource.resolve({}, context(["supplier:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await suppliersCapabilitiesDataSource.resolve({}, context(["supplier:create:tenant", "supplier:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
+    });
   });
 });

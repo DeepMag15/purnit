@@ -91,3 +91,24 @@ export const studentDetailDataSource: DataSourceDefinition<z.infer<typeof Detail
     return { ...student, canUpdate, canReadEnrollments, enrollments };
   },
 };
+
+const StudentsCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `StudentsWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `student.register`/`student.updateStatus`
+ * declare genuinely different resources (`student:create`/`student:update`,
+ * confirmed directly), so both get their own flag. No `requiredPermission`
+ * of its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const studentsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof StudentsCapabilitiesParamsSchema>> = {
+  name: "students.capabilities",
+  paramsSchema: StudentsCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("student", "create") !== null,
+      canUpdateStatus: ctx.effective.has("student", "update") !== null,
+    };
+  },
+};

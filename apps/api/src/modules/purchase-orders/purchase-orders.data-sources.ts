@@ -60,3 +60,25 @@ export const purchaseOrderDetailDataSource: DataSourceDefinition<z.infer<typeof 
     return { ...order, supplierName: supplierNames.get(order.supplierId) ?? "Unknown", canUpdate, canReceive };
   },
 };
+
+const PurchaseOrdersCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `PurchaseOrdersWorkspace.tsx`'s move off
+ * the generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `purchaseOrder.create`/`purchaseOrder.updateStatus`
+ * declare genuinely different resources (`purchaseOrder:create`/
+ * `purchaseOrder:update`, confirmed directly), so both get their own flag.
+ * No `requiredPermission` of its own (callable by anyone), same precedent
+ * as `analytics.capabilities`. */
+export const purchaseOrdersCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof PurchaseOrdersCapabilitiesParamsSchema>> = {
+  name: "purchaseOrders.capabilities",
+  paramsSchema: PurchaseOrdersCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("purchaseOrder", "create") !== null,
+      canUpdateStatus: ctx.effective.has("purchaseOrder", "update") !== null,
+    };
+  },
+};

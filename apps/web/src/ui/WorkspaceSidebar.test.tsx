@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { NavItem, WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { NavItem, WorkspaceManifest } from "@purnit/manifest-schema";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 
 const manifest: WorkspaceManifest = {
   schemaVersion: 1,
   tenant: { id: "t1", name: "Test Co", workspaceId: "test-co", industry: "IT", branding: {}, profile: {} },
-  user: { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x" },
+  user: { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x", digestOptOut: false },
   navigation: [],
   page: { id: "page.dashboard", type: "Page", version: 1 },
   featureFlags: {},
@@ -50,10 +50,13 @@ describe("WorkspaceSidebar", () => {
 
     const employeesLink = screen.getByRole("link", { name: "Employees" });
     expect(employeesLink).toBeInTheDocument();
-    expect(employeesLink).toHaveClass("bg-accent/10");
+    // Frontend Redesign, Phase 01 — active nav is a soft surface pop, not an
+    // accent-tinted block (design review's own doctrine); see
+    // WorkspaceSidebar.tsx's matching comment.
+    expect(employeesLink).toHaveClass("bg-surface");
 
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
-    expect(dashboardLink).not.toHaveClass("bg-accent/10");
+    expect(dashboardLink).not.toHaveClass("bg-surface");
   });
 
   it("calls onNavigate when a leaf link is clicked", () => {

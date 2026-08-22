@@ -19,6 +19,10 @@ export const WorkspaceManifestSchema = z.object({
     displayName: z.string(),
     roles: z.array(z.string()),
     permissionsHash: z.string(),
+    // Proactive Digests (AI Assistant Phase E) — surfaced so
+    // WorkspaceSettings' own toggle can initialize from it without a
+    // separate round trip.
+    digestOptOut: z.boolean(),
   }),
   navigation: z.array(NavItemSchema),
   page: UINodeSchema,

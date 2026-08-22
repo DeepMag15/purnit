@@ -42,6 +42,7 @@ interface CourseDetailData {
   canUpdate: boolean;
   canReadAssignments: boolean;
   canCreateAssignments: boolean;
+  canUpdateAssignments: boolean;
   canEnroll: boolean;
   canUpdateEnrollments: boolean;
   canCreateDocuments: boolean;
@@ -86,12 +87,26 @@ export function CourseDetail({ courseId }: { courseId: string }) {
   const enrolledStudentIds = new Set((data?.roster ?? []).map((r) => r.studentId));
   const enrollableStudents = allStudents.filter((s) => !enrolledStudentIds.has(s.id));
 
+  // Only fetched for someone who can actually reassign — same enabled-gating
+  // precedent ProjectDetail.tsx's own tenantUsers fetch already uses.
+  const { data: tenantUsersData } = useDataSourceQuery<{ id: string; displayName: string }[]>("users.list", {}, { enabled: !!data?.canUpdate });
+  const tenantUsers = Array.isArray(tenantUsersData) ? tenantUsersData : [];
+
   async function handleStatusChange(status: string) {
     try {
       await callMutation("course.updateStatus", { id: courseId, status });
       refetch();
     } catch (err) {
       toast.show(err instanceof Error ? err.message : "Couldn't update course status", "danger");
+    }
+  }
+
+  async function handleTeacherChange(teacherId: string) {
+    try {
+      await callMutation("course.assignTeacher", { id: courseId, teacherId });
+      refetch();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't assign teacher", "danger");
     }
   }
 
@@ -176,9 +191,24 @@ export function CourseDetail({ courseId }: { courseId: string }) {
         <Card>
           <CardHeader title="Details" />
           <CardBody className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-text-muted">Teacher</span>
-              <span className="text-text">{data.teacherName ?? "Unassigned"}</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-text-muted">Teacher</span>
+              {data.canUpdate ? (
+                <Select
+                  value={data.teacherId ?? ""}
+                  onChange={(e) => e.target.value && handleTeacherChange(e.target.value)}
+                  className="h-7 max-w-[65%] text-xs"
+                >
+                  <option value="">Unassigned</option>
+                  {tenantUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <span className="text-text">{data.teacherName ?? "Unassigned"}</span>
+              )}
             </div>
             <div className="flex justify-between">
               <span className="text-text-muted">Enrolled</span>
@@ -265,7 +295,12 @@ export function CourseDetail({ courseId }: { courseId: string }) {
       )}
 
       {activeTab === "assignments" && data.canReadAssignments && (
-        <AssignmentsGradebookTab courseId={courseId} courseName={data.name} canCreateAssignments={data.canCreateAssignments} />
+        <AssignmentsGradebookTab
+          courseId={courseId}
+          courseName={data.name}
+          canCreateAssignments={data.canCreateAssignments}
+          canUpdateAssignments={data.canUpdateAssignments}
+        />
       )}
 
       {activeTab === "materials" && data.materialsVisible && (

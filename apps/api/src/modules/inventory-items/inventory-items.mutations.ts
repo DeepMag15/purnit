@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 async function requireInventoryItemExists(tx: PrismaTx, ctx: MutationContext, itemId: string) {
   const existing = await tx.inventoryItem.findFirst({ where: { id: itemId, tenantId: ctx.tenantId, deletedAt: null } });
@@ -51,6 +52,7 @@ export const inventoryItemCreateMutation: MutationDefinition<z.infer<typeof Crea
 
     await tx.projectMember.create({ data: { tenantId: ctx.tenantId, projectId: filesProject.id, userId: ctx.userId } });
 
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "inventoryItem", item.id); // AI RAG Phase C
     return item;
   },
 };
@@ -69,7 +71,7 @@ export const inventoryItemUpdateMutation: MutationDefinition<z.infer<typeof Upda
   requiredPermission: "inventoryItem:update",
   async resolve(input, ctx, tx) {
     const existing = await requireInventoryItemExists(tx, ctx, input.id);
-    return tx.inventoryItem.update({
+    const updated = await tx.inventoryItem.update({
       where: { id: existing.id },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
@@ -78,6 +80,8 @@ export const inventoryItemUpdateMutation: MutationDefinition<z.infer<typeof Upda
         ...(input.status !== undefined ? { status: input.status } : {}),
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "inventoryItem", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 

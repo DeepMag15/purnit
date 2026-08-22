@@ -16,7 +16,11 @@ describe("student.register", () => {
   it("creates a plain Student row — deliberately NO backing Project, unlike patient.register", async () => {
     const studentCreate = jest.fn().mockResolvedValue({ id: "s1" });
     const projectCreate = jest.fn();
-    const tx = { student: { create: studentCreate }, project: { create: projectCreate } } as unknown as PrismaTx;
+    const tx = {
+      student: { create: studentCreate },
+      project: { create: projectCreate },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
+    } as unknown as PrismaTx;
 
     await studentRegisterMutation.resolve({ name: "Jane Doe" }, context(["student:create:tenant"]), tx);
 
@@ -36,6 +40,7 @@ describe("student.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "s1", registeredById: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "s1", status: "graduated" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await studentUpdateStatusMutation.resolve({ id: "s1", status: "graduated" }, context(["student:update:own"]), tx);

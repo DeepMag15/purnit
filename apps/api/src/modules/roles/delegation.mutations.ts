@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import { assertPermissionsGrantableByActor } from "../../rbac/permission-grant-check";
 import { assertKnownPermissions } from "./roles.mutations";
+import { logAudit } from "../../audit/log-audit";
 
 const GrantDelegationInputSchema = z.object({
   userId: z.string(),
@@ -64,6 +65,8 @@ export const delegationGrantMutation: MutationDefinition<z.infer<typeof GrantDel
       });
     }
 
+    await logAudit(tx, ctx, { action: "delegation.grant", resource: "delegation", resourceId: input.userId, after: { permissions: input.permissions } });
+
     return created;
   },
 };
@@ -101,6 +104,13 @@ export const delegationRevokeMutation: MutationDefinition<z.infer<typeof RevokeD
         },
       });
     }
+
+    await logAudit(tx, ctx, {
+      action: "delegation.revoke",
+      resource: "delegation",
+      resourceId: input.delegationId,
+      before: { userId: delegation.userId, permission: delegation.permission },
+    });
 
     return revoked;
   },

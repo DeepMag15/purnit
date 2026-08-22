@@ -23,6 +23,13 @@ import { MeetingsModule } from "./modules/meetings/meetings.module";
 import { AnnouncementsModule } from "./modules/announcements/announcements.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
 import { AttendanceModule } from "./modules/attendance/attendance.module";
+import { LeaveModule } from "./modules/leave/leave.module";
+import { CrmModule } from "./modules/crm/crm.module";
+import { PresenceModule } from "./modules/presence/presence.module";
+import { AuditModule } from "./modules/audit/audit.module";
+import { BillingModule } from "./billing/billing.module";
+import { FeatureFlagsModule } from "./modules/feature-flags/feature-flags.module";
+import { SsoModule } from "./sso/sso.module";
 import { DocumentsModule } from "./modules/documents/documents.module";
 import { AiModule } from "./ai/ai.module";
 import { AiAssistantModule } from "./modules/ai-assistant/ai-assistant.module";
@@ -42,6 +49,7 @@ import { InventoryItemsModule } from "./modules/inventory-items/inventory-items.
 import { BomLinesModule } from "./modules/bom-lines/bom-lines.module";
 import { PurchaseOrdersModule } from "./modules/purchase-orders/purchase-orders.module";
 import { WorkOrdersModule } from "./modules/work-orders/work-orders.module";
+import { DigestModule } from "./modules/digest/digest.module";
 import { MeController } from "./me/me.controller";
 
 @Module({
@@ -68,6 +76,13 @@ import { MeController } from "./me/me.controller";
     AnnouncementsModule,
     CalendarModule,
     AttendanceModule,
+    LeaveModule,
+    CrmModule,
+    PresenceModule,
+    AuditModule,
+    BillingModule,
+    FeatureFlagsModule,
+    SsoModule,
     DocumentsModule,
     AiModule,
     AiAssistantModule,
@@ -87,6 +102,7 @@ import { MeController } from "./me/me.controller";
     BomLinesModule,
     PurchaseOrdersModule,
     WorkOrdersModule,
+    DigestModule,
   ],
   controllers: [HealthController, MeController],
 })

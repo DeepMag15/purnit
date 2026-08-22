@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Same `requireClientInScope` shape every module follows. */
 async function requireWorkOrderInScope(tx: PrismaTx, ctx: MutationContext, workOrderId: string) {
@@ -39,7 +40,7 @@ export const workOrderCreateMutation: MutationDefinition<z.infer<typeof CreateIn
       if (!assignee) throw new NotFoundException(`No user "${input.assignedToId}"`);
     }
 
-    return tx.workOrder.create({
+    const workOrder = await tx.workOrder.create({
       data: {
         tenantId: ctx.tenantId,
         itemId: input.itemId,
@@ -50,6 +51,8 @@ export const workOrderCreateMutation: MutationDefinition<z.infer<typeof CreateIn
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "workOrder", workOrder.id); // AI RAG Phase C
+    return workOrder;
   },
 };
 
@@ -76,7 +79,9 @@ export const workOrderUpdateStatusMutation: MutationDefinition<z.infer<typeof Up
     if (existing.status !== input.status && !VALID_TRANSITIONS[existing.status]?.includes(input.status)) {
       throw new BadRequestException(`Cannot move a work order from "${existing.status}" to "${input.status}"`);
     }
-    return tx.workOrder.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.workOrder.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "workOrder", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -131,6 +136,8 @@ export const workOrderCompleteMutation: MutationDefinition<z.infer<typeof Comple
 
     await tx.inventoryItem.update({ where: { id: existing.itemId }, data: { currentStock: { increment: existing.quantity } } });
 
-    return tx.workOrder.update({ where: { id: existing.id }, data: { status: "completed" } });
+    const updated = await tx.workOrder.update({ where: { id: existing.id }, data: { status: "completed" } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "workOrder", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

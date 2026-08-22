@@ -159,6 +159,7 @@ describe("announcement.delete (ownership-only, no permission gate)", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "a1", authorId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "a1", deletedAt: new Date() }),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await announcementDeleteMutation.resolve({ id: "a1" }, context(), tx);

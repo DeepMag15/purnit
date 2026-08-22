@@ -43,10 +43,12 @@ export function AssignmentsGradebookTab({
   courseId,
   courseName,
   canCreateAssignments,
+  canUpdateAssignments,
 }: {
   courseId: string;
   courseName: string;
   canCreateAssignments: boolean;
+  canUpdateAssignments: boolean;
 }) {
   const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -57,6 +59,14 @@ export function AssignmentsGradebookTab({
   const [newMaxScore, setNewMaxScore] = useState("100");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<AssignmentRow | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editMaxScore, setEditMaxScore] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const { data, isPending, error, refetch } = useDataSourceQuery<AssignmentRow[]>("assignments.list", { courseId });
   const assignments = Array.isArray(data) ? data : [];
@@ -109,6 +119,40 @@ export function AssignmentsGradebookTab({
     }
   }
 
+  function openEdit(a: AssignmentRow) {
+    setEditing(a);
+    setEditTitle(a.title);
+    setEditDescription(a.description ?? "");
+    setEditDueDate(a.dueDate ? a.dueDate.slice(0, 10) : "");
+    setEditMaxScore(String(a.maxScore));
+    setEditError(null);
+  }
+
+  async function handleSaveEdit() {
+    if (!editing) return;
+    if (!editTitle.trim()) {
+      setEditError("Assignment title is required");
+      return;
+    }
+    setSaving(true);
+    setEditError(null);
+    try {
+      await callMutation("assignment.update", {
+        id: editing.id,
+        title: editTitle.trim(),
+        description: editDescription,
+        ...(editDueDate ? { dueDate: editDueDate } : {}),
+        ...(editMaxScore ? { maxScore: Number(editMaxScore) } : {}),
+      });
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Couldn't save the assignment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <Card>
@@ -142,17 +186,29 @@ export function AssignmentsGradebookTab({
             <ul className="flex flex-col divide-y divide-border">
               {assignments.map((a) => (
                 <li key={a.id} className="flex flex-col">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
-                    className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{a.title}</span>
-                    <span className="shrink-0 text-xs text-text-muted">
-                      {a.dueDate ? `Due ${new Date(a.dueDate).toLocaleDateString()}` : "No due date"} · {a.maxScore} pts
-                    </span>
-                    <Icon name={expandedId === a.id ? "expand_less" : "expand_more"} size={16} />
-                  </button>
+                  <div className="flex w-full items-center gap-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{a.title}</span>
+                      <span className="shrink-0 text-xs text-text-muted">
+                        {a.dueDate ? `Due ${new Date(a.dueDate).toLocaleDateString()}` : "No due date"} · {a.maxScore} pts
+                      </span>
+                      <Icon name={expandedId === a.id ? "expand_less" : "expand_more"} size={16} />
+                    </button>
+                    {canUpdateAssignments && (
+                      <button
+                        type="button"
+                        onClick={() => openEdit(a)}
+                        title="Edit assignment"
+                        className="shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
+                      >
+                        <Icon name="edit" size={15} />
+                      </button>
+                    )}
+                  </div>
                   {expandedId === a.id && <GradebookTable assignment={a} />}
                 </li>
               ))}
@@ -180,6 +236,30 @@ export function AssignmentsGradebookTab({
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? "Creating…" : "Create"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} title="Edit Assignment">
+        <div className="flex flex-col gap-3">
+          <Input
+            label="Title"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSaveEdit()}
+            autoFocus
+          />
+          <Input label="Description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+          <Input label="Due date" type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+          <Input label="Max score" type="number" min={1} value={editMaxScore} onChange={(e) => setEditMaxScore(e.target.value)} />
+          {editError && <Alert tone="danger">{editError}</Alert>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
             </Button>
           </div>
         </div>

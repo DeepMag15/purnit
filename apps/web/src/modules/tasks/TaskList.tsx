@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../../ui/Icon";
 import type { CommonRenderProps } from "../../sdui/registry";
 import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
@@ -95,6 +95,7 @@ const VIEWS: ViewOption[] = [
  */
 export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data, loading, error, refetch } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
@@ -139,6 +140,19 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
     clearFieldError("projectId");
     setCreateOpen(true);
   }
+
+  // Frontend Redesign, Phase 01 — the dashboard's Quick Actions/AI widgets
+  // and the header/Command Palette's quick-create menu all link here with
+  // `?compose=1` rather than duplicating this module's own create form.
+  // Runs once; the param is stripped immediately after so a refresh or
+  // back-navigation doesn't reopen the dialog.
+  useEffect(() => {
+    if (searchParams.get("compose") === "1" && canCreate) {
+      openCreate();
+      router.replace("/workspace/page.tasks");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once intent; openCreate/canCreate are recreated every render but their identity isn't what this effect should react to.
+  }, [searchParams]);
 
   async function handleCreate() {
     if (!validate({ title: newTitle, projectId: selectedProjectId })) return;

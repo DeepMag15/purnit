@@ -1,5 +1,10 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { inventoryItemsWhere, inventoryItemsListDataSource, inventoryItemDetailDataSource } from "./inventory-items.data-sources";
+import {
+  inventoryItemsWhere,
+  inventoryItemsListDataSource,
+  inventoryItemDetailDataSource,
+  inventoryItemsCapabilitiesDataSource,
+} from "./inventory-items.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -62,5 +67,33 @@ describe("inventoryItems.detail", () => {
       expect(data.filesVisible).toBe(false);
       expect((tx as unknown as { project: { findFirst: jest.Mock } }).project.findFirst).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("inventoryItems.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await inventoryItemsCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdate: false });
+  });
+
+  it("canCreate true with only inventoryItem:create", async () => {
+    expect(await inventoryItemsCapabilitiesDataSource.resolve({}, context(["inventoryItem:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdate: false,
+    });
+  });
+
+  it("canUpdate true with only inventoryItem:update — a genuinely different resource action from inventoryItem:create", async () => {
+    expect(await inventoryItemsCapabilitiesDataSource.resolve({}, context(["inventoryItem:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdate: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(
+      await inventoryItemsCapabilitiesDataSource.resolve({}, context(["inventoryItem:create:tenant", "inventoryItem:update:tenant"]), tx),
+    ).toEqual({ canCreate: true, canUpdate: true });
   });
 });

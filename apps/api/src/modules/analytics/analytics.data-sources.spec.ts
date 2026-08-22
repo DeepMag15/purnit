@@ -1,7 +1,7 @@
 import { ForbiddenException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
 import { MetricRegistry, type ScalarMetricDefinition, type BreakdownMetricDefinition, type CompositeMetricDefinition } from "../../metrics/metric-registry.service";
-import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource } from "./analytics.data-sources";
+import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource, analyticsCapabilitiesDataSource } from "./analytics.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -321,5 +321,43 @@ describe("analytics.trend", () => {
     expect((tx as unknown as { analyticsSnapshot: { findMany: jest.Mock } }).analyticsSnapshot.findMany.mock.calls[0][0].where).toMatchObject({
       departmentId: "d1",
     });
+  });
+});
+
+describe("analytics.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve({}, context([]), tx);
+    expect(result).toEqual({ canBrowseOrg: false, canBrowseProjects: false, canManageRoleTemplates: false });
+  });
+
+  it("canBrowseProjects true for a mid-tier role holding only project:read, the other two stay false", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve({}, context(["project:read:team"]), tx);
+    expect(result).toEqual({ canBrowseOrg: false, canBrowseProjects: true, canManageRoleTemplates: false });
+  });
+
+  it("canBrowseOrg true with only department:manage (user:manage absent)", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve({}, context(["department:manage:tenant"]), tx);
+    expect(result).toEqual({ canBrowseOrg: true, canBrowseProjects: false, canManageRoleTemplates: false });
+  });
+
+  it("canBrowseOrg true with only user:manage (department:manage absent)", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve({}, context(["user:manage:tenant"]), tx);
+    expect(result).toEqual({ canBrowseOrg: true, canBrowseProjects: false, canManageRoleTemplates: false });
+  });
+
+  it("canManageRoleTemplates true only when role:manage is held, independent of the other two", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve({}, context(["role:manage:tenant"]), tx);
+    expect(result).toEqual({ canBrowseOrg: false, canBrowseProjects: false, canManageRoleTemplates: true });
+  });
+
+  it("all true for a role holding all four (e.g. Company Admin)", async () => {
+    const result = await analyticsCapabilitiesDataSource.resolve(
+      {},
+      context(["department:manage:tenant", "user:manage:tenant", "project:read:tenant", "role:manage:tenant"]),
+      tx,
+    );
+    expect(result).toEqual({ canBrowseOrg: true, canBrowseProjects: true, canManageRoleTemplates: true });
   });
 });

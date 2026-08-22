@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";

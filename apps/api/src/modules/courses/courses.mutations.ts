@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Same `requirePatientInScope` shape every module follows. Unlike Assignment
  * (whose "owner" is transitive through Course), Course has a direct owner
@@ -57,6 +58,7 @@ export const courseCreateMutation: MutationDefinition<z.infer<typeof CreateInput
       await tx.projectMember.create({ data: { tenantId: ctx.tenantId, projectId: materialsProject.id, userId: input.teacherId } });
     }
 
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "course", course.id); // AI RAG Phase C
     return course;
   },
 };
@@ -69,7 +71,9 @@ export const courseUpdateStatusMutation: MutationDefinition<z.infer<typeof Updat
   requiredPermission: "course:update",
   async resolve(input, ctx, tx) {
     const existing = await requireCourseInScope(tx, ctx, input.id);
-    return tx.course.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.course.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "course", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 

@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 const CreateInputSchema = z.object({
   patientId: z.string(),
@@ -23,7 +24,7 @@ export const appointmentCreateMutation: MutationDefinition<z.infer<typeof Create
     const doctor = await tx.user.findFirst({ where: { id: input.doctorId, tenantId: ctx.tenantId, deletedAt: null } });
     if (!doctor) throw new NotFoundException(`No user "${input.doctorId}"`);
 
-    return tx.appointment.create({
+    const appointment = await tx.appointment.create({
       data: {
         tenantId: ctx.tenantId,
         patientId: input.patientId,
@@ -34,6 +35,8 @@ export const appointmentCreateMutation: MutationDefinition<z.infer<typeof Create
         bookedById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "appointment", appointment.id); // AI RAG Phase C
+    return appointment;
   },
 };
 
@@ -51,6 +54,8 @@ export const appointmentUpdateStatusMutation: MutationDefinition<z.infer<typeof 
     const inScope = scope && isRowInScope(scope, { ownerId: existing.doctorId }, { userId: ctx.userId });
     if (!inScope) throw new ForbiddenException("Not allowed to update this appointment");
 
-    return tx.appointment.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.appointment.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "appointment", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

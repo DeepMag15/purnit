@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -25,7 +25,6 @@ import { Badge } from "../../ui/Badge";
 import { dollarsToCents } from "../invoices/money";
 
 export const InventoryItemsWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof InventoryItemsWorkspaceSchema>;
 
 interface InventoryItemRow {
   id: string;
@@ -57,9 +56,10 @@ const TYPE_TONE: Record<string, "neutral" | "success" | "warning" | "danger" | "
  * useful grouping for a catalog than an active/discontinued split. Row
  * click on Table/List navigates to `/workspace/inventory-items/[id]`.
  */
-export function InventoryItemsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function InventoryItemsWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "inventoryItems.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<InventoryItemRow[]>("inventoryItems.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("table");
   const [createOpen, setCreateOpen] = useState(false);
@@ -75,9 +75,11 @@ export function InventoryItemsWorkspace({ title, bind, actions }: Props & Common
     name: required("Name is required"),
   });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "inventoryItem.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdate: boolean }>("inventoryItems.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdate ? [{ kind: "mutation" as const, mutation: "inventoryItem.update", input: { const: null } }] : [];
 
-  const rows = Array.isArray(data) ? (data as InventoryItemRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((i) => i.status))];
 
   function openCreate() {
@@ -116,7 +118,7 @@ export function InventoryItemsWorkspace({ title, bind, actions }: Props & Common
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Inventory"}
+        title="Inventory"
         description="Track raw materials, components, and finished goods."
         actions={
           canCreate && (
@@ -184,11 +186,11 @@ export function InventoryItemsWorkspace({ title, bind, actions }: Props & Common
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load inventory: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No inventory items yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load inventory: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No inventory items yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="inventory-items-board-kanban"
           groupKey="status"
@@ -202,7 +204,7 @@ export function InventoryItemsWorkspace({ title, bind, actions }: Props & Common
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="inventory-items-table"
           columns={["sku", "name", "type", "currentStock", "reorderPoint", "status"]}
@@ -216,7 +218,7 @@ export function InventoryItemsWorkspace({ title, bind, actions }: Props & Common
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((item) => (
             <li

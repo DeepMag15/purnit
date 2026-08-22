@@ -183,6 +183,7 @@ describe("message.send", () => {
       },
       message: { create: jest.fn().mockResolvedValue({ id: "msg1", conversationId: "c1", authorId: "u1", body: "hi @u2" }) },
       notification: { create: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     const result = await messageSendMutation.resolve(

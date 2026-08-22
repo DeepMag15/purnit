@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { Card, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Badge } from "../../ui/Badge";
+import { StatusDot } from "../../ui/StatusDot";
 import { Dropdown } from "../../ui/Dropdown";
 import { Icon } from "../../ui/Icon";
 import { SkeletonRows } from "../../ui/Skeleton";
@@ -18,7 +19,10 @@ import { EmptyStateView } from "../../sdui/primitives/EmptyState";
 import { JitsiCallFrame } from "./JitsiCallFrame";
 
 export const MeetingsWorkspaceSchema = z.object({});
-type Props = z.infer<typeof MeetingsWorkspaceSchema>;
+
+interface MeetingsCapabilities {
+  canSchedule: boolean;
+}
 
 interface ParticipantRef {
   id: string;
@@ -67,24 +71,28 @@ function formatRange(startIso: string, endIso: string): string {
 }
 
 /**
- * Core Workspace Modules, Phase 1, Submodule 3: Meetings — a
- * blueprint-registered composite (a whole page, not a per-row expansion),
- * mirrors `ChatWorkspace`'s "manages its own data via `useDataSourceQuery`"
- * shape. `meeting.create`'s presence in `actions` is the only real
- * permission-pruned gate here (who may schedule); Join/Cancel/participant
- * management are all data-driven off each row's `isOrganizer`/`isParticipant`
- * flags instead, same precedent as `ChatWorkspace`'s creator-only archive
- * button — those mutations carry no `requiredPermission` to prune on.
+ * Core Workspace Modules, Phase 1, Submodule 3: Meetings.
+ *
+ * Frontend Redesign, Phase 02 — moved off the SDUI Renderer onto a
+ * dedicated route (`/workspace/meetings`). Zero-prop now — `canSchedule`
+ * comes from the new `meetings.capabilities` data source instead of the
+ * `actions` prop the Renderer used to inject (pure parity fix, `canSchedule`
+ * was already correctly derived before). Join/Cancel/participant management
+ * stay data-driven off each row's `isOrganizer`/`isParticipant` flags, same
+ * precedent as `ChatWorkspace`'s creator-only archive button — those
+ * mutations carry no `requiredPermission` to prune on either way.
  */
-export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
+export function MeetingsWorkspace() {
   const { user, tenant, callMutation } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const canSchedule = actions?.some((a) => a.kind === "mutation" && a.mutation === "meeting.create") ?? false;
+  const { data: caps, isPending: capsPending } = useDataSourceQuery<MeetingsCapabilities>("meetings.capabilities");
+  const canSchedule = caps?.canSchedule ?? false;
 
-  const { data: meetingsData, isPending } = useDataSourceQuery<MeetingRow[]>("meetings.list");
+  const { data: meetingsData, isPending: meetingsPending } = useDataSourceQuery<MeetingRow[]>("meetings.list");
   const meetings = Array.isArray(meetingsData) ? meetingsData : [];
+  const isPending = capsPending || meetingsPending;
 
   // The fix for a real gap found while building this: `users.list` (reused
   // by ProjectBoard's member picker) is gated on `user:manage`, which
@@ -209,29 +217,28 @@ export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
     .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
 
   return (
-    <Card>
-      <CardHeader
+    <div className="flex flex-col gap-4">
+      <PageHeader
         title="Meetings"
-        action={
-          <div className="flex gap-2">
-            {canSchedule && (
-              <>
-                <Button size="sm" variant="secondary" onClick={handleStartNow} disabled={startingNow}>
-                  <Icon name="videocam" size={14} />
-                  {startingNow ? "Starting…" : "Start now"}
-                </Button>
-                <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-                  <Icon name="add" size={14} />
-                  Schedule
-                </Button>
-              </>
-            )}
-          </div>
+        actions={
+          canSchedule && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={handleStartNow} disabled={startingNow}>
+                <Icon name="videocam" size={14} />
+                {startingNow ? "Starting…" : "Start now"}
+              </Button>
+              <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+                <Icon name="add" size={14} />
+                Schedule
+              </Button>
+            </div>
+          )
         }
       />
-      <CardBody className="flex flex-col gap-4">
-        {showForm && canSchedule && (
-          <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+
+      {showForm && canSchedule && (
+        <Card>
+          <CardBody className="flex flex-col gap-2">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Meeting title" />
             <div className="flex gap-2">
               <label className="flex-1 text-xs text-text-muted">
@@ -282,41 +289,32 @@ export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
             <Button size="sm" onClick={handleSchedule} disabled={scheduling || !title.trim()} className="w-fit">
               {scheduling ? "Scheduling…" : "Schedule meeting"}
             </Button>
-          </div>
-        )}
+          </CardBody>
+        </Card>
+      )}
 
-        {isPending && <SkeletonRows />}
+      <Card>
+        <CardBody className="flex flex-col gap-4">
+          {isPending && <SkeletonRows />}
 
-        {!isPending && (
-          <>
-            <div>
-              <div className="mb-2 text-xs font-medium text-text-muted">Upcoming</div>
-              {upcoming.length === 0 && <EmptyStateView message="No upcoming meetings." />}
-              <div className="flex flex-col gap-2">
-                {upcoming.map((m) => (
-                  <MeetingRowView
-                    key={m.id}
-                    meeting={m}
-                    candidates={candidates}
-                    joining={joiningId === m.id}
-                    onJoin={() => handleJoin(m.id)}
-                    onCancel={() => handleCancel(m.id)}
-                    onToggleParticipant={(userId, isMember) => handleToggleExistingParticipant(m.id, userId, isMember)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {past.length > 0 && (
+          {!isPending && (
+            <>
               <div>
-                <div className="mb-2 text-xs font-medium text-text-muted">Past</div>
+                <div className="mb-2 text-xs font-medium text-text-muted">Upcoming</div>
+                {upcoming.length === 0 && (
+                  <EmptyStateView
+                    icon="event"
+                    message="No upcoming meetings."
+                    action={canSchedule ? { label: "Schedule one", onClick: () => setShowForm(true) } : undefined}
+                  />
+                )}
                 <div className="flex flex-col gap-2">
-                  {past.map((m) => (
+                  {upcoming.map((m) => (
                     <MeetingRowView
                       key={m.id}
                       meeting={m}
                       candidates={candidates}
-                      joining={false}
+                      joining={joiningId === m.id}
                       onJoin={() => handleJoin(m.id)}
                       onCancel={() => handleCancel(m.id)}
                       onToggleParticipant={(userId, isMember) => handleToggleExistingParticipant(m.id, userId, isMember)}
@@ -324,11 +322,30 @@ export function MeetingsWorkspace({ actions }: Props & CommonRenderProps) {
                   ))}
                 </div>
               </div>
-            )}
-          </>
-        )}
-      </CardBody>
-    </Card>
+
+              {past.length > 0 && (
+                <div>
+                  <div className="mb-2 text-xs font-medium text-text-muted">Past</div>
+                  <div className="flex flex-col gap-2">
+                    {past.map((m) => (
+                      <MeetingRowView
+                        key={m.id}
+                        meeting={m}
+                        candidates={candidates}
+                        joining={false}
+                        onJoin={() => handleJoin(m.id)}
+                        onCancel={() => handleCancel(m.id)}
+                        onToggleParticipant={(userId, isMember) => handleToggleExistingParticipant(m.id, userId, isMember)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 
@@ -352,12 +369,17 @@ function MeetingRowView({
   const canManage = meeting.isOrganizer && !meeting.cancelledAt;
 
   return (
-    <div className="rounded-md border border-border bg-surface p-2.5 shadow-sm">
+    <div className="rounded-md border border-border bg-surface p-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-text">{meeting.title}</span>
-            {meeting.cancelledAt && <Badge tone="danger">Cancelled</Badge>}
+            {meeting.cancelledAt && (
+              <span className="flex items-center gap-1 text-xs font-medium text-danger">
+                <StatusDot tone="danger" />
+                Cancelled
+              </span>
+            )}
           </div>
           <div className="mt-0.5 text-xs text-text-muted">{formatRange(meeting.scheduledStart, meeting.scheduledEnd)}</div>
           {meeting.organizerName && <div className="mt-0.5 text-xs text-text-muted">Organized by {meeting.organizerName}</div>}

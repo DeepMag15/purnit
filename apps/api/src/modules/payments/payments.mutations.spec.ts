@@ -42,6 +42,7 @@ describe("payment.record", () => {
     const tx = {
       invoice: { findFirst: jest.fn().mockResolvedValue({ id: "i1", status: "sent" }) },
       payment: { create: jest.fn().mockResolvedValue({ id: "p1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await paymentRecordMutation.resolve({ invoiceId: "i1", amount: 500, method: "cash", notes: "partial" }, context(["payment:create:tenant"]), tx);

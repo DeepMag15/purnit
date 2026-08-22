@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 const RecordInputSchema = z.object({
   invoiceId: z.string(),
@@ -30,7 +31,7 @@ export const paymentRecordMutation: MutationDefinition<z.infer<typeof RecordInpu
       throw new BadRequestException(`Cannot record a payment against an invoice with status "${invoice.status}"`);
     }
 
-    return tx.payment.create({
+    const payment = await tx.payment.create({
       data: {
         tenantId: ctx.tenantId,
         invoiceId: input.invoiceId,
@@ -41,5 +42,7 @@ export const paymentRecordMutation: MutationDefinition<z.infer<typeof RecordInpu
         notes: input.notes,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "payment", payment.id); // AI RAG Phase C
+    return payment;
   },
 };

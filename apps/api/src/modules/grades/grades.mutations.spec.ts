@@ -19,6 +19,7 @@ describe("grade.record", () => {
       assignment: { findFirst: jest.fn().mockResolvedValue({ id: "a1", courseId: "c1", maxScore: 100 }) },
       enrollment: { findFirst: jest.fn().mockResolvedValue({ id: "e1", status: "enrolled" }) },
       grade: { findFirst: jest.fn().mockResolvedValue(null), create },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await gradeRecordMutation.resolve({ assignmentId: "a1", studentId: "s1", score: 90 }, context(["grade:create:tenant"]), tx);
@@ -32,6 +33,7 @@ describe("grade.record", () => {
       course: { findMany: jest.fn().mockResolvedValue([{ id: "c1" }]) },
       enrollment: { findFirst: jest.fn().mockResolvedValue({ id: "e1", status: "enrolled" }) },
       grade: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "g1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await expect(
@@ -91,6 +93,7 @@ describe("grade.update", () => {
     const tx = {
       grade: { findFirst: jest.fn().mockResolvedValue({ id: "g1", assignmentId: "a1", gradedById: "u1" }), update },
       assignment: { findFirst: jest.fn().mockResolvedValue({ id: "a1", maxScore: 100 }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await gradeUpdateMutation.resolve({ id: "g1", score: 95 }, context(["grade:update:own"]), tx);

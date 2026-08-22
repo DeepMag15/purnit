@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
 import { ZodError } from "zod";
 import { JwtAuthGuard } from "../tenancy/jwt-auth.guard";
 import { CurrentUserService } from "../tenancy/current-user.service";
@@ -6,7 +6,7 @@ import { assertPasswordChanged } from "../tenancy/assert-password-changed";
 import { TenantContextService } from "../tenancy/tenant-context.service";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { PermissionResolverService } from "../rbac/permission-resolver.service";
-import { MutationRegistry, type MutationContext } from "./mutation-registry.service";
+import { MutationRegistry, checkRequiredPermission, type MutationContext } from "./mutation-registry.service";
 
 @Controller("api/mutations")
 @UseGuards(JwtAuthGuard)
@@ -62,12 +62,7 @@ export class MutationsController {
         assertPasswordChanged(user);
         const effective = await this.permissionResolver.resolveEffectivePermissionsWithTx(tx, tenantId, user.id);
 
-        if (def.requiredPermission) {
-          const [resource, action] = def.requiredPermission.split(":");
-          if (effective.has(resource!, action!) === null) {
-            throw new ForbiddenException(`Missing permission "${def.requiredPermission}"`);
-          }
-        }
+        checkRequiredPermission(def, effective);
 
         const ctx: MutationContext = {
           tenantId,

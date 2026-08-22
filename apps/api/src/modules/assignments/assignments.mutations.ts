@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { teacherOwnedCourseIds } from "../courses/courses.data-sources";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Exported — reused by grades.mutations.ts's own `grade.record`. Unlike
  * `requirePatientInScope`/`requireCourseInScope` (a direct `isRowInScope`
@@ -63,7 +64,7 @@ export const assignmentCreateMutation: MutationDefinition<z.infer<typeof CreateI
       if (!ownedCourseIds.includes(course.id)) throw new ForbiddenException("Not allowed to create assignments for this course");
     }
 
-    return tx.assignment.create({
+    const assignment = await tx.assignment.create({
       data: {
         tenantId: ctx.tenantId,
         courseId: input.courseId,
@@ -74,6 +75,8 @@ export const assignmentCreateMutation: MutationDefinition<z.infer<typeof CreateI
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "assignment", assignment.id); // AI RAG Phase C
+    return assignment;
   },
 };
 
@@ -91,7 +94,7 @@ export const assignmentUpdateMutation: MutationDefinition<z.infer<typeof UpdateI
   requiredPermission: "assignment:update",
   async resolve(input, ctx, tx) {
     const existing = await requireAssignmentInScope(tx, ctx, input.id, { resource: "assignment", action: "update" });
-    return tx.assignment.update({
+    const updated = await tx.assignment.update({
       where: { id: existing.id },
       data: {
         title: input.title,
@@ -100,5 +103,7 @@ export const assignmentUpdateMutation: MutationDefinition<z.infer<typeof UpdateI
         maxScore: input.maxScore,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "assignment", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

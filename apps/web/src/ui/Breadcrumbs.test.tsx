@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { NavItem } from "@antigravity/manifest-schema";
+import type { NavItem } from "@purnit/manifest-schema";
 import { Breadcrumbs } from "./Breadcrumbs";
 
 describe("Breadcrumbs", () => {

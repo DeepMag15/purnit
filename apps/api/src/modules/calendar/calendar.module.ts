@@ -2,7 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { EmailModule } from "../../email/email.module";
-import { calendarListDataSource } from "./calendar.data-sources";
+import { calendarListDataSource, calendarCapabilitiesDataSource } from "./calendar.data-sources";
 import { calendarEventCreateMutation, calendarEventDeleteMutation } from "./calendar.mutations";
 import { CalendarReminderProcessorService } from "./calendar-reminder-processor.service";
 
@@ -16,6 +16,7 @@ class CalendarRegistrar implements OnModuleInit {
 
   onModuleInit() {
     this.dataSources.register(calendarListDataSource);
+    this.dataSources.register(calendarCapabilitiesDataSource);
     this.mutations.register(calendarEventCreateMutation);
     this.mutations.register(calendarEventDeleteMutation);
   }

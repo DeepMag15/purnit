@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -25,7 +25,6 @@ import { Badge } from "../../ui/Badge";
 import { formatCents, dollarsToCents } from "../invoices/money";
 
 export const PurchaseOrdersWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof PurchaseOrdersWorkspaceSchema>;
 
 interface PurchaseOrderRow {
   id: string;
@@ -75,9 +74,10 @@ const EMPTY_LINE_ITEM: LineItemDraft = { inventoryItemId: "", description: "", q
  * line-item editor for creation. Row click on Table/List navigates to
  * `/workspace/purchase-orders/[id]`.
  */
-export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function PurchaseOrdersWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "purchaseOrders.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<PurchaseOrderRow[]>("purchaseOrders.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -90,14 +90,16 @@ export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & Common
     expectedDate: required("Expected date is required"),
   });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "purchaseOrder.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("purchaseOrders.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "purchaseOrder.updateStatus", input: { const: null } }] : [];
 
   const { data: supplierOptionsData } = useDataSourceQuery<SupplierOption[]>("suppliers.list", {}, { enabled: canCreate });
   const supplierOptions = Array.isArray(supplierOptionsData) ? supplierOptionsData : [];
   const { data: itemOptionsData } = useDataSourceQuery<InventoryItemOption[]>("inventoryItems.list", {}, { enabled: canCreate });
   const itemOptions = Array.isArray(itemOptionsData) ? itemOptionsData : [];
 
-  const rows = Array.isArray(data) ? (data as PurchaseOrderRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((po) => po.status))];
 
   function openCreate() {
@@ -151,7 +153,7 @@ export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & Common
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Purchase Orders"}
+        title="Purchase Orders"
         description="Order materials from your suppliers."
         actions={
           canCreate && (
@@ -243,11 +245,11 @@ export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & Common
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load purchase orders: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No purchase orders yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load purchase orders: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No purchase orders yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="purchase-orders-board-kanban"
           groupKey="status"
@@ -261,7 +263,7 @@ export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & Common
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="purchase-orders-table"
           columns={["supplierName", "status", "expectedDate", "total"]}
@@ -275,7 +277,7 @@ export function PurchaseOrdersWorkspace({ title, bind, actions }: Props & Common
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((po) => (
             <li

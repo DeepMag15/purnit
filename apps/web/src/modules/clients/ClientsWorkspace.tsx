@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -24,7 +24,6 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 
 export const ClientsWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof ClientsWorkspaceSchema>;
 
 interface ClientRow {
   id: string;
@@ -57,9 +56,10 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * (Frontend Structural Redesign, Pattern B). Row click on Table/List
  * navigates to the new `/workspace/clients/[id]` detail page.
  */
-export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function ClientsWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "clients.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<ClientRow[]>("clients.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,14 +70,16 @@ export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderP
   const { pending: creating, error: createError, run: runCreate, clearError } = useAsyncAction();
   const { fieldErrors, validate, clearFieldError } = useFormValidation<{ name: string }>({ name: required("Client name is required") });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "client.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("clients.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "client.updateStatus", input: { const: null } }] : [];
 
   // An account-manager option list — fetched directly (not via `bind`) since
   // it's this composite's own UI need, not the node's bound data.
   const { data: managerOptionsData } = useDataSourceQuery<AccountManagerOption[]>("clients.accountManagerOptions", {}, { enabled: canCreate });
   const managerOptions = Array.isArray(managerOptionsData) ? managerOptionsData : [];
 
-  const rows = Array.isArray(data) ? (data as ClientRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((c) => c.status))];
 
   function openCreate() {
@@ -111,7 +113,7 @@ export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderP
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Clients"}
+        title="Clients"
         description="Manage your client relationships and their billing."
         actions={
           canCreate && (
@@ -156,11 +158,11 @@ export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderP
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load clients: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No clients yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load clients: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No clients yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="clients-board-kanban"
           groupKey="status"
@@ -174,7 +176,7 @@ export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderP
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="clients-table"
           columns={["name", "status", "accountManagerName"]}
@@ -188,7 +190,7 @@ export function ClientsWorkspace({ title, bind, actions }: Props & CommonRenderP
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((client) => (
             <li

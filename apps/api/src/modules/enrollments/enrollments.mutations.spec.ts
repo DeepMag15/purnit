@@ -19,6 +19,7 @@ describe("enrollment.enroll", () => {
       student: { findFirst: jest.fn().mockResolvedValue({ id: "s1" }) },
       course: { findFirst: jest.fn().mockResolvedValue({ id: "c1" }) },
       enrollment: { findFirst: jest.fn().mockResolvedValue(null), create },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await enrollmentEnrollMutation.resolve({ studentId: "s1", courseId: "c1" }, context(["enrollment:create:tenant"]), tx);
@@ -63,6 +64,7 @@ describe("enrollment.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "e1", enrolledById: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "e1", status: "completed" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await enrollmentUpdateStatusMutation.resolve({ id: "e1", status: "completed" }, context(["enrollment:update:own"]), tx);
@@ -84,6 +86,7 @@ describe("enrollment.recordFinalGrade", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "e1", enrolledById: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "e1", finalGrade: "A" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await enrollmentRecordFinalGradeMutation.resolve({ id: "e1", finalGrade: "A" }, context(["enrollment:update:tenant"]), tx);

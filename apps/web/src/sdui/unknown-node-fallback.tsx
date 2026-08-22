@@ -1,4 +1,4 @@
-import type { UINode } from "@antigravity/manifest-schema";
+import type { UINode } from "@purnit/manifest-schema";
 
 /** Rendered when a manifest references a `type@version` the client's
  * registry doesn't know — expected during a rolling deploy where the API

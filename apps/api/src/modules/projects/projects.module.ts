@@ -2,9 +2,11 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
+import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { projectDetailDataSource, projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource } from "./projects.data-sources";
 import { projectAddMemberMutation, projectCreateMutation, projectDeleteMutation, projectRemoveMemberMutation, projectUpdateMutation } from "./projects.mutations";
 import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric } from "./projects.metrics";
+import { projectRagHandler } from "./projects.rag";
 
 /** Registers the Projects module's data sources/mutations at boot. This
  * registrar pattern — not a bigger `ModuleDefinition` abstraction with
@@ -19,6 +21,7 @@ class ProjectsRegistrar implements OnModuleInit {
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
     private readonly metrics: MetricRegistry,
+    private readonly ragSources: RagSourceRegistry,
   ) {}
 
   onModuleInit() {
@@ -34,6 +37,7 @@ class ProjectsRegistrar implements OnModuleInit {
     this.metrics.register(projectsActiveCountMetric);
     this.metrics.register(projectsStatusBreakdownMetric);
     this.metrics.register(projectsAtRiskMetric);
+    this.ragSources.register(projectRagHandler); // AI RAG Phase C
   }
 }
 

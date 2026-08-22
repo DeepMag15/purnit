@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { GridLayout, useContainerWidth, type Layout } from "react-grid-layout";
-import type { UINode } from "@antigravity/manifest-schema";
+import type { UINode } from "@purnit/manifest-schema";
 import type { CommonRenderProps } from "../registry";
 import { useDataSourceQuery } from "../use-data-binding";
 import { useRenderContext } from "../render-context";

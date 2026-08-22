@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import type { JitsiService } from "../../integrations/jitsi.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 import { enqueueReminders } from "../calendar/reminder-outbox";
 
 /** Confirms a meeting exists (tenant-scoped, not cancelled) and the actor is
@@ -130,6 +131,7 @@ export const meetingCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
     }
     await notifyInvitees(tx, ctx.tenantId, meeting.id, meeting.title, ctx.userId, participantIds);
     await enqueueReminders(tx, ctx.tenantId, "meeting", meeting.id, meeting.scheduledStart, input.reminderMinutesBefore, participantIds);
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "meeting", meeting.id); // AI RAG Phase C
 
     return meeting;
   },

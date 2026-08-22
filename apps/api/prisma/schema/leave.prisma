@@ -1,0 +1,66 @@
+// Leave Management — ORG_HIERARCHY.md §9-10's first real consumer of
+// User.managerId/user.setManager: default approver = requester's own
+// manager, Department Head/Executive/Company Admin retain override
+// visibility as a safety valve (never the first approver). See
+// apps/api/src/modules/leave/resolve-approver.ts for the routing logic.
+
+model LeaveType {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  // Tenant-editable free text, same non-enum convention as Department.type.
+  name              String
+  defaultAnnualDays Int       @map("default_annual_days")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  @@unique([tenantId, name])
+  @@map("leave_types")
+}
+
+// v1 is a flat annual allotment, not accrual — rows are created lazily (on
+// a leave type/year combination's first request, seeded from
+// LeaveType.defaultAnnualDays) rather than batch-provisioned, avoiding a
+// scheduled job. usedDays increments on approval, decrements if an
+// already-approved request is later cancelled.
+model LeaveBalance {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  leaveTypeId  String @map("leave_type_id") @db.Uuid
+  year         Int
+  allottedDays Int    @map("allotted_days")
+  usedDays     Int    @default(0) @map("used_days")
+
+  @@unique([tenantId, userId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  leaveTypeId   String    @map("leave_type_id") @db.Uuid
+  startDate     DateTime  @map("start_date") @db.Date
+  endDate       DateTime  @map("end_date") @db.Date
+  daysRequested Int       @map("days_requested")
+  reason        String?
+  // pending | approved | rejected | cancelled — free text, same convention
+  // as every other status field in this codebase (Task.status, etc.).
+  status        String    @default("pending")
+  // The requester's managerId at submission time, resolved once
+  // (resolve-approver.ts) — not re-derived on every read. Null is valid:
+  // falls through to Department Head+/Company Admin override visibility
+  // only (see leave.mutations.ts's dual-path authorization).
+  approverId    String?   @map("approver_id")
+  // Who actually acted — may differ from approverId when a
+  // Department Head/Executive/Admin acts via override visibility instead
+  // of the assigned direct manager.
+  decidedById   String?   @map("decided_by_id")
+  decidedAt     DateTime? @map("decided_at")
+  decisionNote  String?   @map("decision_note")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([tenantId, approverId, status])
+  @@map("leave_requests")
+}

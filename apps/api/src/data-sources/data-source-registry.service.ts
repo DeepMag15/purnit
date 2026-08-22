@@ -22,6 +22,22 @@ export interface DataSourceDefinition<P = any> {
   resolve: (params: P, ctx: DataSourceContext, tx: PrismaTx) => Promise<unknown>;
 }
 
+/** Extracted from `DataSourcesController`'s own duplicated inline check
+ * (its `resolve()` and `resolveBatch()` each had the identical 5-line
+ * block) — Phase E (proactive digests) makes this a 3rd real call site
+ * (`digest-content.ts` needs to skip `leaveRequestsPendingApprovalsDataSource`
+ * for the common case of a user with no `leave:approve` grant, without
+ * treating that as an error). Mirrors `checkRequiredPermission`'s own
+ * extraction precedent in `mutation-registry.service.ts` — a boolean
+ * predicate here rather than a throwing function, since the two controller
+ * call sites want different behavior on failure (one throws, one pushes a
+ * per-item `{error}`), and the digest use wants neither. */
+export function hasRequiredPermission(def: Pick<DataSourceDefinition, "requiredPermission">, effective: EffectivePermissions): boolean {
+  if (!def.requiredPermission) return true;
+  const [resource, action] = def.requiredPermission.split(":");
+  return effective.has(resource!, action!) !== null;
+}
+
 /**
  * In-process registry (NestJS provider, keyed by name), populated at boot
  * by each feature module — not a DB table (see CONTEXT.md gap-resolution

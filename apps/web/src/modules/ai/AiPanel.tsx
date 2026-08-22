@@ -16,11 +16,19 @@ interface ConversationRow {
   updatedAt: string;
 }
 
+interface ToolCallInfo {
+  proposalId: string;
+  mutationName: string;
+  input: unknown;
+  status: "pending" | "executed";
+}
+
 interface MessageRow {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   createdAt: string;
+  toolCall: ToolCallInfo | null;
 }
 
 const AUTO_SEND_PRESETS: Record<string, string> = {
@@ -56,6 +64,17 @@ const AUTO_SEND_PRESETS: Record<string, string> = {
  * mutation that returns the assistant's reply directly — there's no
  * background job for a poll to catch up with, and a personal AI
  * conversation has no second party who could update it concurrently.
+ *
+ * Phase D (tool-calling): an assistant message can carry a `toolCall`
+ * (present only while the model proposed calling one of a curated,
+ * server-side allowlisted mutation on the user's behalf) — rendered with a
+ * Confirm button while `status === "pending"`, nothing once `"executed"`.
+ * Confirming never executes anything client-side; it calls
+ * `aiToolCall.confirm` (which does, after re-checking the user's current
+ * permissions server-side) then chains `aiToolCall.reply` for the model's
+ * natural-language wrap-up. A `"tool"`-role message is a deterministic,
+ * non-LLM result summary — rendered as a small centered system-event
+ * bubble, distinct from both chat bubbles.
  */
 export function AiPanel({
   open,
@@ -74,6 +93,7 @@ export function AiPanel({
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [confirmingProposalId, setConfirmingProposalId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const autoSentForRef = useRef<string | null>(null);
 
@@ -143,6 +163,41 @@ export function AiPanel({
     setActiveConversationId(null);
   }
 
+  // Phase D — a pending tool-call bubble's Confirm button. Chains
+  // aiToolCall.reply automatically after confirm succeeds (a UI-level
+  // chain, not a combined backend mutation) — if the reply fails, the
+  // already-persisted deterministic "tool" message still shows the action
+  // happened, so this is never left ambiguous about whether something ran.
+  async function handleConfirmToolCall(proposalId: string) {
+    if (!activeConversationId || confirmingProposalId) return;
+    setConfirmingProposalId(proposalId);
+    try {
+      await callMutation("aiToolCall.confirm", { proposalId });
+      invalidateMessages(activeConversationId);
+      try {
+        await callMutation("aiToolCall.reply", { proposalId });
+      } catch {
+        toast.show("Action completed, but the assistant's reply failed — refresh to try again", "danger");
+      }
+      invalidateMessages(activeConversationId);
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't confirm this action", "danger");
+    } finally {
+      setConfirmingProposalId(null);
+    }
+  }
+
+  async function handleArchive(e: React.MouseEvent, conversationId: string) {
+    e.stopPropagation();
+    try {
+      await callMutation("aiConversation.archive", { id: conversationId });
+      if (activeConversationId === conversationId) setActiveConversationId(null);
+      invalidateConversations();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't archive conversation", "danger");
+    }
+  }
+
   // Opening with a preset always starts a fresh, scoped conversation — a
   // different document's "Ask AI"/"Summarize" click must not continue
   // whatever conversation happened to be active. "documents.summarize"
@@ -179,17 +234,29 @@ export function AiPanel({
             {conversationsPending && <SkeletonRows rows={3} />}
             {!conversationsPending &&
               conversations.map((c) => (
-                <button
+                <div
                   key={c.id}
-                  type="button"
-                  onClick={() => setActiveConversationId(c.id)}
                   className={cn(
-                    "block w-full truncate rounded-md px-2 py-1.5 text-left text-xs transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover",
-                    c.id === activeConversationId ? "bg-surface-hover text-text" : "text-text-muted",
+                    "group flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover",
+                    c.id === activeConversationId && "bg-surface-hover",
                   )}
                 >
-                  {c.title ?? "New conversation"}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveConversationId(c.id)}
+                    className={cn("min-w-0 flex-1 truncate text-left text-xs", c.id === activeConversationId ? "text-text" : "text-text-muted")}
+                  >
+                    {c.title ?? "New conversation"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleArchive(e, c.id)}
+                    title="Archive conversation"
+                    className="shrink-0 text-text-muted opacity-0 transition-opacity duration-[var(--duration-fast)] group-hover:opacity-100 hover:text-danger"
+                  >
+                    <Icon name="archive" size={13} />
+                  </button>
+                </div>
               ))}
           </div>
         </div>
@@ -209,23 +276,44 @@ export function AiPanel({
             {activeConversationId && messagesPending && <SkeletonRows rows={3} />}
             {(!activeConversationId || (!messagesPending && messages.length === 0)) && (
               <div className="flex h-full items-center justify-center text-center text-sm text-text-muted">
-                Ask me anything — I&apos;m in early preview and can have general conversations and answer questions about your
-                workspace&apos;s documents, though I don&apos;t yet see projects, tasks, or meetings.
+                Ask me anything — I can have general conversations, answer questions using your workspace&apos;s data, and propose
+                actions like creating a task or approving a leave request (you&apos;ll always confirm before anything runs).
               </div>
             )}
             <div className="flex flex-col gap-3">
-              {messages.map((m) => (
-                <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
-                      m.role === "user" ? "bg-accent text-accent-fg" : "border border-border bg-surface text-text",
+              {messages.map((m, i) => {
+                if (m.role === "tool") {
+                  return (
+                    <div key={m.id} className="flex justify-center">
+                      <div className="max-w-[85%] rounded-md bg-surface-hover px-3 py-1.5 text-xs text-text-muted">{m.content}</div>
+                    </div>
+                  );
+                }
+                const isNewest = i === messages.length - 1;
+                return (
+                  <div key={m.id} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
+                    <div
+                      className={cn(
+                        "max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
+                        m.role === "user" ? "bg-accent text-accent-fg" : "border border-border bg-surface text-text",
+                      )}
+                    >
+                      {m.content}
+                    </div>
+                    {m.toolCall && m.toolCall.status === "pending" && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className={cn("mt-1.5", !isNewest && "opacity-60")}
+                        disabled={confirmingProposalId === m.toolCall.proposalId}
+                        onClick={() => handleConfirmToolCall(m.toolCall!.proposalId)}
+                      >
+                        {confirmingProposalId === m.toolCall.proposalId ? "Confirming…" : "Confirm"}
+                      </Button>
                     )}
-                  >
-                    {m.content}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {sending && (
                 <div className="flex justify-start">
                   <div className="max-w-[80%] rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted">Thinking…</div>

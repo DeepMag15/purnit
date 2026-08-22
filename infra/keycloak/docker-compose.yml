@@ -1,0 +1,21 @@
+services:
+  keycloak:
+    # Apache 2.0, free, self-hosted — see CONTEXT.md's Enterprise SSO
+    # section for why Keycloak was chosen over Zitadel/Authentik/Ory/
+    # FusionAuth. Ships as one well-behaved image, unlike infra/jitsi's
+    # vendored multi-container distro — no reason to mirror that shape here.
+    image: quay.io/keycloak/keycloak:26.0
+    # start-dev: local dev only. Uses the embedded H2 database and Keycloak's
+    # own built-in HTTP (no TLS) — NOT production-hardened. A real deployment
+    # needs `start` (not `start-dev`), a real Postgres-backed database, and
+    # TLS in front of it; none of that is set up here.
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8080"
+    volumes:
+      # Auto-imported on startup (--import-realm above) — realm "purnit",
+      # client "purnit-api", and one Keycloak-local test user. See README.md.
+      - ./realm-purnit.json:/opt/keycloak/data/import/realm-purnit.json:ro

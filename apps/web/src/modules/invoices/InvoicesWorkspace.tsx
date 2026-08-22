@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -25,7 +25,6 @@ import { Badge } from "../../ui/Badge";
 import { formatCents, dollarsToCents } from "./money";
 
 export const InvoicesWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof InvoicesWorkspaceSchema>;
 
 interface InvoiceRow {
   id: string;
@@ -76,9 +75,10 @@ const EMPTY_LINE_ITEM: LineItemDraft = { description: "", quantity: "1", unitPri
  * invoice needs at least one billable line). Row click on Table/List
  * navigates to the new `/workspace/invoices/[id]` detail page.
  */
-export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function InvoicesWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "invoices.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<InvoiceRow[]>("invoices.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -93,14 +93,16 @@ export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRender
     dueDate: required("Due date is required"),
   });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "invoice.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("invoices.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "invoice.updateStatus", input: { const: null } }] : [];
 
   // A client option list — fetched directly (not via `bind`) since it's
   // this composite's own UI need, not the node's bound data.
   const { data: clientOptionsData } = useDataSourceQuery<ClientOption[]>("clients.list", {}, { enabled: canCreate });
   const clientOptions = Array.isArray(clientOptionsData) ? clientOptionsData : [];
 
-  const rows = Array.isArray(data) ? (data as InvoiceRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((i) => i.status))];
 
   function openCreate() {
@@ -159,7 +161,7 @@ export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRender
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Invoices"}
+        title="Invoices"
         description="Create and track client invoices."
         actions={
           canCreate && (
@@ -251,11 +253,11 @@ export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRender
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load invoices: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No invoices yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load invoices: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No invoices yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="invoices-board-kanban"
           groupKey="status"
@@ -269,7 +271,7 @@ export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRender
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="invoices-table"
           columns={["clientName", "status", "dueDate", "total", "paymentStatus"]}
@@ -283,7 +285,7 @@ export function InvoicesWorkspace({ title, bind, actions }: Props & CommonRender
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((invoice) => (
             <li

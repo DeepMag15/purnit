@@ -2,7 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
-import { attendanceListDataSource, attendanceRosterDataSource } from "./attendance.data-sources";
+import { attendanceListDataSource, attendanceRosterDataSource, attendanceCapabilitiesDataSource } from "./attendance.data-sources";
 import { attendanceMarkMutation, attendanceCorrectMutation } from "./attendance.mutations";
 import {
   attendanceRateThisMonthMetric,
@@ -25,6 +25,7 @@ class AttendanceRegistrar implements OnModuleInit {
   onModuleInit() {
     this.dataSources.register(attendanceListDataSource);
     this.dataSources.register(attendanceRosterDataSource);
+    this.dataSources.register(attendanceCapabilitiesDataSource);
     this.mutations.register(attendanceMarkMutation);
     this.mutations.register(attendanceCorrectMutation);
     this.metrics.register(attendanceRateThisMonthMetric);

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import type { WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest } from "@purnit/manifest-schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssignmentsGradebookTab } from "./AssignmentsGradebookTab";
 import { RenderContextProvider } from "../../sdui/render-context";
 import { ToastProvider } from "../../ui/Toast";
 
-const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Teacher"], permissionsHash: "x" };
+const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Teacher"], permissionsHash: "x", digestOptOut: false };
 const tenant: WorkspaceManifest["tenant"] = { id: "t1", name: "Test School", workspaceId: "test-school", industry: "Education", branding: {}, profile: {} };
 
 const ASSIGNMENTS = [{ id: "a1", title: "Homework 1", description: null, dueDate: null, maxScore: 100 }];
@@ -40,11 +40,12 @@ describe("AssignmentsGradebookTab grade dispatch rule", () => {
             navigate: () => {},
             refetchBootstrap: () => {},
             openAiPanel: () => {},
+            openBlueprintModal: () => {},
             aiAvailable: false,
           }}
         >
           <ToastProvider>
-            <AssignmentsGradebookTab courseId="c1" courseName="Test Course" canCreateAssignments={false} />
+            <AssignmentsGradebookTab courseId="c1" courseName="Test Course" canCreateAssignments={false} canUpdateAssignments={false} />
           </ToastProvider>
         </RenderContextProvider>
       </QueryClientProvider>,

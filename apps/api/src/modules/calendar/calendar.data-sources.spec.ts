@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { calendarEventsWhere, calendarListDataSource } from "./calendar.data-sources";
+import { calendarEventsWhere, calendarListDataSource, calendarCapabilitiesDataSource } from "./calendar.data-sources";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
 function context(grants: string[] = [], userDepartmentId: string | null = null) {
@@ -557,5 +557,29 @@ describe("calendar.list — aggregation", () => {
     )) as Array<{ id: string }>;
 
     expect(items.map((i) => i.id)).toEqual(["wo1", "m1", "po1"]);
+  });
+});
+
+describe("calendar.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("everything false for someone with no calendarEvent:create grant at all", async () => {
+    const result = await calendarCapabilitiesDataSource.resolve({}, context([]), tx);
+    expect(result).toEqual({ canCreate: false, canBroadcast: false, canTargetWholeCompany: false });
+  });
+
+  it("can create for self only, cannot broadcast, at :own scope", async () => {
+    const result = await calendarCapabilitiesDataSource.resolve({}, context(["calendarEvent:create:own"]), tx);
+    expect(result).toEqual({ canCreate: true, canBroadcast: false, canTargetWholeCompany: false });
+  });
+
+  it("can create and broadcast to their own department, but not the whole company, at :department scope", async () => {
+    const result = await calendarCapabilitiesDataSource.resolve({}, context(["calendarEvent:create:department"]), tx);
+    expect(result).toEqual({ canCreate: true, canBroadcast: true, canTargetWholeCompany: false });
+  });
+
+  it("can target the whole company at :tenant scope", async () => {
+    const result = await calendarCapabilitiesDataSource.resolve({}, context(["calendarEvent:create:tenant"]), tx);
+    expect(result).toEqual({ canCreate: true, canBroadcast: true, canTargetWholeCompany: true });
   });
 });

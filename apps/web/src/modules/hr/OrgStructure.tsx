@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { useEffect, useState } from "react";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
-import { useDataSourceBatchQuery } from "../../sdui/use-data-binding";
+import { useDataSourceBatchQuery, useDataSourceQuery } from "../../sdui/use-data-binding";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Input } from "../../ui/Input";
@@ -14,8 +13,15 @@ import { Alert } from "../../ui/Alert";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 
+// Kept exported (unused by this file itself) — register-all.ts's old
+// catch-all registration still imports it, deliberately left registered,
+// not removed, same precedent as every prior Phase 02/03/04 migration.
 export const OrgStructureSchema = z.object({});
-type Props = z.infer<typeof OrgStructureSchema>;
+
+interface HrCapabilities {
+  canManageDepartment: boolean;
+  canManageUserAssignment: boolean;
+}
 
 interface DepartmentRow {
   id: string;
@@ -52,23 +58,34 @@ interface UserRow {
 // Bind is unused — departments uses `useDataSourceQuery` (CONTEXT.md §48)
 // instead of a blueprint `bind`, so the "show archived" toggle can pass a
 // live, UI-driven param; `useDataBinding` only resolves static/ref params.
-export function OrgStructure({ actions }: Props & CommonRenderProps) {
+//
+// Frontend Redesign Phase 04 — a dedicated route, replacing the generic
+// `/workspace/page.hr` catch-all. `actions` is gone; `hr.capabilities`
+// (new, additive, read-only) replaces it — 11 of the old 13 flags (every
+// `department.*`/`team.*` mutation) share `requiredPermission:
+// "department:manage"` and collapse to one `canManageDepartment`, but
+// `user.assignDepartment`/`user.setManager` declare `"user:manage"`, a
+// genuinely different real resource (confirmed directly per-mutation, not
+// assumed from "org placement" framing) — same `canBrowseOrg`/
+// `canBrowseProjects`-style split Phase 03 needed for Analytics.
+export function OrgStructure() {
   const { callMutation } = useRenderContext();
   const toast = useToast();
 
-  const canManageDepartments = actions?.some((a) => a.kind === "mutation" && a.mutation === "department.create") ?? false;
-  const canUpdateDepartments = actions?.some((a) => a.kind === "mutation" && a.mutation === "department.update") ?? false;
-  const canArchiveDepartments = actions?.some((a) => a.kind === "mutation" && a.mutation === "department.setArchived") ?? false;
-  const canDeleteDepartments = actions?.some((a) => a.kind === "mutation" && a.mutation === "department.delete") ?? false;
-  const canAssignHead = actions?.some((a) => a.kind === "mutation" && a.mutation === "department.assignHead") ?? false;
-  const canManageTeams = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.create") ?? false;
-  const canUpdateTeams = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.update") ?? false;
-  const canMoveTeams = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.moveToDepartment") ?? false;
-  const canArchiveTeams = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.setArchived") ?? false;
-  const canDeleteTeams = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.delete") ?? false;
-  const canAssignManager = actions?.some((a) => a.kind === "mutation" && a.mutation === "team.assignManager") ?? false;
-  const canAssign = actions?.some((a) => a.kind === "mutation" && a.mutation === "user.assignDepartment") ?? false;
-  const canSetManager = actions?.some((a) => a.kind === "mutation" && a.mutation === "user.setManager") ?? false;
+  const { data: caps } = useDataSourceQuery<HrCapabilities>("hr.capabilities");
+  const canManageDepartments = caps?.canManageDepartment ?? false;
+  const canUpdateDepartments = canManageDepartments;
+  const canArchiveDepartments = canManageDepartments;
+  const canDeleteDepartments = canManageDepartments;
+  const canAssignHead = canManageDepartments;
+  const canManageTeams = canManageDepartments;
+  const canUpdateTeams = canManageDepartments;
+  const canMoveTeams = canManageDepartments;
+  const canArchiveTeams = canManageDepartments;
+  const canDeleteTeams = canManageDepartments;
+  const canAssignManager = canManageDepartments;
+  const canAssign = caps?.canManageUserAssignment ?? false;
+  const canSetManager = canAssign;
   const needsUsers = canAssign || canAssignHead || canAssignManager;
 
   const [showArchived, setShowArchived] = useState(false);

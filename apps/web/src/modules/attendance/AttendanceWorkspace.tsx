@@ -3,18 +3,22 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
-import { Badge } from "../../ui/Badge";
+import { StatusDot, type StatusTone } from "../../ui/StatusDot";
 import { useToast } from "../../ui/Toast";
 
 export const AttendanceWorkspaceSchema = z.object({});
-type Props = z.infer<typeof AttendanceWorkspaceSchema>;
+
+interface AttendanceCapabilities {
+  canViewTeam: boolean;
+  canCorrect: boolean;
+}
 
 interface AttendanceRecord {
   id: string;
@@ -38,12 +42,22 @@ const ATTENDANCE_STATUSES = [
   { value: "half_day", label: "Half day" },
   { value: "absent", label: "Absent" },
 ];
-const ATTENDANCE_STATUS_TONE: Record<string, "success" | "warning" | "info" | "danger"> = {
-  present: "success",
-  late: "warning",
-  half_day: "info",
+const ATTENDANCE_STATUS_TONE: Record<string, StatusTone> = {
+  present: "done",
+  late: "progress",
+  half_day: "queued",
   absent: "danger",
 };
+
+function StatusLabel({ status }: { status: string | undefined }) {
+  if (!status) return <span className="inline-flex items-center gap-1.5 text-sm text-text-muted"><StatusDot tone="neutral" />Not marked</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-text">
+      <StatusDot tone={ATTENDANCE_STATUS_TONE[status] ?? "neutral"} />
+      {status.replace("_", " ")}
+    </span>
+  );
+}
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -55,22 +69,26 @@ function toDateKey(d: Date | string): string {
 }
 
 /**
- * Core Workspace Modules, Phase 3, Submodule 2: Attendance — a
- * blueprint-registered composite, mirrors CalendarWorkspace's "manages its
- * own data via useDataSourceQuery" shape. The self-mark widget is always
- * rendered (attendance:create:own is a universal floor, see seed.ts's
- * role.intern). The team roster + correction view only renders for actors
- * whose role name implies attendance:read/update beyond "own" — same
- * client-side role-name-sniffing precedent as CalendarWorkspace's
- * canBroadcast, never a fresh permission lookup.
+ * Core Workspace Modules, Phase 3, Submodule 2: Attendance.
+ *
+ * Frontend Redesign, Phase 02 — moved off the SDUI Renderer onto a
+ * dedicated route (`/workspace/attendance`). Zero-prop now — `canCorrect`/
+ * `canViewTeam` come from the new `attendance.capabilities` data source
+ * instead of the `actions` prop and a hardcoded role-label list this file
+ * used to check client-side (a real correctness gap: a custom role with the
+ * same effective `attendance:read` scope but a different label would have
+ * been silently denied the team view). The self-mark widget is always
+ * rendered — `attendance:create:own` is a universal floor (seed.ts's
+ * role.intern), so it's never actually gated on anything.
  */
-export function AttendanceWorkspace({ actions }: Props & CommonRenderProps) {
+export function AttendanceWorkspace() {
   const { user, tenant, callMutation } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const canCorrect = actions?.some((a) => a.kind === "mutation" && a.mutation === "attendance.correct") ?? false;
-  const canViewTeam = ["Department Head", "Executive", "HR Manager", "Company Admin"].some((r) => user.roles.includes(r));
+  const { data: caps } = useDataSourceQuery<AttendanceCapabilities>("attendance.capabilities");
+  const canCorrect = caps?.canCorrect ?? false;
+  const canViewTeam = caps?.canViewTeam ?? false;
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayParams = { userId: user.id, from: today.toISOString(), to: today.toISOString() };
@@ -103,12 +121,14 @@ export function AttendanceWorkspace({ actions }: Props & CommonRenderProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="Attendance" />
+
       <Card>
         <CardHeader title="My attendance" />
         <CardBody className="flex flex-col gap-3">
           {todayRecord && (
             <div className="flex items-center gap-2 text-sm text-text-muted">
-              Today marked as <Badge tone={ATTENDANCE_STATUS_TONE[todayRecord.status] ?? "neutral"}>{todayRecord.status.replace("_", " ")}</Badge>
+              Today marked as <StatusLabel status={todayRecord.status} />
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -212,7 +232,7 @@ function RosterRow({
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
       <span className="min-w-0 flex-1 truncate text-sm text-text">{rosterUser.displayName}</span>
-      {!canCorrect && (record ? <Badge tone={ATTENDANCE_STATUS_TONE[record.status] ?? "neutral"}>{record.status.replace("_", " ")}</Badge> : <Badge>Not marked</Badge>)}
+      {!canCorrect && <StatusLabel status={record?.status} />}
       {canCorrect && (
         <>
           <Select value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 w-32 text-xs">

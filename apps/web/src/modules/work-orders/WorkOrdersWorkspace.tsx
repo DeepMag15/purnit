@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -24,7 +24,6 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 
 export const WorkOrdersWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof WorkOrdersWorkspaceSchema>;
 
 interface WorkOrderRow {
   id: string;
@@ -61,9 +60,10 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * shape (Frontend Structural Redesign, Pattern B). Row click on Table/List
  * navigates to `/workspace/work-orders/[id]`.
  */
-export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function WorkOrdersWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "workOrders.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<WorkOrderRow[]>("workOrders.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -77,12 +77,14 @@ export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRend
     dueDate: required("Due date is required"),
   });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "workOrder.create") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("workOrders.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "workOrder.updateStatus", input: { const: null } }] : [];
 
   const { data: itemOptionsData } = useDataSourceQuery<InventoryItemOption[]>("inventoryItems.list", {}, { enabled: canCreate });
   const itemOptions = Array.isArray(itemOptionsData) ? itemOptionsData : [];
 
-  const rows = Array.isArray(data) ? (data as WorkOrderRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((wo) => wo.status))];
 
   function openCreate() {
@@ -117,7 +119,7 @@ export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRend
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Work Orders"}
+        title="Work Orders"
         description="Schedule and track production."
         actions={
           canCreate && (
@@ -155,11 +157,11 @@ export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRend
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load work orders: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No work orders yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load work orders: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No work orders yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="work-orders-board-kanban"
           groupKey="status"
@@ -173,7 +175,7 @@ export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRend
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="work-orders-table"
           columns={["itemName", "status", "quantity", "dueDate", "assignedToName"]}
@@ -187,7 +189,7 @@ export function WorkOrdersWorkspace({ title, bind, actions }: Props & CommonRend
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((wo) => (
             <li

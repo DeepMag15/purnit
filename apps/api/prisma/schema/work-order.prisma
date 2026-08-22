@@ -8,19 +8,19 @@
 /// gated on the distinct `workOrder:complete` permission (not `:update`) —
 /// the production-side half of this domain's segregation-of-duties control.
 model WorkOrder {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  itemId       String    @map("item_id") @db.Uuid
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  itemId       String        @map("item_id") @db.Uuid
   item         InventoryItem @relation(fields: [itemId], references: [id])
   quantity     Int
-  status       String    @default("planned")
-  dueDate      DateTime  @map("due_date")
-  assignedToId String?   @map("assigned_to_id") @db.Uuid
+  status       String        @default("planned")
+  dueDate      DateTime      @map("due_date")
+  assignedToId String?       @map("assigned_to_id") @db.Uuid
   notes        String?
-  createdById  String    @map("created_by_id") @db.Uuid
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  createdById  String        @map("created_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  deletedAt    DateTime?     @map("deleted_at")
 
   @@index([tenantId])
   @@index([tenantId, itemId])

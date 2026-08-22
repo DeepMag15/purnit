@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { invoicesWhere, computePaymentStatus, invoicesListDataSource, invoiceDetailDataSource } from "./invoices.data-sources";
+import { invoicesWhere, computePaymentStatus, invoicesListDataSource, invoiceDetailDataSource, invoicesCapabilitiesDataSource } from "./invoices.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -101,5 +101,34 @@ describe("invoices.detail", () => {
     expect(data.paymentStatus).toBe("paid");
     expect(data.canRecordPayments).toBe(true);
     expect(data.canReadPayments).toBe(false);
+  });
+});
+
+describe("invoices.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await invoicesCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only invoice:create", async () => {
+    expect(await invoicesCapabilitiesDataSource.resolve({}, context(["invoice:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only invoice:update — a genuinely different resource action from invoice:create", async () => {
+    expect(await invoicesCapabilitiesDataSource.resolve({}, context(["invoice:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await invoicesCapabilitiesDataSource.resolve({}, context(["invoice:create:tenant", "invoice:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
+    });
   });
 });

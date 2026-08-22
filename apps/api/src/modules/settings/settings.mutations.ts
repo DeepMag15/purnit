@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { z } from "zod";
-import type { TenantConfigOverrides } from "@antigravity/manifest-schema";
+import type { TenantConfigOverrides } from "@purnit/manifest-schema";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { TenantPrismaService } from "../../tenancy/tenant-prisma.service";
 import type { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { slugify } from "../../auth/workspace-id";
+import { logAudit } from "../../audit/log-audit";
 
 /** Merges a single nav item's label into `overrides.navigation.patch`,
  * preserving every other item's existing patch and any existing
@@ -52,7 +53,7 @@ export function createUpdateBrandingMutation(tenantPrisma: TenantPrismaService):
     name: "tenant.updateBranding",
     inputSchema: UpdateBrandingInputSchema,
     requiredPermission: "settings:manage",
-    async resolve(input, ctx) {
+    async resolve(input, ctx, tx) {
       const tenant = await tenantPrisma.root.tenant.findUnique({ where: { id: ctx.tenantId } });
       if (!tenant) throw new BadRequestException(`No tenant "${ctx.tenantId}"`);
 
@@ -63,7 +64,17 @@ export function createUpdateBrandingMutation(tenantPrisma: TenantPrismaService):
         // save (the common case) must never clobber an existing logoUrl.
         ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
       };
-      return tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { branding } });
+      const updated = await tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { branding } });
+
+      // Audit Logs (module 6 of 6) — `tx` here is the caller's ordinary
+      // tenant-scoped transaction (same one every other mutation gets); it's
+      // just unused by this resolver's own Tenant-row logic since `Tenant`
+      // is a root table, unreachable via `tx` (see this mutation's own doc
+      // comment above). `AuditLog` isn't a root table, so it's reachable
+      // through `tx` exactly as normal.
+      await logAudit(tx, ctx, { action: "tenant.updateBranding", resource: "tenant", resourceId: ctx.tenantId, before: tenant.branding, after: branding });
+
+      return updated;
     },
   };
 }
@@ -87,7 +98,7 @@ export function createUpdateWorkspaceIdMutation(tenantPrisma: TenantPrismaServic
     name: "tenant.updateWorkspaceId",
     inputSchema: UpdateWorkspaceIdInputSchema,
     requiredPermission: "settings:manage",
-    async resolve(input, ctx) {
+    async resolve(input, ctx, tx) {
       const workspaceId = slugify(input.workspaceId);
       if (!workspaceId) throw new BadRequestException("Workspace ID can't be blank");
 
@@ -95,7 +106,19 @@ export function createUpdateWorkspaceIdMutation(tenantPrisma: TenantPrismaServic
       if (existing && existing.id !== ctx.tenantId) {
         throw new ConflictException(`Workspace ID "${workspaceId}" is already taken`);
       }
-      return tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { workspaceId } });
+
+      const current = await tenantPrisma.root.tenant.findUnique({ where: { id: ctx.tenantId } });
+      const updated = await tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { workspaceId } });
+
+      await logAudit(tx, ctx, {
+        action: "tenant.updateWorkspaceId",
+        resource: "tenant",
+        resourceId: ctx.tenantId,
+        before: { workspaceId: current?.workspaceId ?? null },
+        after: { workspaceId },
+      });
+
+      return updated;
     },
   };
 }
@@ -123,7 +146,7 @@ export const updateNavigationLabelMutation: MutationDefinition<z.infer<typeof Up
     // so this alone is what makes the change visible without any
     // additional cache-busting.
     await tx.tenantConfig.update({ where: { id: current.id }, data: { isActive: false } });
-    return tx.tenantConfig.create({
+    const created = await tx.tenantConfig.create({
       data: {
         tenantId: ctx.tenantId,
         version: current.version + 1,
@@ -132,6 +155,64 @@ export const updateNavigationLabelMutation: MutationDefinition<z.infer<typeof Up
         isActive: true,
       },
     });
+
+    await logAudit(tx, ctx, {
+      action: "workspaceConfig.updateNavigationLabel",
+      resource: "workspaceConfig",
+      resourceId: input.itemId,
+      after: { label: input.label },
+    });
+
+    return created;
+  },
+};
+
+/** Merges (or clears, on `null`) the tenant's own AI provider override,
+ * preserving every other overrides key untouched — same pure, unit-testable
+ * convention as `mergeNavigationLabelPatch` above. */
+export function mergeAiProviderOverride(
+  overrides: TenantConfigOverrides,
+  provider: "anthropic" | "gemini" | "openai" | null,
+): TenantConfigOverrides {
+  const { ai: _ai, ...rest } = overrides;
+  return provider === null ? rest : { ...rest, ai: { provider } };
+}
+
+const UpdateAiProviderInputSchema = z.object({ provider: z.enum(["anthropic", "gemini", "openai"]).nullable() });
+
+// Plain constant, not a factory — same shape as updateNavigationLabelMutation
+// above, TenantConfig is tenant-scoped and already reachable via `tx`.
+export const updateAiProviderMutation: MutationDefinition<z.infer<typeof UpdateAiProviderInputSchema>> = {
+  name: "workspaceConfig.updateAiProvider",
+  inputSchema: UpdateAiProviderInputSchema,
+  requiredPermission: "settings:manage",
+  async resolve(input, ctx, tx) {
+    const current = await tx.tenantConfig.findFirst({ where: { tenantId: ctx.tenantId, isActive: true } });
+    if (!current) throw new BadRequestException("No active tenant config to update");
+
+    const merged = mergeAiProviderOverride(current.overrides as unknown as TenantConfigOverrides, input.provider);
+
+    // Same deactivate-then-recreate invariant as updateNavigationLabelMutation
+    // above — a new version is always inserted, never mutated in place.
+    await tx.tenantConfig.update({ where: { id: current.id }, data: { isActive: false } });
+    const created = await tx.tenantConfig.create({
+      data: {
+        tenantId: ctx.tenantId,
+        version: current.version + 1,
+        blueprintRef: current.blueprintRef,
+        overrides: merged as object,
+        isActive: true,
+      },
+    });
+
+    await logAudit(tx, ctx, {
+      action: "workspaceConfig.updateAiProvider",
+      resource: "workspaceConfig",
+      resourceId: "ai.provider",
+      after: { provider: input.provider },
+    });
+
+    return created;
   },
 };
 
@@ -180,7 +261,7 @@ export function createUpdateProfileMutation(tenantPrisma: TenantPrismaService): 
     name: "tenant.updateProfile",
     inputSchema: UpdateProfileInputSchema,
     requiredPermission: "settings:manage",
-    async resolve(input, ctx) {
+    async resolve(input, ctx, tx) {
       const tenant = await tenantPrisma.root.tenant.findUnique({ where: { id: ctx.tenantId } });
       if (!tenant) throw new BadRequestException(`No tenant "${ctx.tenantId}"`);
 
@@ -190,7 +271,11 @@ export function createUpdateProfileMutation(tenantPrisma: TenantPrismaService): 
       // `Record<string, unknown>` (unknown values aren't provably
       // JSON-compatible to the type checker), even though the runtime value
       // always is.
-      return tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { profile: profile as object } });
+      const updated = await tenantPrisma.root.tenant.update({ where: { id: ctx.tenantId }, data: { profile: profile as object } });
+
+      await logAudit(tx, ctx, { action: "tenant.updateProfile", resource: "tenant", resourceId: ctx.tenantId, before: tenant.profile, after: profile });
+
+      return updated;
     },
   };
 }

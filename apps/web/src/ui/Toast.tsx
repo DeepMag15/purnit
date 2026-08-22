@@ -10,7 +10,13 @@ interface ToastItem {
   id: number;
   message: string;
   tone: Tone;
+  leaving: boolean;
 }
+
+// Matches --duration-base — must stay in sync with .toast-exit's own
+// animation-duration in globals.css so the item unmounts exactly when its
+// exit animation finishes, not before (cut off) or after (dead time).
+const EXIT_MS = 180;
 
 interface ToastContextValue {
   show: (message: string, tone?: Tone) => void;
@@ -37,15 +43,23 @@ let nextId = 0;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const show = useCallback((message: string, tone: Tone = "success") => {
-    const id = ++nextId;
-    setToasts((current) => [...current, { id, message, tone }]);
-    setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), 3500);
+  // Two-step removal: mark `leaving` (swaps the item's animation class from
+  // toast-in to toast-out) and only actually drop it from the array once
+  // that exit animation has had time to finish — an instant filter() would
+  // yank the DOM node out mid-animation, same as before this fix.
+  const dismiss = useCallback((id: number) => {
+    setToasts((current) => current.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), EXIT_MS);
   }, []);
 
-  function dismiss(id: number) {
-    setToasts((current) => current.filter((t) => t.id !== id));
-  }
+  const show = useCallback(
+    (message: string, tone: Tone = "success") => {
+      const id = ++nextId;
+      setToasts((current) => [...current, { id, message, tone, leaving: false }]);
+      setTimeout(() => dismiss(id), 3500);
+    },
+    [dismiss],
+  );
 
   return (
     <ToastContext.Provider value={{ show }}>
@@ -55,7 +69,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             className={cn(
-              "flex items-center gap-2 rounded-lg border bg-surface px-3.5 py-2.5 text-sm text-text shadow-lg transition-all duration-[var(--duration-base)]",
+              "flex items-center gap-2 rounded-lg border bg-surface px-3.5 py-2.5 text-sm text-text shadow-lg",
+              t.leaving ? "toast-exit" : "toast-enter",
               TONE_BORDER[t.tone],
             )}
           >

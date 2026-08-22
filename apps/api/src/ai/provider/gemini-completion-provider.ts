@@ -41,17 +41,31 @@ export class GeminiCompletionProvider implements CompletionProvider {
   async complete(req: CompletionRequest): Promise<CompletionResult> {
     const response = await this.client.models.generateContent({
       model: this.model,
+      // "tool" has no native Gemini role — replayed as a plain "user" turn
+      // instead, same disclosed v1 scope cut as the Anthropic adapter.
       contents: req.messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
       config: {
         systemInstruction: req.systemPrompt,
         maxOutputTokens: req.maxTokens,
+        // `parametersJsonSchema` (not the older OpenAPI-flavored
+        // `parameters`) accepts raw JSON Schema directly — confirmed live
+        // against the real API with a z.toJSONSchema() output before this
+        // was built, not assumed from docs.
+        tools: req.tools?.length
+          ? [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.inputSchema })) }]
+          : undefined,
       },
     });
 
     const candidate = response.candidates?.[0];
+    // Gemini has no dedicated finish reason for function calling (still
+    // reports "STOP") — synthesized here from functionCalls presence
+    // instead, first call only (Phase D's disclosed v1 scope cut).
+    const functionCall = response.functionCalls?.[0];
     return {
       content: response.text ?? "",
-      stopReason: mapFinishReason(candidate?.finishReason),
+      toolCall: functionCall?.name ? { name: functionCall.name, input: functionCall.args ?? {} } : undefined,
+      stopReason: functionCall?.name ? "tool_use" : mapFinishReason(candidate?.finishReason),
       usage: {
         inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,

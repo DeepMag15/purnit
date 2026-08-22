@@ -2,7 +2,9 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
+import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { taskDetailDataSource, tasksCountDataSource, tasksListDataSource } from "./tasks.data-sources";
+import { taskRagHandler } from "./tasks.rag";
 import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation, taskUpdateDueDateMutation } from "./tasks.mutations";
 import {
   tasksOpenCountMetric,
@@ -25,6 +27,7 @@ class TasksRegistrar implements OnModuleInit {
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
     private readonly metrics: MetricRegistry,
+    private readonly ragSources: RagSourceRegistry,
   ) {}
 
   onModuleInit() {
@@ -35,6 +38,7 @@ class TasksRegistrar implements OnModuleInit {
     this.mutations.register(taskUpdateStatusMutation);
     this.mutations.register(taskReassignMutation);
     this.mutations.register(taskUpdateDueDateMutation);
+    this.ragSources.register(taskRagHandler); // AI RAG Phase C
     this.metrics.register(tasksOpenCountMetric);
     this.metrics.register(tasksOverdueCountMetric);
     this.metrics.register(tasksCompletionRateMetric);

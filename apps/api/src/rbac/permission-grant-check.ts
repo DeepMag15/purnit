@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { parsePermissionString } from "@antigravity/manifest-schema";
+import { parsePermissionString } from "@purnit/manifest-schema";
 import { broaderScope } from "./scope";
 import type { EffectivePermissions } from "./permission-collapse";
 

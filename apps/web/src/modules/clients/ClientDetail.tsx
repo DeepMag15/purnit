@@ -72,6 +72,20 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const { data: invoicesData } = useDataSourceQuery<InvoiceRow[]>("invoices.list", { clientId }, { enabled: !!data?.canReadInvoices });
   const invoices = Array.isArray(invoicesData) ? invoicesData : [];
 
+  // Only fetched for someone who can actually reassign — same enabled-gating
+  // precedent ProjectDetail.tsx's own tenantUsers fetch already uses.
+  const { data: tenantUsersData } = useDataSourceQuery<{ id: string; displayName: string }[]>("users.list", {}, { enabled: !!data?.canUpdate });
+  const tenantUsers = Array.isArray(tenantUsersData) ? tenantUsersData : [];
+
+  async function handleAccountManagerChange(accountManagerId: string) {
+    try {
+      await callMutation("client.assignAccountManager", { id: clientId, accountManagerId });
+      refetch();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't assign account manager", "danger");
+    }
+  }
+
   function summarizeAccount() {
     if (!data) return;
     const lines = [
@@ -144,9 +158,24 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         <Card>
           <CardHeader title="Details" />
           <CardBody className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-text-muted">Account manager</span>
-              <span className="text-text">{data.accountManagerName ?? "Unassigned"}</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-text-muted">Account manager</span>
+              {data.canUpdate ? (
+                <Select
+                  value={data.accountManagerId ?? ""}
+                  onChange={(e) => e.target.value && handleAccountManagerChange(e.target.value)}
+                  className="h-7 max-w-[65%] text-xs"
+                >
+                  <option value="">Unassigned</option>
+                  {tenantUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <span className="text-text">{data.accountManagerName ?? "Unassigned"}</span>
+              )}
             </div>
             <div className="flex justify-between">
               <span className="text-text-muted">Email</span>

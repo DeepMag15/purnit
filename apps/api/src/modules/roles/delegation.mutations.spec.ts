@@ -22,6 +22,7 @@ describe("delegation.grant", () => {
         create: jest.fn().mockResolvedValue({ id: "d1", permission: "user:invite:tenant" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     const created = await delegationGrantMutation.resolve(
@@ -97,6 +98,7 @@ describe("delegation.grant", () => {
         create: jest.fn().mockResolvedValue({ id: "d2", permission: "user:invite:tenant" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await delegationGrantMutation.resolve({ userId: "u2", permissions: ["user:invite:tenant"] }, context(["user:invite:tenant"]), tx);
@@ -113,6 +115,7 @@ describe("delegation.grant", () => {
         create: jest.fn().mockResolvedValueOnce({ id: "d1" }).mockResolvedValueOnce({ id: "d2" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     const created = await delegationGrantMutation.resolve(
@@ -133,6 +136,7 @@ describe("delegation.grant", () => {
         create: jest.fn().mockResolvedValue({ id: "d1" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     // Self-delegation: userId === ctx.userId
@@ -146,6 +150,7 @@ describe("delegation.grant", () => {
         create: jest.fn().mockResolvedValue({ id: "d1" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await delegationGrantMutation.resolve({ userId: "u2", permissions: ["project:read:own"] }, context(["project:read:own"], "actor1"), tx2);
@@ -167,6 +172,7 @@ describe("delegation.revoke", () => {
         update: jest.fn().mockResolvedValue({ id: "d1", revokedAt: new Date() }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     await delegationRevokeMutation.resolve({ delegationId: "d1" }, context([], "actor1"), tx);
@@ -186,6 +192,7 @@ describe("delegation.revoke", () => {
         update: jest.fn().mockResolvedValue({ id: "d1" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
 
     // Actor holds nothing at all — would fail if any escalation check ran.
@@ -199,6 +206,7 @@ describe("delegation.revoke", () => {
         update: jest.fn().mockResolvedValue({ id: "d1" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
     await delegationRevokeMutation.resolve({ delegationId: "d1" }, context([], "actor1"), txSelf);
     expect((txSelf as unknown as { notification: { create: jest.Mock } }).notification.create).not.toHaveBeenCalled();
@@ -209,6 +217,7 @@ describe("delegation.revoke", () => {
         update: jest.fn().mockResolvedValue({ id: "d1" }),
       },
       notification: { create: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
     await delegationRevokeMutation.resolve({ delegationId: "d1" }, context([], "actor1"), txOther);
     const notifyCall = (txOther as unknown as { notification: { create: jest.Mock } }).notification.create.mock.calls[0][0];

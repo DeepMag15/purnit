@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { GridLayout, useContainerWidth, type Layout } from "react-grid-layout";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useToast } from "../../ui/Toast";
@@ -12,6 +11,10 @@ import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { Button } from "../../ui/Button";
 import { Card, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
+import { Dialog } from "../../ui/Dialog";
+import { Select } from "../../ui/Select";
+import { ActivityFeed } from "../../sdui/primitives/ActivityFeed";
 import { AnalyticsWidgetCard, type AnalyticsWidget } from "./AnalyticsWidgetCard";
 import { AnalyticsFilterProvider, useAnalyticsFilters } from "./analytics-filter-state";
 import { AnalyticsFilterBar } from "./AnalyticsFilterBar";
@@ -19,7 +22,6 @@ import { AnalyticsViewTabs } from "./AnalyticsViewTabs";
 import { formatCents } from "../invoices/money";
 
 export const AnalyticsDashboardSchema = z.object({});
-type Props = z.infer<typeof AnalyticsDashboardSchema>;
 
 interface WidgetLayoutEntry {
   key: string;
@@ -57,8 +59,19 @@ function useIsDesktop(): boolean {
 // server-side for a role's initial default template — deliberately
 // duplicated cheaply on both sides of the runtime boundary rather than
 // shared for one small function.
+//
+// Reference-fidelity pass — mirrors AuthService.signup's own identical
+// change: only the first DEFAULT_VISIBLE_WIDGET_COUNT widgets (in whatever
+// order the caller — analytics.dashboard's own permission-pruned response —
+// already returned them) start visible, keeping the rest one checkbox away
+// in "Manage Widgets" below rather than dropping them. This is the fallback
+// path only (no saved server layout at all — a tenant provisioned before
+// Analytics Phase E, or a role absent from DEFAULT_DASHBOARD_WIDGET_KEYS);
+// most real accounts hit the server-seeded layout instead, now seeded with
+// the same 5-visible default.
+const DEFAULT_VISIBLE_WIDGET_COUNT = 5;
 function autoLayout(keys: string[]): WidgetLayoutEntry[] {
-  return keys.map((key, i) => ({ key, visible: true, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
+  return keys.map((key, i) => ({ key, visible: i < DEFAULT_VISIBLE_WIDGET_COUNT, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
 }
 
 // Analytics Phase H (AI Insights, first slice) — builds the exact text
@@ -129,7 +142,7 @@ function mergeLayout(widgets: AnalyticsWidget[], saved: WidgetLayoutEntry[] | un
  * mounts the Analytics-scoped filter provider (Phase B) — split out so the
  * inner content can read filter state via context.
  */
-export function AnalyticsDashboard(_props: Props & CommonRenderProps) {
+export function AnalyticsDashboard() {
   return (
     <AnalyticsFilterProvider>
       <AnalyticsDashboardContent />
@@ -156,6 +169,17 @@ function AnalyticsDashboardContent() {
   const widgets = data?.widgets ?? [];
   const widgetByKey = new Map(widgets.map((w) => [w.key, w]));
   const serverLayout = useMemo(() => mergeLayout(widgets, data?.layout), [widgets, data?.layout]);
+
+  // UI-wiring pass — gates "Save as Team Default" (dashboardLayout.
+  // saveAsTemplate, previously built with no UI to trigger it) on the real
+  // role:manage permission that mutation requires.
+  const { data: capabilities } = useDataSourceQuery<{ canManageRoleTemplates: boolean }>("analytics.capabilities");
+  const canManageRoleTemplates = capabilities?.canManageRoleTemplates ?? false;
+  const { data: rolesData } = useDataSourceQuery<{ id: string; label: string }[]>("roles.list", {}, { enabled: canManageRoleTemplates });
+  const roles = Array.isArray(rolesData) ? rolesData : [];
+  const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
+  const [templateRoleId, setTemplateRoleId] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [editMode, setEditMode] = useState(false);
   const [localLayout, setLocalLayout] = useState<WidgetLayoutEntry[] | null>(null);
@@ -208,6 +232,20 @@ function AnalyticsDashboardContent() {
   function toggleWidgetVisible(key: string) {
     setLocalLayout((current) => (current ?? serverLayout).map((e) => (e.key === key ? { ...e, visible: !e.visible } : e)));
   }
+  async function handleSaveAsTemplate() {
+    if (!templateRoleId) return;
+    setSavingTemplate(true);
+    try {
+      await callMutation("dashboardLayout.saveAsTemplate", { roleId: templateRoleId, widgets: layout });
+      showToast("Saved as the team default for that role");
+      setSaveAsTemplateOpen(false);
+      setTemplateRoleId("");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Couldn't save as team default", "danger");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
   function handleLayoutChange(next: Layout) {
     if (!editMode) return;
     const byKey = new Map(next.map((item) => [item.i, item]));
@@ -224,6 +262,19 @@ function AnalyticsDashboardContent() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageHeader title="Analytics & Insights" />
+
+      {/* Reused directly as a bare component, same precedent AnalyticsWidgetCard.tsx
+          already established for KpiCard/Chart/etc. — nodeId/renderChild are
+          stub CommonRenderProps values, unused by ActivityFeed itself. */}
+      <ActivityFeed
+        title="Recent Activity"
+        limit={10}
+        bind={{ source: "notifications.list" }}
+        nodeId="analytics-activity"
+        renderChild={() => null}
+      />
+
       <AnalyticsViewTabs />
       <AnalyticsFilterBar />
 
@@ -249,6 +300,11 @@ function AnalyticsDashboardContent() {
               <Button size="sm" variant="secondary" onClick={resetLayout} disabled={saving}>
                 Reset to Default
               </Button>
+              {canManageRoleTemplates && (
+                <Button size="sm" variant="secondary" onClick={() => setSaveAsTemplateOpen(true)} disabled={saving}>
+                  Save as Team Default
+                </Button>
+              )}
               <Button size="sm" variant="secondary" onClick={cancelEditing} disabled={saving}>
                 Cancel
               </Button>
@@ -259,6 +315,30 @@ function AnalyticsDashboardContent() {
           )}
         </div>
       )}
+
+      <Dialog open={saveAsTemplateOpen} onClose={() => setSaveAsTemplateOpen(false)} title="Save as Team Default">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-text-muted">
+            Choose a role — everyone with that role who hasn&apos;t customized their own dashboard will see this layout by default.
+          </p>
+          <Select label="Role" value={templateRoleId} onChange={(e) => setTemplateRoleId(e.target.value)} autoFocus>
+            <option value="">{roles.length === 0 ? "No roles available" : "Choose a role…"}</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setSaveAsTemplateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveAsTemplate} disabled={savingTemplate || !templateRoleId}>
+              {savingTemplate ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {isDesktop && editMode && managingWidgets && (
         <Card>

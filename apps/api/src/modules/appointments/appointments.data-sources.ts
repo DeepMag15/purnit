@@ -61,3 +61,23 @@ export const appointmentsListDataSource: DataSourceDefinition<z.infer<typeof Lis
     }));
   },
 };
+
+const AppointmentsCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `AppointmentsWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop its booking/status controls
+ * currently check. `appointment.create`/`appointment.updateStatus` declare
+ * genuinely different resources (`appointment:create`/`appointment:update`,
+ * confirmed directly against each mutation), so both get their own flag —
+ * no `requiredPermission` of its own (callable by anyone), same precedent
+ * as `analytics.capabilities`. */
+export const appointmentsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof AppointmentsCapabilitiesParamsSchema>> = {
+  name: "appointments.capabilities",
+  paramsSchema: AppointmentsCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("appointment", "create") !== null,
+      canUpdateStatus: ctx.effective.has("appointment", "update") !== null,
+    };
+  },
+};

@@ -8,6 +8,7 @@
 @theme {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
   --color-surface-hover: var(--surface-hover);
   --color-border: var(--border);
   --color-text: var(--text);
@@ -19,6 +20,11 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  /* Frontend Redesign, Phase 01 — the one genuinely new semantic color: a
+   * "queued/backlog" tone. Every other workflow status already had a home
+   * (progress→warning, review→info, done→success) once the status-dot
+   * system replaced ad hoc per-module color choices; queued didn't. */
+  --color-queued: var(--queued);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
@@ -63,42 +69,66 @@
 }
 
 /* Light theme (also the fallback before next-themes hydrates). Platform-wide
- * UI/UX redesign, Phase A — replaces the prior indigo-accent/cool-gray
- * scale with a warm, neutral enterprise palette (confirmed direction, not
- * an evolution of the prior "obsidian" scheme). */
+ * UI/UX redesign, Phase A established the warm-neutral direction; Frontend
+ * Redesign Phase 01 (design review rounds 1-3) kept that same warm accent
+ * hue deliberately ("maintaining Purnit's own identity") while only
+ * quieting the neutrals against reference_design.png.
+ *
+ * Frontend Redesign, post-Phase 03 design amendment — the user asked for a
+ * literal palette match to reference_design.png, superseding that "keep the
+ * warm accent" call. Every value below was sampled directly from the
+ * reference screenshot (pixel-scanned for the darkest/most-saturated pixel
+ * per region, not eyeballed): neutrals go cool/gray instead of warm/cream,
+ * and the accent moves from terracotta (#b5651d) to the reference's blue
+ * (its "New" button, its "In review" status dot, and its link color all
+ * sample to the same ~#2483df). The four semantic-status hues below map
+ * 1:1 onto the reference's own To-do/In progress/In review/Complete column
+ * dots — confirming `StatusDot.tsx`'s existing queued/warning/info/success
+ * tone vocabulary (chosen in Phase 01 to match this same reference) was
+ * already the right shape; only the hex values were off. */
 :root {
-  --bg: #faf8f5;
+  --bg: #f9f9f7;
   --surface: #ffffff;
-  --surface-hover: #f3efe8;
-  --border: #e7e1d6;
-  --text: #29241f;
-  --text-muted: #7a7266;
-  --accent: #b5651d;
-  --accent-hover: #9c561a;
+  /* New — sidebar/recessed zones sit one shade below --surface rather than
+   * sharing it, so the active nav item (which sits ON --surface) has
+   * somewhere to visually "pop" from without needing an accent tint. */
+  --surface-sunk: #f2f1ee;
+  --surface-hover: #f1efec;
+  --border: #e7e5e2;
+  --text: #24211f;
+  --text-muted: #86847f;
+  --accent: #2483df;
+  --accent-hover: #1c6bc0;
   --accent-fg: #ffffff;
-  --danger: #b23a3a;
-  --success: #4f7942;
-  --warning: #b8860b;
-  --info: #3e6b96;
+  --danger: #c1483f;
+  --success: #5d9b72;
+  --warning: #cd902d;
+  --info: #2f86dd;
+  --queued: #a37cc5;
 }
 
-/* Dark theme. Platform-wide UI/UX redesign, Phase A — a warm near-black
- * (brown undertone, not pure #0a0a0a) replacing the prior "obsidian" scale.
- * The primary/default mode (see layout.tsx's ThemeProvider defaultTheme). */
+/* Dark theme. reference_design.png is light-mode only, so these are derived
+ * from the same light-theme hues above rather than sampled directly —
+ * brighter/more saturated per hue for dark-background legibility, same
+ * transform the pre-amendment dark theme already applied to its own
+ * (then-warm) light-theme values. The primary/default mode (see
+ * layout.tsx's ThemeProvider defaultTheme). */
 .dark {
-  --bg: #211e1b;
-  --surface: #2a2621;
-  --surface-hover: #332e27;
-  --border: #423c33;
-  --text: #f2ede3;
-  --text-muted: #a89c8c;
-  --accent: #e07a45;
-  --accent-hover: #c96633;
-  --accent-fg: #1a1512;
-  --danger: #d9645f;
-  --success: #7fae6b;
-  --warning: #d4a72c;
-  --info: #6c9bc9;
+  --bg: #17181a;
+  --surface: #1f2022;
+  --surface-sunk: #121314;
+  --surface-hover: #262729;
+  --border: #313335;
+  --text: #ececeb;
+  --text-muted: #93959a;
+  --accent: #4f9eef;
+  --accent-hover: #3d84cf;
+  --accent-fg: #ffffff;
+  --danger: #e2685f;
+  --success: #7ebd93;
+  --warning: #dba545;
+  --info: #5ba6ee;
+  --queued: #b494d9;
 }
 
 body {
@@ -131,4 +161,114 @@ body {
   background: color-mix(in srgb, var(--color-surface) 80%, transparent);
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
+}
+
+/* Frontend Redesign, Phase 01 — Icon's own `filled` prop toggles this
+ * (outline at rest, filled for active/selected state), same ruleset shown
+ * in the Round 3 design review's iconography section. */
+.material-symbols-outlined.icon-filled {
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+/* Frontend Redesign, Phase 01 — motion doctrine from the design review
+ * (Round 3): every transition answers "is this clickable / did my click
+ * register", nothing decorative. Two small, composable utilities rather
+ * than repeating the same transition declarations at every call site;
+ * layout-affecting properties are never animated (transform/opacity/color
+ * only), same discipline the duration tokens' own doc comment establishes. */
+.interactive-lift {
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+.interactive-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+.interactive-press {
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+.interactive-press:active {
+  transform: scale(0.97);
+}
+
+/* Frontend Redesign, Phase 06 — the panels below (Dialog/CommandPalette/
+ * Dropdown/Toast) all mount-then-unmount rather than toggling a CSS class,
+ * so a `transition` alone never runs (nothing changes state after mount).
+ * `animation` runs automatically on mount instead, no JS state needed for
+ * the enter side. Toast is the one that also exits gracefully — see its own
+ * two-step leaving-state comment in Toast.tsx for why. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+.panel-enter {
+  animation: panel-in var(--duration-base) var(--ease-standard);
+}
+.drawer-enter {
+  animation: drawer-in var(--duration-base) var(--ease-standard);
+}
+.dropdown-enter {
+  animation: panel-in var(--duration-fast) var(--ease-standard);
+}
+.backdrop-enter {
+  animation: backdrop-in var(--duration-base) var(--ease-standard);
+}
+.toast-enter {
+  animation: toast-in var(--duration-base) var(--ease-standard);
+}
+.toast-exit {
+  animation: toast-out var(--duration-base) var(--ease-standard) forwards;
 }

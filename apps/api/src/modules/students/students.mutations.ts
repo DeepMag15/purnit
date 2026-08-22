@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Same `requirePatientInScope` shape every module in this codebase already
  * follows. A Student's "owner" for scope purposes is whoever registered
@@ -33,7 +34,7 @@ export const studentRegisterMutation: MutationDefinition<z.infer<typeof Register
   inputSchema: RegisterInputSchema,
   requiredPermission: "student:create",
   async resolve(input, ctx, tx) {
-    return tx.student.create({
+    const student = await tx.student.create({
       data: {
         tenantId: ctx.tenantId,
         name: input.name,
@@ -43,6 +44,8 @@ export const studentRegisterMutation: MutationDefinition<z.infer<typeof Register
         registeredById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "student", student.id); // AI RAG Phase C
+    return student;
   },
 };
 
@@ -54,6 +57,8 @@ export const studentUpdateStatusMutation: MutationDefinition<z.infer<typeof Upda
   requiredPermission: "student:update",
   async resolve(input, ctx, tx) {
     const existing = await requireStudentInScope(tx, ctx, input.id);
-    return tx.student.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.student.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "student", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

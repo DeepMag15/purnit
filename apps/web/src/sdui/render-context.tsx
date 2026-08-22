@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest } from "@purnit/manifest-schema";
 import { callDataSource, callMutation } from "../lib/api-client";
 
 export interface RenderContextValue {
@@ -28,6 +28,10 @@ export interface RenderContextValue {
    * buttons) gate on this rather than reaching into the manifest directly,
    * same as every other render-context-derived value. */
   aiAvailable: boolean;
+  /** Backs the `openModal`/`openDrawer` ActionSpec kinds (useActionDispatch.ts)
+   * — same "state lives in workspace/layout.tsx, exposed through context,
+   * one overlay instance mounted once" shape as `openAiPanel`. */
+  openBlueprintModal: (pageId: string, variant: "modal" | "drawer") => void;
 }
 
 const RenderContext = createContext<RenderContextValue | null>(null);

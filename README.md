@@ -1,4 +1,4 @@
-# Antigravity
+# Purnit
 
 A config-driven, multi-tenant workspace platform: a NestJS API compiles a per-user "Workspace Manifest" from a tenant's blueprint + role, and a Next.js frontend renders it through a generic SDUI (server-driven UI) renderer. Modules — Projects, Tasks, HR, Chat, Meetings, Documents, an AI Assistant, and more — plug into the same manifest/permission/data-source contracts rather than each shipping bespoke frontend code.
 

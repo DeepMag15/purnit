@@ -126,7 +126,7 @@ The local stack is the real Supabase platform (Postgres + GoTrue Auth + Storage 
 
 **Never run `prisma migrate dev`** (aliased as `apps/api`'s own `prisma:migrate` script, kept only for rare local schema-design iteration against a fully disposable database) against either the local or cloud stack as part of normal work. Prisma's shadow-database diffing (`migrate dev`'s own mechanism) creates a bare Postgres database that has no idea about Supabase's `auth`/`storage` schemas or the custom `app_runtime` role — it doesn't reflect the real schema this project depends on, and has caused real, confirmed breakage in the past (see `CONTEXT.md`).
 
-The only supported flow, used everywhere (including `scripts/setup.mjs`): hand-write the migration SQL yourself under `apps/api/prisma/migrations/`, then `pnpm --filter @antigravity/api run prisma:deploy` (`prisma migrate deploy && prisma generate`).
+The only supported flow, used everywhere (including `scripts/setup.mjs`): hand-write the migration SQL yourself under `apps/api/prisma/migrations/`, then `pnpm --filter @purnit/api run prisma:deploy` (`prisma migrate deploy && prisma generate`).
 
 ## Tests, typecheck, lint, build
 

@@ -29,7 +29,12 @@ export function Tabs({ items, activeId, onChange }: { items: TabItem[]; activeId
   }
 
   return (
-    <div ref={containerRef} role="tablist" className="flex items-center gap-1 border-b border-border" onKeyDown={handleKeyDown}>
+    <div
+      ref={containerRef}
+      role="tablist"
+      className="flex items-center gap-1 overflow-x-auto border-b border-border"
+      onKeyDown={handleKeyDown}
+    >
       {items.map((item) => {
         const active = item.id === activeId;
         return (
@@ -41,7 +46,7 @@ export function Tabs({ items, activeId, onChange }: { items: TabItem[]; activeId
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(item.id)}
             className={cn(
-              "border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-[var(--duration-fast)]",
+              "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-[var(--duration-fast)]",
               active ? "border-accent text-text" : "border-transparent text-text-muted hover:text-text",
             )}
           >

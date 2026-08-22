@@ -2,6 +2,7 @@ import { NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 async function requireSupplierExists(tx: PrismaTx, ctx: MutationContext, supplierId: string) {
   const existing = await tx.supplier.findFirst({ where: { id: supplierId, tenantId: ctx.tenantId, deletedAt: null } });
@@ -20,7 +21,7 @@ export const supplierCreateMutation: MutationDefinition<z.infer<typeof CreateInp
   inputSchema: CreateInputSchema,
   requiredPermission: "supplier:create",
   async resolve(input, ctx, tx) {
-    return tx.supplier.create({
+    const supplier = await tx.supplier.create({
       data: {
         tenantId: ctx.tenantId,
         name: input.name,
@@ -29,6 +30,8 @@ export const supplierCreateMutation: MutationDefinition<z.infer<typeof CreateInp
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "supplier", supplier.id); // AI RAG Phase C
+    return supplier;
   },
 };
 
@@ -40,6 +43,8 @@ export const supplierUpdateStatusMutation: MutationDefinition<z.infer<typeof Upd
   requiredPermission: "supplier:update",
   async resolve(input, ctx, tx) {
     const existing = await requireSupplierExists(tx, ctx, input.id);
-    return tx.supplier.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.supplier.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "supplier", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

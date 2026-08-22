@@ -10,6 +10,7 @@ export interface CurrentUser {
   email: string;
   departmentId: string | null;
   mustChangePassword: boolean;
+  digestOptOut: boolean;
 }
 
 /** Resolves the internal User row for the current request's auth context.
@@ -43,6 +44,7 @@ export class CurrentUserService {
       email: user.email,
       departmentId: user.departmentId,
       mustChangePassword: user.mustChangePassword,
+      digestOptOut: user.digestOptOut,
     };
   }
 

@@ -10,6 +10,7 @@ const baseUser: CurrentUser = {
   email: "test@example.com",
   departmentId: null,
   mustChangePassword: false,
+  digestOptOut: false,
 };
 
 describe("assertPasswordChanged", () => {

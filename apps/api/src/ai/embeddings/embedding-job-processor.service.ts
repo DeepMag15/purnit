@@ -2,11 +2,10 @@ import { createHash } from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { TenantPrismaService } from "../../tenancy/tenant-prisma.service";
-import { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { EmbeddingProviderService } from "./embedding-provider.service";
 import { GEMINI_EMBEDDING_DIMENSIONS } from "./gemini-embedding-provider";
-import { extractDocumentText } from "./document-text-extraction";
 import { chunkText } from "./chunk-text";
+import { RagSourceRegistry } from "../retrieval/rag-source-registry.service";
 
 const POLL_INTERVAL_MS = 15_000;
 const JOB_BATCH_SIZE = 5;
@@ -56,7 +55,7 @@ export class EmbeddingJobProcessorService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly embeddingProvider: EmbeddingProviderService,
-    private readonly supabaseAdmin: SupabaseAdminService,
+    private readonly ragSources: RagSourceRegistry,
   ) {}
 
   @Interval(POLL_INTERVAL_MS)
@@ -102,25 +101,20 @@ export class EmbeddingJobProcessorService {
 
   private async processJob(tenantId: string, job: ClaimedJob) {
     try {
-      // Only "document" source-type exists in Phase B — a future source
-      // type would branch here rather than replacing this.
-      if (job.sourceType !== "document") {
+      // AI RAG Phase C — dispatches to whichever module registered this
+      // sourceType via RagSourceRegistry. An unregistered type is a
+      // graceful no-op (same behavior Phase B had for any non-"document"
+      // type before this registry existed), not a failure — a job can
+      // outlive its own source type being un-registered (e.g. mid-deploy).
+      const handler = this.ragSources.get(job.sourceType);
+      if (!handler) {
         await this.markDone(tenantId, job.id);
         return;
       }
 
-      const document = await this.tenantPrisma.run(tenantId, (tx) =>
-        tx.document.findFirst({ where: { id: job.sourceId, tenantId, deletedAt: null } }),
-      );
-      // Soft-deleted or gone since the job was enqueued — nothing to embed,
-      // not a failure.
-      if (!document) {
-        await this.markDone(tenantId, job.id);
-        return;
-      }
-
-      const bytes = await this.supabaseAdmin.downloadDocumentBytes(document.storagePath);
-      const text = await extractDocumentText(bytes, document.mimeType);
+      const text = await this.tenantPrisma.run(tenantId, (tx) => handler.extractText(tx, tenantId, job.sourceId));
+      // Row gone/soft-deleted since the job was enqueued, or genuinely
+      // nothing to embed — not a failure.
       if (!text) {
         await this.markDone(tenantId, job.id);
         return;

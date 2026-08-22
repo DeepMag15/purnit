@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { clientsWhere, salesRepOwnedClientIds, clientsListDataSource, clientDetailDataSource } from "./clients.data-sources";
+import { clientsWhere, salesRepOwnedClientIds, clientsListDataSource, clientDetailDataSource, clientsCapabilitiesDataSource } from "./clients.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -116,6 +116,35 @@ describe("clients.detail", () => {
         filesVisible: boolean;
       };
       expect(data.filesVisible).toBe(false);
+    });
+  });
+});
+
+describe("clients.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await clientsCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only client:create", async () => {
+    expect(await clientsCapabilitiesDataSource.resolve({}, context(["client:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only client:update — a genuinely different resource action from client:create", async () => {
+    expect(await clientsCapabilitiesDataSource.resolve({}, context(["client:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await clientsCapabilitiesDataSource.resolve({}, context(["client:create:tenant", "client:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
     });
   });
 });

@@ -26,6 +26,8 @@ const ICONS: Record<string, string> = {
   "roles-permissions": "badge",
   analytics: "monitoring",
   account: "account_circle",
+  notifications: "notifications",
+  "audit-logs": "history",
 };
 
 export function iconFor(key: string | undefined): string {

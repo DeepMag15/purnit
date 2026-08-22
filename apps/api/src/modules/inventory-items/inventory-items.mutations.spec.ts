@@ -16,6 +16,7 @@ describe("inventoryItem.create", () => {
       },
       project: { create: jest.fn().mockResolvedValue({ id: "proj1" }) },
       projectMember: { create: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await inventoryItemCreateMutation.resolve(
@@ -58,6 +59,7 @@ describe("inventoryItem.update", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "i1" }),
         update: jest.fn().mockResolvedValue({ id: "i1" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await inventoryItemUpdateMutation.resolve({ id: "i1", reorderPoint: 10 }, context(["inventoryItem:update:tenant"]), tx);
     expect((tx as unknown as { inventoryItem: { update: jest.Mock } }).inventoryItem.update).toHaveBeenCalledWith({

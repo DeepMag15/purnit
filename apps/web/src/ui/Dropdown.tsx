@@ -29,7 +29,7 @@ export function Dropdown({
       {open && (
         <div
           className={cn(
-            "absolute top-[calc(100%+6px)] z-20 min-w-[180px] rounded-lg border border-border bg-surface py-1 shadow-lg",
+            "dropdown-enter absolute top-[calc(100%+6px)] z-20 min-w-[180px] rounded-lg border border-border bg-surface py-1 shadow-lg",
             align === "end" ? "right-0" : "left-0",
           )}
         >

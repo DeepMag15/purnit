@@ -20,6 +20,18 @@ const MUTATION_LABELS: Record<string, string> = {
   "task.delete": "Delete",
 };
 
+// Reference-fidelity pass — every real Table/Table3 caller passes raw row
+// field names as `columns` ("assigneeId", "due_date"), same class of gap
+// KanbanBoard.tsx's own column labels had (see its formatColumnLabel).
+// Display-only: `col` itself still drives the actual row lookup/sort/filter
+// key untouched.
+function formatColumnLabel(col: string): string {
+  const spaced = col
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 export function Table({ columns, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch } = useDataBinding(bind);
   const dispatch = useActionDispatch();
@@ -40,7 +52,7 @@ export function Table({ columns, bind, actions }: Props & CommonRenderProps) {
           <tr className="bg-surface-hover">
             {columns.map((col) => (
               <th key={col} className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-text-muted">
-                {col}
+                {formatColumnLabel(col)}
               </th>
             ))}
             {rowMutations.length > 0 && <th />}
@@ -194,7 +206,7 @@ export function Table3({ columns, sortable, filterable, groupBy, pageSize, bind,
                   className={"whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-text-muted" + (sortable ? " cursor-pointer select-none" : "")}
                   onClick={sortable ? () => toggleSort(col) : undefined}
                 >
-                  {col}
+                  {formatColumnLabel(col)}
                   {sortable && sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                 </th>
               ))}

@@ -1,6 +1,6 @@
 # Self-hosted Jitsi Meet (local dev, temporary)
 
-Antigravity's Meetings module uses this for video calls, for now, instead of a paid vendor. This is a deliberate, temporary stopgap — the plan is to swap to a properly hosted vendor once the platform is further along. See `CONTEXT.md`/`CHANGELOG.md` for the full "why."
+Purnit's Meetings module uses this for video calls, for now, instead of a paid vendor. This is a deliberate, temporary stopgap — the plan is to swap to a properly hosted vendor once the platform is further along. See `CONTEXT.md`/`CHANGELOG.md` for the full "why."
 
 **Real limitation, disclosed up front**: this runs locally via Docker Compose, not on a real internet-reachable server. Two browser sessions on this same machine can call each other. A real remote participant, on a different network, very likely cannot — Jitsi's media relay (JVB) needs a reachable UDP port and a public IP/TURN server, which a home machine behind NAT doesn't have. Don't use this for real cross-network meetings yet.
 
@@ -79,7 +79,7 @@ A full backend-level pass ran the entire Meetings flow against this live server 
 
 Everything above is confirmed. This is the short remaining checklist — should take under 5 minutes:
 
-1. Both dev servers running (`pnpm --filter @antigravity/api run dev`, `pnpm --filter @antigravity/web run dev`) and the Jitsi containers up (`docker compose ps` from `infra/jitsi/docker-jitsi-meet/`).
+1. Both dev servers running (`pnpm --filter @purnit/api run dev`, `pnpm --filter @purnit/web run dev`) and the Jitsi containers up (`docker compose ps` from `infra/jitsi/docker-jitsi-meet/`).
 2. Open **http://localhost:3000**, log in, go to **Meetings**, click **Start now** (or schedule one inviting a second real or throwaway user).
 3. Click **Join** — confirm the call view fills the screen, the browser prompts for camera/mic permission, and the Jitsi call UI actually renders (not a blank frame or an error page).
 4. Open a **second browser** (or a private/incognito window — needs to be a genuinely separate session so it gets its own camera/mic prompt) as the invited participant, and join the same meeting the same way.

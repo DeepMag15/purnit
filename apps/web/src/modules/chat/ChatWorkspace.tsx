@@ -3,22 +3,23 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
 import { useRealtimeMessages } from "../../sdui/use-realtime";
 import { Card, CardHeader } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
 import { Button } from "../../ui/Button";
 import { Badge } from "../../ui/Badge";
 import { Input } from "../../ui/Input";
 import { Dropdown, DropdownItem } from "../../ui/Dropdown";
 import { Icon } from "../../ui/Icon";
+import { PresenceDot } from "../../ui/PresenceDot";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 import { cn } from "../../ui/utils";
+import { usePresence } from "../presence/use-presence";
 
 export const ChatWorkspaceSchema = z.object({});
-type Props = z.infer<typeof ChatWorkspaceSchema>;
 
 interface ConversationRow {
   id: string;
@@ -57,15 +58,16 @@ function conversationLabel(c: ConversationRow): string {
 }
 
 /**
- * Phase 1, Submodule 2: Channels & Direct Messages — a blueprint-registered
- * composite (unlike `CommentThread`, which is a plain shared component: a
- * whole chat workspace is a real top-level page, not a per-row expansion).
- * Manages its own data via `useDataSourceQuery` rather than a node `bind`,
- * same precedent as `OrgStructure` — the conversation rail, message thread,
- * and "browse channels" list are three independent, UI-driven fetches no
- * static `bind` could express in one shape.
+ * Phase 1, Submodule 2: Channels & Direct Messages.
+ *
+ * Frontend Redesign, Phase 03 — moved off the SDUI Renderer onto a
+ * dedicated route (`/workspace/chat`). Manages its own data via
+ * `useDataSourceQuery` rather than a node `bind`, same precedent as
+ * `OrgStructure` — the conversation rail, message thread, and "browse
+ * channels" list are three independent, UI-driven fetches no static `bind`
+ * could express in one shape.
  */
-export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
+export function ChatWorkspace() {
   const { user, tenant, callMutation, callDataSource } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -81,10 +83,21 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
   const [sending, setSending] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
-  const canSend = actions?.some((a) => a.kind === "mutation" && a.mutation === "message.send") ?? true;
+  // `message.send` has no `requiredPermission` at all (confirmed directly in
+  // chat.mutations.ts — "any tenant member may send") and no mute/ban
+  // concept exists anywhere in this codebase — always true for every role,
+  // Renderer or not. The old `actions?.some(...) ?? true` check already
+  // produced this same value; this is parity, not a fix.
+  const canSend = true;
 
   const { data: conversationsData, isPending: conversationsPending } = useDataSourceQuery<ConversationRow[]>("conversations.list");
   const conversations = Array.isArray(conversationsData) ? conversationsData : [];
+  // DM counterparts only — a channel has no single "other member" to show a
+  // dot for. Sourced from `conversations.list`'s own `otherMember`, not
+  // `users.list` below (that one's gated on `user:manage` for its "start a
+  // DM" picker; presence for people you're already talking to shouldn't
+  // depend on that).
+  const dmPresence = usePresence(conversations.flatMap((c) => (c.type === "dm" && c.otherMember ? [c.otherMember.id] : [])));
 
   const { data: usersData } = useDataSourceQuery<UserOption[]>("users.list");
   const users = Array.isArray(usersData) ? usersData : [];
@@ -248,8 +261,14 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-160px)] gap-4">
-      <Card className="flex w-72 shrink-0 flex-col overflow-hidden">
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Chat" />
+      {/* Frontend Redesign, Phase 06 — below `md:` this becomes a one-pane-
+          at-a-time layout (list, or thread with a back button) instead of a
+          fixed-width sidebar squeezed next to the thread; `md:flex`/`md:w-72`
+          restore the original two-pane layout at desktop widths unchanged. */}
+      <div className="flex h-[calc(100vh-208px)] flex-col gap-4 md:flex-row">
+        <Card className={cn("flex w-full shrink-0 flex-col overflow-hidden md:flex md:w-72", selectedId ? "hidden md:flex" : "flex")}>
         <CardHeader
           title="Conversations"
           action={
@@ -354,6 +373,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
               >
                 <Icon name={c.type === "dm" ? "person" : c.isPrivate ? "lock" : "tag"} size={15} className="shrink-0 text-text-muted" />
                 <span className={cn("min-w-0 flex-1 truncate text-sm text-text", c.unreadCount > 0 && "font-semibold")}>{conversationLabel(c)}</span>
+                {c.type === "dm" && c.otherMember && <PresenceDot status={dmPresence.get(c.otherMember.id)} />}
                 {c.unreadCount > 0 && (
                   <span className="shrink-0">
                     <Badge tone="accent">{c.unreadCount > 99 ? "99+" : c.unreadCount}</Badge>
@@ -364,7 +384,7 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
         </div>
       </Card>
 
-      <Card className="flex flex-1 flex-col overflow-hidden">
+      <Card className={cn("flex-1 flex-col overflow-hidden md:flex", selectedId ? "flex" : "hidden md:flex")}>
         {!selectedConversation && <div className="flex flex-1 items-center justify-center text-sm text-text-muted">Select a conversation to start chatting.</div>}
 
         {selectedConversation && (
@@ -372,16 +392,26 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
             <CardHeader
               title={conversationLabel(selectedConversation)}
               action={
-                selectedConversation.createdById === user.id && (
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    title="Archive conversation"
-                    onClick={() => handleArchive(selectedConversation.id)}
-                    className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-danger"
+                    title="Back to conversations"
+                    onClick={() => setSelectedId(null)}
+                    className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text md:hidden"
                   >
-                    <Icon name="archive" size={16} />
+                    <Icon name="arrow_back" size={16} />
                   </button>
-                )
+                  {selectedConversation.createdById === user.id && (
+                    <button
+                      type="button"
+                      title="Archive conversation"
+                      onClick={() => handleArchive(selectedConversation.id)}
+                      className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-danger"
+                    >
+                      <Icon name="archive" size={16} />
+                    </button>
+                  )}
+                </div>
               }
             />
 
@@ -483,7 +513,8 @@ export function ChatWorkspace({ actions }: Props & CommonRenderProps) {
             )}
           </>
         )}
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

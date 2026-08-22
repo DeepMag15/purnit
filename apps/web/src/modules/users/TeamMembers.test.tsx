@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
-import type { WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest } from "@purnit/manifest-schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TeamMembers } from "./TeamMembers";
 import { RenderContextProvider } from "../../sdui/render-context";
@@ -16,7 +16,7 @@ import type { CommonRenderProps } from "../../sdui/registry";
 // typed JSX literal like this test needs, so this cast is test-only scaffolding.
 const TeamMembersUnderTest = TeamMembers as unknown as (props: CommonRenderProps) => ReactElement;
 
-const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Admin User", roles: ["Company Admin"], permissionsHash: "x" };
+const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Admin User", roles: ["Company Admin"], permissionsHash: "x", digestOptOut: false };
 const tenant: WorkspaceManifest["tenant"] = { id: "t1", name: "Test Co", workspaceId: "test-co", industry: "IT", branding: {}, profile: {} };
 
 const ROLES = [
@@ -49,6 +49,7 @@ describe("TeamMembers invite form", () => {
             navigate: () => {},
             refetchBootstrap: () => {},
             openAiPanel: () => {},
+            openBlueprintModal: () => {},
             aiAvailable: false,
           }}
         >

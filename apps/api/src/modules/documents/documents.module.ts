@@ -2,6 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
+import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { AuthModule } from "../../auth/auth.module";
 import { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { documentsListDataSource, documentDetailDataSource } from "./documents.data-sources";
@@ -16,6 +17,7 @@ import {
   createDocumentGetFileUrlMutation,
 } from "./documents.mutations";
 import { documentsPendingApprovalsMetric } from "./documents.metrics";
+import { createDocumentRagHandler } from "./documents.rag";
 
 /** Same registrar pattern as every other module — see meetings.module.ts.
  * `SupabaseAdminService` isn't global, so `AuthModule` is imported below,
@@ -29,6 +31,7 @@ class DocumentsRegistrar implements OnModuleInit {
     private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
     private readonly metrics: MetricRegistry,
+    private readonly ragSources: RagSourceRegistry,
     private readonly supabaseAdmin: SupabaseAdminService,
   ) {}
 
@@ -44,6 +47,9 @@ class DocumentsRegistrar implements OnModuleInit {
     this.mutations.register(documentDeleteMutation);
     this.mutations.register(createDocumentGetFileUrlMutation(this.supabaseAdmin));
     this.metrics.register(documentsPendingApprovalsMetric);
+    // AI RAG Phase C — converted from what used to be inlined directly in
+    // retrieval.service.ts/embedding-job-processor.service.ts.
+    this.ragSources.register(createDocumentRagHandler(this.supabaseAdmin));
   }
 }
 

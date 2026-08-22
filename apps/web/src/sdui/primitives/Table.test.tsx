@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest } from "@purnit/manifest-schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Table3 } from "./Table";
 import { RenderContextProvider } from "../render-context";
 
-const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x" };
+const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x", digestOptOut: false };
 const tenant: WorkspaceManifest["tenant"] = { id: "t1", name: "Test Co", workspaceId: "test-co", industry: "IT", branding: {}, profile: {} };
 
 const ROWS = [
@@ -27,6 +27,7 @@ function renderTable(props: { onRowClick?: (row: Record<string, unknown>) => voi
           navigate,
           refetchBootstrap: () => {},
           openAiPanel: () => {},
+          openBlueprintModal: () => {},
           aiAvailable: false,
         }}
       >

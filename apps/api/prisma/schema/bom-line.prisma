@@ -7,16 +7,16 @@
 /// top-level nav page (reached only via InventoryItemDetail's own BOM tab),
 /// same as Assignment/Grade in Education.
 model BOMLine {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String   @map("tenant_id") @db.Uuid
-  parentItemId     String   @map("parent_item_id") @db.Uuid
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  parentItemId     String        @map("parent_item_id") @db.Uuid
   parentItem       InventoryItem @relation("BOMParent", fields: [parentItemId], references: [id])
-  componentItemId  String   @map("component_item_id") @db.Uuid
+  componentItemId  String        @map("component_item_id") @db.Uuid
   componentItem    InventoryItem @relation("BOMComponent", fields: [componentItemId], references: [id])
-  quantityRequired Int      @map("quantity_required")
-  createdById      String   @map("created_by_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  quantityRequired Int           @map("quantity_required")
+  createdById      String        @map("created_by_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
   @@unique([tenantId, parentItemId, componentItemId])
   @@index([tenantId])

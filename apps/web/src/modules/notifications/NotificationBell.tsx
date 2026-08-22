@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRenderContext } from "../../sdui/render-context";
 import { cn } from "../../ui/utils";
 import { Icon } from "../../ui/Icon";
+import { StatusDot } from "../../ui/StatusDot";
 
 interface NotificationRow {
   id: string;
@@ -122,10 +124,26 @@ export function NotificationBell() {
                   n.readAt ? "cursor-default" : "cursor-pointer bg-accent/5 hover:bg-accent/10",
                 )}
               >
-                <div className={cn("text-sm text-text", !n.readAt && "font-semibold")}>{n.title}</div>
+                <div className="flex items-center gap-1.5">
+                  {!n.readAt && <StatusDot tone="queued" className="shrink-0" />}
+                  <span className={cn("text-sm text-text", !n.readAt && "font-semibold")}>{n.title}</span>
+                </div>
                 {n.body && <div className="mt-0.5 text-xs text-text-muted">{n.body}</div>}
               </button>
             ))}
+
+          {/* Frontend Redesign, module 3 of 6: a real "all notifications" page
+             now exists (Notifications, dedicated route) — this dropdown stays
+             the last-20-only quick view it always was, and links out to the
+             full paginated/filterable page instead of growing its own
+             pagination. */}
+          <Link
+            href="/workspace/notifications"
+            onClick={() => setOpen(false)}
+            className="block border-t border-border px-3.5 py-2.5 text-center text-xs font-medium text-accent hover:underline"
+          >
+            See all
+          </Link>
         </div>
       )}
     </div>

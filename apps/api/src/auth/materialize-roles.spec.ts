@@ -1,6 +1,6 @@
 import { materializeBlueprintRoles } from "./materialize-roles";
 import type { PrismaTx } from "../tenancy/tenant-prisma.service";
-import type { BlueprintRoleDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef } from "@purnit/manifest-schema";
 
 function tx(existing: { id: string; sourceBlueprintRoleId: string }[] = []) {
   const create = jest.fn(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: `new-${data.sourceBlueprintRoleId}`, ...data }));

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable } from "@nestjs/common";
 import type { z } from "zod";
 import type { EffectivePermissions } from "../rbac/permission-collapse";
 import type { PrismaTx } from "../tenancy/tenant-prisma.service";
@@ -42,6 +42,19 @@ export interface MutationDefinition<I = any, Pre = unknown> {
    * mutation that declares `preResolve` runs (the controller guarantees the
    * order), so those mutations' own implementations use it via `pre!`. */
   resolve: (input: I, ctx: MutationContext, tx: PrismaTx, pre?: Pre) => Promise<unknown>;
+}
+
+/** Extracted from MutationsController's own inline check (Phase D) so
+ * `aiToolCall.confirm` can re-run the exact same authorization logic against
+ * a target mutation, rather than reimplementing it — the literal same code
+ * path, not a parallel one. Behavior-identical to the controller's prior
+ * inline block. */
+export function checkRequiredPermission(def: Pick<MutationDefinition, "requiredPermission">, effective: EffectivePermissions): void {
+  if (!def.requiredPermission) return;
+  const [resource, action] = def.requiredPermission.split(":");
+  if (effective.has(resource!, action!) === null) {
+    throw new ForbiddenException(`Missing permission "${def.requiredPermission}"`);
+  }
 }
 
 /** Same pattern as DataSourceRegistry — see its comment. */

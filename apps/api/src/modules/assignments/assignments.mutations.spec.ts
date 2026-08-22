@@ -65,6 +65,7 @@ describe("assignment.create", () => {
     const tx = {
       course: { findFirst: jest.fn().mockResolvedValue({ id: "c1" }), findMany: jest.fn().mockResolvedValue([{ id: "c1" }]) },
       assignment: { create },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await assignmentCreateMutation.resolve({ courseId: "c1", title: "Homework 1" }, context(["assignment:create:own"]), tx);
@@ -100,6 +101,7 @@ describe("assignment.update", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "a1", courseId: "c1" }),
         update: jest.fn().mockResolvedValue({ id: "a1", title: "Updated" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await assignmentUpdateMutation.resolve({ id: "a1", title: "Updated" }, context(["assignment:update:tenant"]), tx);

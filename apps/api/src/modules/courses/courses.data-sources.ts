@@ -140,6 +140,12 @@ export const courseDetailDataSource: DataSourceDefinition<z.infer<typeof DetailP
     const canUpdate = !!ctx.effective.has("course", "update");
     const canReadAssignments = !!ctx.effective.has("assignment", "read");
     const canCreateAssignments = !!ctx.effective.has("assignment", "create");
+    // UI-wiring pass — added so AssignmentsGradebookTab.tsx can gate its own
+    // "Edit" control on the real assignment:update permission rather than
+    // reusing canCreateAssignments as a proxy for a materially different
+    // capability, same "don't collapse two distinct grants" lesson as
+    // Analytics' canBrowseOrg/canBrowseProjects split.
+    const canUpdateAssignments = !!ctx.effective.has("assignment", "update");
     const canEnroll = !!ctx.effective.has("enrollment", "create");
     const canUpdateEnrollments = !!ctx.effective.has("enrollment", "update");
     const canCreateDocuments = !!ctx.effective.has("document", "create");
@@ -156,6 +162,7 @@ export const courseDetailDataSource: DataSourceDefinition<z.infer<typeof DetailP
       canUpdate,
       canReadAssignments,
       canCreateAssignments,
+      canUpdateAssignments,
       canEnroll,
       canUpdateEnrollments,
       canCreateDocuments,
@@ -183,5 +190,26 @@ export const coursesTeacherOptionsDataSource: DataSourceDefinition<z.infer<typeo
     if (assignments.length === 0) return [];
     const userIds = [...new Set(assignments.map((a) => a.userId))];
     return tx.user.findMany({ where: { id: { in: userIds }, deletedAt: null }, select: { id: true, displayName: true } });
+  },
+};
+
+const CoursesCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `CoursesWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `course.create`/`course.updateStatus` declare
+ * genuinely different resources (`course:create`/`course:update`,
+ * confirmed directly), so both get their own flag. No `requiredPermission`
+ * of its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const coursesCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof CoursesCapabilitiesParamsSchema>> = {
+  name: "courses.capabilities",
+  paramsSchema: CoursesCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("course", "create") !== null,
+      canUpdateStatus: ctx.effective.has("course", "update") !== null,
+    };
   },
 };

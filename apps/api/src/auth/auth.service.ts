@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import type { BlueprintRoleDef, DepartmentTypeDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef, DepartmentTypeDef } from "@purnit/manifest-schema";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { SupabaseAdminService } from "./supabase-admin.service";
 import { generateUniqueWorkspaceId } from "./workspace-id";
@@ -149,9 +149,21 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; keys: string[] }
  * The same small algorithm AnalyticsDashboard.tsx independently implements
  * for its own "no saved layout" client-side fallback — not extracted into a
  * shared package for one small function, deliberately duplicated cheaply on
- * both sides of the runtime boundary. */
+ * both sides of the runtime boundary.
+ *
+ * Reference-fidelity pass — only the first `DEFAULT_VISIBLE_WIDGET_COUNT`
+ * keys in each role's own already-priority-ordered list (see this file's
+ * own doc comment above `DEFAULT_DASHBOARD_WIDGET_KEYS`: "headline metrics
+ * first") start visible; the rest are seeded present-but-hidden. Nothing is
+ * dropped and no permission changes — every widget still exists in the
+ * saved layout and reappears the moment a user ticks it back on in
+ * AnalyticsDashboard.tsx's existing "Manage Widgets" panel (Analytics Phase
+ * E), unchanged. This only lowers the number of charts a role sees before
+ * asking for more, matching reference_design.png's own uncluttered-by-
+ * default board. */
+const DEFAULT_VISIBLE_WIDGET_COUNT = 5;
 function autoLayout(keys: string[]): WidgetLayoutEntry[] {
-  return keys.map((key, i) => ({ key, visible: true, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
+  return keys.map((key, i) => ({ key, visible: i < DEFAULT_VISIBLE_WIDGET_COUNT, x: (i % 2) * 6, y: Math.floor(i / 2) * 4, w: 6, h: 4 }));
 }
 
 @Injectable()
@@ -178,6 +190,15 @@ export class AuthService {
       throw new Error(`Blueprint "${input.industry}@${blueprint.version}" has no role.admin`);
     }
 
+    // Stripe Billing — every new tenant starts on the seeded Free plan,
+    // making the entitlement pipeline actually fire for real (previously
+    // `planId` was written nowhere, ever, so entitlement filtering was a
+    // permanent no-op for every tenant). A missing Free plan row falls back
+    // to `null` (today's "no plan = everything entitled" behavior) rather
+    // than blocking signup — a reseed always recreates it, so this should
+    // never actually happen, but signup must never hard-fail on it.
+    const freePlan = await this.tenantPrisma.root.plan.findFirst({ where: { key: "free" } });
+
     const authUser = await this.supabaseAdmin.createUser(input.email, input.password);
     const workspaceId = await generateUniqueWorkspaceId(this.tenantPrisma, input.companyName);
 
@@ -189,6 +210,7 @@ export class AuthService {
             workspaceId,
             industry: input.industry,
             blueprintVersion: blueprint.version,
+            planId: freePlan?.id ?? null,
             status: "active",
           },
         });

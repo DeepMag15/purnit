@@ -12,6 +12,7 @@ import { Icon } from "../../ui/Icon";
 import { Alert } from "../../ui/Alert";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
+import { useToast } from "../../ui/Toast";
 
 interface BomLineRow {
   id: string;
@@ -39,6 +40,7 @@ interface InventoryItemOption {
  * generic "this item." */
 export function BomTab({ itemId, itemName, canUpdate }: { itemId: string; itemName: string; canUpdate: boolean }) {
   const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
+  const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [componentItemId, setComponentItemId] = useState("");
   const [quantityRequired, setQuantityRequired] = useState("1");
@@ -100,6 +102,17 @@ export function BomTab({ itemId, itemName, canUpdate }: { itemId: string; itemNa
     }
   }
 
+  async function handleQuantityChange(lineId: string, rawQuantity: string) {
+    const quantityRequired = Number(rawQuantity);
+    if (!Number.isFinite(quantityRequired) || quantityRequired <= 0) return;
+    try {
+      await callMutation("bomLine.update", { id: lineId, quantityRequired });
+      refetch();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't update quantity", "danger");
+    }
+  }
+
   return (
     <Card>
       <CardHeader
@@ -132,8 +145,20 @@ export function BomTab({ itemId, itemName, canUpdate }: { itemId: string; itemNa
               <li key={line.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-text">{line.component?.name ?? "Unknown item"}</span>
-                  <span className="text-xs text-text-muted">
-                    {line.component?.sku} · needs {line.quantityRequired} {line.component?.unitOfMeasure} · {line.component?.currentStock ?? 0} in stock
+                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                    {line.component?.sku} · needs{" "}
+                    {canUpdate ? (
+                      <input
+                        type="number"
+                        min={1}
+                        defaultValue={line.quantityRequired}
+                        onBlur={(e) => e.target.value !== "" && Number(e.target.value) !== line.quantityRequired && handleQuantityChange(line.id, e.target.value)}
+                        className="h-6 w-14 rounded border border-border bg-surface px-1.5 text-xs text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                      />
+                    ) : (
+                      line.quantityRequired
+                    )}{" "}
+                    {line.component?.unitOfMeasure} · {line.component?.currentStock ?? 0} in stock
                   </span>
                 </div>
                 {canUpdate && (

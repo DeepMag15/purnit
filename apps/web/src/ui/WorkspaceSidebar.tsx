@@ -2,11 +2,44 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { NavItem, WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { NavItem, WorkspaceManifest } from "@purnit/manifest-schema";
 import { Icon } from "./Icon";
 import { iconFor } from "./icons";
 import { Tooltip } from "./Tooltip";
 import { cn } from "./utils";
+
+// Frontend Redesign, Phase 02 — module-by-module opt-out of the generic
+// `/workspace/[pageId]` catch-all, same "kill the renderer module by
+// module" architecture Phase 01 already applied to the landing dashboard.
+// Deliberately a frontend-only lookup, not a backend nav/pageId change —
+// the blueprint's own `pageId` strings stay exactly as seed.ts already
+// defines them; this just redirects where they resolve to once a module
+// has a real, purpose-built route. Add an entry here whenever a module
+// migrates off the catch-all.
+const DEDICATED_ROUTES: Record<string, string> = {
+  "page.calendar": "/workspace/calendar",
+  "page.meetings": "/workspace/meetings",
+  "page.attendance": "/workspace/attendance",
+  "page.analytics": "/workspace/analytics",
+  "page.chat": "/workspace/chat",
+  "page.leave": "/workspace/leave",
+  "page.crm": "/workspace/crm",
+  "page.notifications": "/workspace/notifications",
+  "page.audit-logs": "/workspace/audit-logs",
+  "page.settings": "/workspace/settings",
+  "page.roles-permissions": "/workspace/roles-permissions",
+  "page.hr": "/workspace/hr",
+  "page.patients": "/workspace/patients",
+  "page.appointments": "/workspace/appointments",
+  "page.students": "/workspace/students",
+  "page.courses": "/workspace/courses",
+  "page.clients": "/workspace/clients",
+  "page.invoices": "/workspace/invoices",
+  "page.inventory-items": "/workspace/inventory-items",
+  "page.suppliers": "/workspace/suppliers",
+  "page.purchase-orders": "/workspace/purchase-orders",
+  "page.work-orders": "/workspace/work-orders",
+};
 
 /** Same root-page special-case as the old inline block had — kept here so
  * every consumer (this component, the command palette, QuickActions) computes
@@ -14,6 +47,7 @@ import { cn } from "./utils";
  * `pageId` of its own) — nothing to link to, expand/collapse only. */
 export function hrefForNavItem(manifest: WorkspaceManifest, pageId: string | undefined): string | undefined {
   if (pageId === undefined) return undefined;
+  if (DEDICATED_ROUTES[pageId]) return DEDICATED_ROUTES[pageId];
   return pageId === manifest.page.id ? "/workspace" : `/workspace/${encodeURIComponent(pageId)}`;
 }
 
@@ -93,10 +127,14 @@ export function WorkspaceSidebar({ items, manifest, pathname, collapsed, onNavig
           onMouseEnter={() => onHoverIntent?.(item.pageId!)}
           className={cn(
             "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors duration-[var(--duration-fast)]",
-            active ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-surface-hover hover:text-text",
+            // Frontend Redesign, Phase 01 — a soft surface pop, not a colored
+            // block (design review's "active nav = soft fill, not a colored
+            // block" doctrine). The sidebar itself sits on --surface-sunk
+            // (WorkspaceLayout), so --surface reads as a genuine, subtle lift.
+            active ? "bg-surface text-text shadow-xs" : "text-text-muted hover:bg-surface-hover hover:text-text",
           )}
         >
-          <Icon name={iconFor(item.icon)} size={20} className="shrink-0" />
+          <Icon name={iconFor(item.icon)} size={20} filled={active} className={cn("shrink-0", active && "text-accent")} />
           <span className={cn(collapsed && "md:hidden")}>{item.label}</span>
         </Link>
       );

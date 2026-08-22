@@ -5,13 +5,13 @@
 // output (Matryoshka truncation to 768/1536 requires manual re-normalization
 // to stay correct — not worth the risk for a first implementation).
 model Embedding {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  sourceType  String   @map("source_type")
-  sourceId    String   @map("source_id") @db.Uuid
-  chunkIndex  Int      @map("chunk_index")
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String @map("tenant_id") @db.Uuid
+  sourceType  String @map("source_type")
+  sourceId    String @map("source_id") @db.Uuid
+  chunkIndex  Int    @map("chunk_index")
   content     String
-  contentHash String   @map("content_hash")
+  contentHash String @map("content_hash")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

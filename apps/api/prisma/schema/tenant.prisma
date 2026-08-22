@@ -1,6 +1,6 @@
 model Tenant {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
   // Human-readable, unique, entered at login to confirm which tenant an
   // email belongs to (see AuthService.verifyWorkspace). Nullable at the DB
   // level rather than NOT NULL — the "always populated" invariant is
@@ -8,20 +8,57 @@ model Tenant {
   // same app-enforced-not-DB-enforced treatment as Task.status. A unique
   // index still allows multiple NULLs in Postgres, which is fine since
   // nothing is ever left unpopulated going forward.
-  workspaceId      String?  @unique @map("workspace_id")
-  industry         String
-  blueprintVersion Int      @map("blueprint_version")
-  planId           String?  @map("plan_id") @db.Uuid
-  branding         Json     @default("{}")
+  workspaceId          String?  @unique @map("workspace_id")
+  industry             String
+  blueprintVersion     Int      @map("blueprint_version")
+  planId               String?  @map("plan_id") @db.Uuid
+  // Stripe Billing — set once a Checkout Session actually completes (see
+  // billing-webhook.controller.ts's checkout.session.completed handler),
+  // never written optimistically by the mutation that creates the Checkout
+  // Session itself. `stripeCustomerId` unique — one Stripe Customer per
+  // tenant, created lazily on first checkout, reused on every subsequent
+  // upgrade/portal visit.
+  stripeCustomerId     String?  @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?  @map("stripe_subscription_id")
+  // Mirrors Stripe's own Subscription.status verbatim ("active"|"trialing"|
+  // "past_due"|"canceled"|"unpaid"|...) — free-text, app-enforced not
+  // DB-enforced, same convention as this model's own `status` field below
+  // (unrelated, never touched by this feature).
+  subscriptionStatus   String?  @map("subscription_status")
+  // --- Go-Live: the subscription's actual shape ---
+  // All nullable or defaulted, so every pre-existing tenant migrates with no
+  // backfill. Like `planId`/`subscriptionStatus` above, every one of these is
+  // written ONLY by the signed Stripe webhook — never optimistically by the
+  // mutation that initiated the change. The one exception is `seatsPurchased`
+  // at signup, where there is no Stripe round-trip yet (see AuthService.signup).
+  //
+  // "month" | "year" — free-text, app-enforced, same convention as
+  // `subscriptionStatus`.
+  billingInterval      String?  @map("billing_interval")
+  // The seat count this tenant is paying for, and the authority `user.invite`
+  // enforces against. Deliberately OUR number, not read from Stripe per-invite:
+  // putting an external API call inside an authorization check would be slow
+  // and would fail open (or hard-fail invites) during a Stripe outage.
+  // Meaningless on a tenant with no paid subscription — those are capped by
+  // `Plan.maxSeats` instead.
+  seatsPurchased       Int      @default(1) @map("seats_purchased")
+  trialEndsAt          DateTime? @map("trial_ends_at")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  cancelAtPeriodEnd    Boolean  @default(false) @map("cancel_at_period_end")
+  // A downgrade scheduled to apply at `currentPeriodEnd` rather than
+  // immediately — a customer keeps what they paid for until the cycle ends.
+  // Cleared when the downgrade actually lands, or if they change their mind.
+  pendingPlanKey       String?  @map("pending_plan_key")
+  branding             Json     @default("{}")
   // Informational company-profile data (description, website, contactEmail,
   // address, timezone, businessHours) — same untyped-JSON-bag treatment as
   // `branding`, for the same reason: purely descriptive, edited via a
   // settings form, not blueprint-shaped config, so it doesn't belong in
   // `TenantConfig.overrides`. See settings.mutations.ts's `mergeTenantProfile`.
-  profile          Json     @default("{}")
-  status           String   @default("active")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  profile              Json     @default("{}")
+  status               String   @default("active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("tenants")
 }

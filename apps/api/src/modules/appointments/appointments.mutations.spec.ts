@@ -19,6 +19,7 @@ describe("appointment.create", () => {
       patient: { findFirst: jest.fn().mockResolvedValue({ id: "p1" }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: "d1" }) },
       appointment: { create },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await appointmentCreateMutation.resolve(
@@ -66,6 +67,7 @@ describe("appointment.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "a1", doctorId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "a1", status: "completed" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await appointmentUpdateStatusMutation.resolve({ id: "a1", status: "completed" }, context(["appointment:update:own"]), tx);

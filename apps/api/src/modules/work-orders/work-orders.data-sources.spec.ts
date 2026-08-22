@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { workOrdersWhere, workOrderDetailDataSource } from "./work-orders.data-sources";
+import { workOrdersWhere, workOrderDetailDataSource, workOrdersCapabilitiesDataSource } from "./work-orders.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -56,5 +56,34 @@ describe("workOrders.detail — canUpdate :own scope", () => {
       canUpdate: boolean;
     };
     expect(data.canUpdate).toBe(true);
+  });
+});
+
+describe("workOrders.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await workOrdersCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only workOrder:create", async () => {
+    expect(await workOrdersCapabilitiesDataSource.resolve({}, context(["workOrder:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only workOrder:update — a genuinely different resource action from workOrder:create", async () => {
+    expect(await workOrdersCapabilitiesDataSource.resolve({}, context(["workOrder:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await workOrdersCapabilitiesDataSource.resolve({}, context(["workOrder:create:tenant", "workOrder:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
+    });
   });
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationDefinition } from "../../mutations/mutation-registry.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { requireAssignmentInScope } from "../assignments/assignments.mutations";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 const RecordInputSchema = z.object({
   assignmentId: z.string(),
@@ -36,7 +37,7 @@ export const gradeRecordMutation: MutationDefinition<z.infer<typeof RecordInputS
     const existing = await tx.grade.findFirst({ where: { assignmentId: input.assignmentId, studentId: input.studentId } });
     if (existing) throw new BadRequestException("This student already has a grade for this assignment — use grade.update instead");
 
-    return tx.grade.create({
+    const grade = await tx.grade.create({
       data: {
         tenantId: ctx.tenantId,
         assignmentId: input.assignmentId,
@@ -47,6 +48,8 @@ export const gradeRecordMutation: MutationDefinition<z.infer<typeof RecordInputS
         gradedAt: new Date(),
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "grade", grade.id); // AI RAG Phase C
+    return grade;
   },
 };
 
@@ -79,7 +82,7 @@ export const gradeUpdateMutation: MutationDefinition<z.infer<typeof UpdateInputS
       }
     }
 
-    return tx.grade.update({
+    const updated = await tx.grade.update({
       where: { id: existing.id },
       data: {
         score: input.score,
@@ -88,5 +91,7 @@ export const gradeUpdateMutation: MutationDefinition<z.infer<typeof UpdateInputS
         gradedAt: new Date(),
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "grade", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

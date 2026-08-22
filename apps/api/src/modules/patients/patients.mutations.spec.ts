@@ -21,6 +21,7 @@ describe("patient.register", () => {
       patient: { create: patientCreate },
       user: { findFirst: jest.fn() },
       projectMember: { create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientRegisterMutation.resolve({ name: "Jane Doe" }, context(["patient:create:tenant"]), tx);
@@ -36,6 +37,7 @@ describe("patient.register", () => {
       patient: { create: jest.fn().mockResolvedValue({ id: "pat1" }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: "doc1" }) },
       projectMember: { create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientRegisterMutation.resolve({ name: "Jane Doe", assignedDoctorId: "doc1" }, context(["patient:create:tenant"]), tx);
@@ -60,6 +62,7 @@ describe("patient.register", () => {
       project: { create: jest.fn().mockResolvedValue({ id: "proj1" }) },
       patient: { create: jest.fn().mockResolvedValue({ id: "pat1" }) },
       projectMember: { create: projectMemberCreate },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientRegisterMutation.resolve({ name: "Jane Doe" }, context(["patient:create:tenant"]), tx);
@@ -78,6 +81,7 @@ describe("patient.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "pat1", assignedDoctorId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "pat1", status: "admitted" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientUpdateStatusMutation.resolve({ id: "pat1", status: "admitted" }, context(["patient:update:own"]), tx);
@@ -118,6 +122,7 @@ describe("patient.assignDoctor", () => {
       },
       user: { findFirst: jest.fn().mockResolvedValue({ id: "doc1" }) },
       projectMember: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientAssignDoctorMutation.resolve({ id: "pat1", doctorId: "doc1" }, context(["patient:update:tenant"]), tx);
@@ -137,6 +142,7 @@ describe("patient.assignDoctor", () => {
       },
       user: { findFirst: jest.fn().mockResolvedValue({ id: "doc1" }) },
       projectMember: { findFirst: jest.fn().mockResolvedValue({ id: "existing-member" }), create: jest.fn() },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await patientAssignDoctorMutation.resolve({ id: "pat1", doctorId: "doc1" }, context(["patient:update:tenant"]), tx);

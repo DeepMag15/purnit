@@ -1,4 +1,4 @@
-# Antigravity — Organizational Hierarchy & Authority Model
+# Purnit — Organizational Hierarchy & Authority Model
 
 > **Purpose of this file:** the canonical design for how a real IT company's org structure — authority, reporting, permissions, approvals, and assignment — maps onto the platform, and the standard every future module (Projects, Tasks, HR, CRM, Calendar, Meetings, Chat, Documents, Analytics, Notifications, AI Assistant) must comply with.
 >
@@ -284,7 +284,7 @@ Per the agreed scoping, this document defines **the hierarchy and the principles
 
 ## 13. Platform Owner — explicitly a separate, future subsystem, not designed here
 
-"Platform Owner" (Antigravity's own staff, sitting above every customer tenant) is a **cross-tenant** concept — a fundamentally different subsystem from everything above, which is entirely about one tenant's internal org chart. It implies its own internal-staff authentication, support/impersonation tooling, and cross-tenant access model, none of which exists today and none of which this document attempts to design. It's noted here only so it isn't confused with `Company Admin` (which remains the top of a single tenant's own hierarchy, unchanged). Treat this the same way Stripe billing is already treated in `CONTEXT.md` §3 (decision 9): a real, deliberately deferred future initiative, not a gap in this design.
+"Platform Owner" (Purnit's own staff, sitting above every customer tenant) is a **cross-tenant** concept — a fundamentally different subsystem from everything above, which is entirely about one tenant's internal org chart. It implies its own internal-staff authentication, support/impersonation tooling, and cross-tenant access model, none of which exists today and none of which this document attempts to design. It's noted here only so it isn't confused with `Company Admin` (which remains the top of a single tenant's own hierarchy, unchanged). Treat this the same way Stripe billing is already treated in `CONTEXT.md` §3 (decision 9): a real, deliberately deferred future initiative, not a gap in this design.
 
 ---
 

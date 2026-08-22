@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { z } from "zod";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
@@ -14,8 +13,14 @@ import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
 import { SectionLabel } from "../../ui/SectionLabel";
 
+// Kept exported (unused by this file itself) — register-all.ts's old
+// catch-all registration still imports it, deliberately left registered,
+// not removed, same precedent as every prior Phase 02/03/04 migration.
 export const RolesPermissionsWorkspaceSchema = z.object({});
-type Props = z.infer<typeof RolesPermissionsWorkspaceSchema>;
+
+interface RolesPermissionsCapabilities {
+  canManageRoles: boolean;
+}
 
 interface RoleDetailed {
   id: string;
@@ -90,13 +95,23 @@ function toScopeMap(permissions: readonly string[]): Map<string, string> {
  * it already lives on the Team page (TeamMembers.tsx, `user.changeRole`),
  * and any custom role created here shows up in that picker automatically
  * (`roles.list` is unfiltered by `sourceBlueprintRoleId`).
+ *
+ * Frontend Redesign Phase 04 — a dedicated route, replacing the generic
+ * `/workspace/page.roles-permissions` catch-all. `actions` is gone;
+ * `rolesPermissions.capabilities` (new, additive, read-only) replaces it —
+ * every gated mutation here (`role.createCustom/updateCustom/clone/delete/
+ * reorder`, `delegation.grant/revoke`) shares the identical
+ * `requiredPermission: "role:manage"` (confirmed directly per-mutation), so
+ * one flag covers the whole composite — no `canBrowseOrg`/`canBrowseProjects`-
+ * style split needed here.
  */
-export function RolesPermissionsWorkspace({ actions }: Props & CommonRenderProps) {
+export function RolesPermissionsWorkspace() {
   const { user, callMutation } = useRenderContext();
   const toast = useToast();
 
-  const canManageRoles = actions?.some((a) => a.kind === "mutation" && a.mutation === "role.createCustom") ?? false;
-  const canDelegate = actions?.some((a) => a.kind === "mutation" && a.mutation === "delegation.grant") ?? false;
+  const { data: caps } = useDataSourceQuery<RolesPermissionsCapabilities>("rolesPermissions.capabilities");
+  const canManageRoles = caps?.canManageRoles ?? false;
+  const canDelegate = canManageRoles;
 
   const { data: rolesData, refetch: refetchRoles } = useDataSourceQuery<RoleDetailed[]>("roles.listDetailed");
   const roles = rolesData ?? [];

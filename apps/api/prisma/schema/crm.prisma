@@ -1,0 +1,54 @@
+/// CRM — module 2 of the 6-module backlog (see antigravity-six-module-backlog
+/// memory). A generic sales pipeline (Contacts + Deals), wired into all 5
+/// blueprints, kept structurally separate from Finance's own `Client` model
+/// (billing/account-relationship-focused — single contact, invoice linkage,
+/// no deal value/pipeline stage — not this module's concern; unifying them
+/// would risk Finance's own separation-of-duties billing design).
+///
+/// Deliberately no backing "files" Project the way Client/Patient/Course
+/// have (Documents+Comments reuse) — a real, disclosed v1 scope trim, not an
+/// oversight; a future enhancement if wanted, not built ahead of being asked
+/// for. `ownerId` has no Prisma FK, same no-FK app-layer convention as
+/// `Client.accountManagerId`/`Patient.assignedDoctorId`.
+model Contact {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  email       String?
+  phone       String?
+  companyName String?   @map("company_name")
+  ownerId     String?   @map("owner_id") @db.Uuid
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  deals Deal[]
+
+  @@index([tenantId])
+  @@index([tenantId, ownerId])
+  @@map("crm_contacts")
+}
+
+/// The pipeline entity — `stage` is free-text (new/qualified/proposal/won/
+/// lost, no DB enum, same convention as Client.status), Kanban-boarded by
+/// `KanbanBoard.tsx` unchanged. `valueCents` follows Invoice's own
+/// cents-not-dollars money convention (see money.ts).
+model Deal {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  contactId         String    @map("contact_id") @db.Uuid
+  contact           Contact   @relation(fields: [contactId], references: [id])
+  title             String
+  valueCents        Int       @default(0) @map("value_cents")
+  stage             String    @default("new")
+  ownerId           String?   @map("owner_id") @db.Uuid
+  expectedCloseDate DateTime? @map("expected_close_date") @db.Date
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId, contactId])
+  @@index([tenantId, stage])
+  @@index([tenantId, ownerId])
+  @@map("crm_deals")
+}

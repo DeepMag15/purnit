@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Same `requireCourseInScope` shape every module follows. A Client's
  * "owner" for scope purposes is its account manager — a LIVE branch in
@@ -59,6 +60,7 @@ export const clientCreateMutation: MutationDefinition<z.infer<typeof CreateInput
 
     await tx.projectMember.create({ data: { tenantId: ctx.tenantId, projectId: filesProject.id, userId: accountManagerId } });
 
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "client", client.id); // AI RAG Phase C
     return client;
   },
 };
@@ -71,7 +73,9 @@ export const clientUpdateStatusMutation: MutationDefinition<z.infer<typeof Updat
   requiredPermission: "client:update",
   async resolve(input, ctx, tx) {
     const existing = await requireClientInScope(tx, ctx, input.id);
-    return tx.client.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.client.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "client", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 

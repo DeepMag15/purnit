@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { UINode, WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { UINode, WorkspaceManifest } from "@purnit/manifest-schema";
 import { Renderer } from "./renderer";
 import { RenderContextProvider } from "./render-context";
 import { registerAllComponents } from "./register-all";
@@ -9,7 +9,7 @@ beforeAll(() => {
   registerAllComponents();
 });
 
-const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x" };
+const user: WorkspaceManifest["user"] = { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x", digestOptOut: false };
 const tenant: WorkspaceManifest["tenant"] = { id: "t1", name: "Test Co", workspaceId: "test-co", industry: "IT", branding: {}, profile: {} };
 
 function renderWithContext(node: UINode) {
@@ -23,6 +23,7 @@ function renderWithContext(node: UINode) {
         navigate: () => {},
         refetchBootstrap: () => {},
         openAiPanel: () => {},
+        openBlueprintModal: () => {},
         aiAvailable: false,
       }}
     >

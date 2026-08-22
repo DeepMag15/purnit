@@ -2,7 +2,7 @@ import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
-import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource } from "./analytics.data-sources";
+import { createAnalyticsDashboardDataSource, createAnalyticsTrendDataSource, analyticsCapabilitiesDataSource } from "./analytics.data-sources";
 import { AnalyticsSnapshotProcessorService } from "./analytics-snapshot-processor.service";
 import { dashboardLayoutSaveMutation, dashboardLayoutResetMutation, dashboardLayoutSaveAsTemplateMutation } from "./dashboard-layout.mutations";
 import { dashboardLayoutGetDataSource } from "./dashboard-layout.data-sources";
@@ -28,6 +28,7 @@ class AnalyticsRegistrar implements OnModuleInit {
     this.dataSources.register(createAnalyticsDashboardDataSource(this.metricRegistry));
     this.dataSources.register(createAnalyticsTrendDataSource(this.metricRegistry));
     this.dataSources.register(dashboardLayoutGetDataSource);
+    this.dataSources.register(analyticsCapabilitiesDataSource);
     this.mutations.register(dashboardLayoutSaveMutation);
     this.mutations.register(dashboardLayoutResetMutation);
     this.mutations.register(dashboardLayoutSaveAsTemplateMutation);

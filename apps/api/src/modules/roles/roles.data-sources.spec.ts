@@ -1,7 +1,12 @@
 import { NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
 import { PERMISSION_CATALOG } from "../../rbac/permission-catalog";
-import { rolesListDetailedDataSource, permissionsCatalogDataSource, createUsersEffectivePermissionsDataSource } from "./roles.data-sources";
+import {
+  rolesListDetailedDataSource,
+  permissionsCatalogDataSource,
+  createUsersEffectivePermissionsDataSource,
+  rolesPermissionsCapabilitiesDataSource,
+} from "./roles.data-sources";
 import type { PermissionResolverService } from "../../rbac/permission-resolver.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -63,5 +68,21 @@ describe("users.effectivePermissions", () => {
     const tx = { user: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
 
     await expect(dataSource.resolve({ userId: "ghost" }, context(), tx)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe("rolesPermissions.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("false with no grants at all", async () => {
+    expect(await rolesPermissionsCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canManageRoles: false });
+  });
+
+  it("true when role:manage is held, at any scope", async () => {
+    expect(await rolesPermissionsCapabilitiesDataSource.resolve({}, context(["role:manage:own"]), tx)).toEqual({ canManageRoles: true });
+  });
+
+  it("false for an unrelated permission (e.g. task:read) — no false positive from an unrelated grant", async () => {
+    expect(await rolesPermissionsCapabilitiesDataSource.resolve({}, context(["task:read:tenant"]), tx)).toEqual({ canManageRoles: false });
   });
 });

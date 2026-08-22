@@ -1,4 +1,4 @@
-import type { WorkspaceManifest, UINode } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest, UINode } from "@purnit/manifest-schema";
 import { getAccessToken } from "./session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -55,6 +55,15 @@ export function signup(input: SignupInput): Promise<{ tenantId: string; userId: 
 // Throws ApiError (401) if the email doesn't belong to that workspace.
 export function verifyWorkspace(workspaceId: string, email: string): Promise<{ valid: true }> {
   return apiFetch("/auth/verify-workspace", { method: "POST", body: JSON.stringify({ workspaceId, email }) });
+}
+
+// Enterprise SSO — called with the workspace ID alone, before any email is
+// entered. Deliberately doesn't require an existing User row the way
+// verifyWorkspace does: a genuinely first-time SSO user has none yet (see
+// SsoController.workspaceSsoStatus's own doc comment for why this is a
+// separate, lighter check).
+export function getWorkspaceSsoStatus(workspaceId: string): Promise<{ ssoEnabled: boolean }> {
+  return apiFetch(`/auth/workspace-sso-status?workspaceId=${encodeURIComponent(workspaceId)}`);
 }
 
 export interface Me {

@@ -3,11 +3,11 @@
 import { z } from "zod";
 import { useState } from "react";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
+import { Card, CardBody } from "../../ui/Card";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
@@ -19,10 +19,24 @@ import { DocumentsPanel } from "../documents/DocumentsPanel";
 
 // Healthcare Domain, Phase A — the platform's first non-IT blueprint
 // composite. Mirrors TaskList.tsx's exact shape (inline create form above a
-// list, presence-gated controls via `actions`, inline status/assignment
-// dropdowns) rather than inventing a new UI pattern.
+// list, presence-gated controls, inline status/assignment dropdowns) rather
+// than inventing a new UI pattern.
+//
+// Frontend Redesign Phase 05 — a dedicated route, replacing the generic
+// `/workspace/page.patients` catch-all. `bind`/`actions` (the old
+// Renderer-supplied data binding + mutation-presence list) are gone;
+// `patients.list` is now fetched directly (identical query — the old bind
+// was `{source: "patients.list", params: {}}`, no dynamic params), and
+// `patients.capabilities` (new, additive, read-only) replaces `actions`.
 export const PatientsWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof PatientsWorkspaceSchema>;
+
+interface PatientsCapabilities {
+  canRegisterPatient: boolean;
+  canUpdatePatient: boolean;
+  canCreateDocuments: boolean;
+  canUpdateDocuments: boolean;
+  canDeleteDocuments: boolean;
+}
 
 interface PatientRow {
   id: string;
@@ -103,24 +117,18 @@ interface DoctorOption {
 const STATUSES = ["active", "admitted", "discharged"];
 const STATUS_TONE: Record<string, "neutral" | "info" | "success"> = { active: "neutral", admitted: "info", discharged: "success" };
 
-export function PatientsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
-  const { data, loading, error, refetch } = useDataBinding(bind);
+export function PatientsWorkspace() {
+  const { data, isPending, error, refetch } = useDataSourceQuery<PatientRow[]>("patients.list");
   const { callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const toast = useToast();
 
-  // Presence-gated, same pattern as TaskList: the register/status/assign
-  // controls only render if the corresponding action survived permission
-  // pruning — the manifest already reflects what this user may do.
-  const canRegister = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.register") ?? false;
-  const canUpdateStatus = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.updateStatus") ?? false;
-  const canAssignDoctor = actions?.some((a) => a.kind === "mutation" && a.mutation === "patient.assignDoctor") ?? false;
-  // Healthcare Domain, Phase D — mirrors ProjectBoard.tsx's own
-  // canCreateDocuments/canUpdateDocuments/canDeleteDocuments derivation
-  // exactly, reading the same document.* actions off this composite's own
-  // actions array (seed.ts's page.patients node).
-  const canCreateDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.create") ?? false;
-  const canUpdateDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.update") ?? false;
-  const canDeleteDocuments = actions?.some((a) => a.kind === "mutation" && a.mutation === "document.delete") ?? false;
+  const { data: caps } = useDataSourceQuery<PatientsCapabilities>("patients.capabilities");
+  const canRegister = caps?.canRegisterPatient ?? false;
+  const canUpdateStatus = caps?.canUpdatePatient ?? false;
+  const canAssignDoctor = caps?.canUpdatePatient ?? false;
+  const canCreateDocuments = caps?.canCreateDocuments ?? false;
+  const canUpdateDocuments = caps?.canUpdateDocuments ?? false;
+  const canDeleteDocuments = caps?.canDeleteDocuments ?? false;
 
   // Chart-visible-gated expand toggle — same shape as ProjectBoard.tsx's
   // expandedDocumentProjectIds. Only rendered for rows the server already
@@ -191,11 +199,12 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
     }
   }
 
-  const rows = Array.isArray(data) ? (data as PatientRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
 
   return (
-    <Card>
-      <CardHeader title={title} />
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Patients" />
+      <Card>
       <CardBody className="flex flex-col gap-3">
         {canRegister && (
           <div className="flex flex-wrap gap-2">
@@ -218,10 +227,10 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
         )}
         {createError && <Alert tone="danger">{createError}</Alert>}
 
-        {loading && <SkeletonRows />}
-        {error && <Alert tone="danger">Couldn&apos;t load patients: {error}</Alert>}
-        {!loading && !error && rows.length === 0 && <EmptyStateView message="No patients registered yet." />}
-        {!loading && !error && rows.length > 0 && (
+        {isPending && <SkeletonRows />}
+        {error && <Alert tone="danger">Couldn&apos;t load patients: {error.message}</Alert>}
+        {!isPending && !error && rows.length === 0 && <EmptyStateView message="No patients registered yet." />}
+        {!isPending && !error && rows.length > 0 && (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((p) => (
               <li key={p.id} className="flex flex-col gap-2 py-2.5">
@@ -284,6 +293,7 @@ export function PatientsWorkspace({ title, bind, actions }: Props & CommonRender
           </ul>
         )}
       </CardBody>
-    </Card>
+      </Card>
+    </div>
   );
 }

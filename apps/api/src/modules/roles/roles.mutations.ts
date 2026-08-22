@@ -4,6 +4,7 @@ import type { MutationDefinition } from "../../mutations/mutation-registry.servi
 import { isKnownPermission } from "../../rbac/permission-catalog";
 import { assertPermissionsGrantableByActor } from "../../rbac/permission-grant-check";
 import { describeDeleteBlockers } from "../hr/hr.mutations";
+import { logAudit } from "../../audit/log-audit";
 
 /** Catalog-membership check, shared by create/update/clone — kept separate
  * from `assertPermissionsGrantableByActor` (escalation) since the two are
@@ -45,7 +46,7 @@ export const roleCreateCustomMutation: MutationDefinition<z.infer<typeof CreateC
     // the admin) already sit.
     const { _max } = await tx.role.aggregate({ where: { tenantId: ctx.tenantId }, _max: { rank: true } });
 
-    return tx.role.create({
+    const role = await tx.role.create({
       data: {
         tenantId: ctx.tenantId,
         label: input.label,
@@ -55,6 +56,12 @@ export const roleCreateCustomMutation: MutationDefinition<z.infer<typeof CreateC
         rank: (_max.rank ?? -1) + 1,
       },
     });
+
+    // Audit Logs (module 6 of 6) — role/permission changes are exactly the
+    // bounded, high-value category this module exists for.
+    await logAudit(tx, ctx, { action: "role.createCustom", resource: "role", resourceId: role.id, after: { label: input.label, permissions: input.permissions } });
+
+    return role;
   },
 };
 
@@ -88,13 +95,23 @@ export const roleUpdateCustomMutation: MutationDefinition<z.infer<typeof UpdateC
       assertPermissionsGrantableByActor(ctx.effective, input.permissions);
     }
 
-    return tx.role.update({
+    const updated = await tx.role.update({
       where: { id: input.roleId },
       data: {
         ...(input.label !== undefined ? { label: input.label } : {}),
         ...(input.permissions !== undefined ? { permissions: input.permissions } : {}),
       },
     });
+
+    await logAudit(tx, ctx, {
+      action: "role.updateCustom",
+      resource: "role",
+      resourceId: input.roleId,
+      before: { label: role.label, permissions: role.permissions },
+      after: { label: updated.label, permissions: updated.permissions },
+    });
+
+    return updated;
   },
 };
 
@@ -121,7 +138,7 @@ export const roleCloneMutation: MutationDefinition<z.infer<typeof CloneRoleInput
     const permissions = source.permissions as string[];
     assertPermissionsGrantableByActor(ctx.effective, permissions);
 
-    return tx.role.create({
+    const cloned = await tx.role.create({
       data: {
         tenantId: ctx.tenantId,
         label: input.label,
@@ -130,6 +147,15 @@ export const roleCloneMutation: MutationDefinition<z.infer<typeof CloneRoleInput
         permissions,
       },
     });
+
+    await logAudit(tx, ctx, {
+      action: "role.clone",
+      resource: "role",
+      resourceId: cloned.id,
+      after: { label: input.label, sourceRoleId: input.sourceRoleId, permissions },
+    });
+
+    return cloned;
   },
 };
 
@@ -156,7 +182,16 @@ export const roleDeleteMutation: MutationDefinition<z.infer<typeof DeleteRoleInp
     });
     if (blockerMessage) throw new ConflictException(blockerMessage);
 
-    return tx.role.delete({ where: { id: input.roleId } });
+    const deleted = await tx.role.delete({ where: { id: input.roleId } });
+
+    await logAudit(tx, ctx, {
+      action: "role.delete",
+      resource: "role",
+      resourceId: input.roleId,
+      before: { label: role.label, permissions: role.permissions },
+    });
+
+    return deleted;
   },
 };
 

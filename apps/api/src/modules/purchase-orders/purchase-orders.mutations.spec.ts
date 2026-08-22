@@ -13,6 +13,7 @@ describe("purchaseOrder.create", () => {
       supplier: { findFirst: jest.fn().mockResolvedValue({ id: "s1" }) },
       inventoryItem: { findFirst: jest.fn().mockResolvedValue({ id: "i1" }) },
       purchaseOrder: { create: jest.fn().mockResolvedValue({ id: "po1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await purchaseOrderCreateMutation.resolve(
@@ -52,6 +53,7 @@ describe("purchaseOrder.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "po1", status: "draft" }),
         update: jest.fn().mockResolvedValue({ id: "po1", status: "submitted" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await purchaseOrderUpdateStatusMutation.resolve({ id: "po1", status: "submitted" }, context(["purchaseOrder:update:tenant"]), tx);
     expect((tx as unknown as { purchaseOrder: { update: jest.Mock } }).purchaseOrder.update).toHaveBeenCalled();
@@ -111,6 +113,7 @@ describe("purchaseOrder.receive", () => {
         update: jest.fn().mockResolvedValue({ id: "po1", status: "received" }),
       },
       inventoryItem: { update: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await purchaseOrderReceiveMutation.resolve({ id: "po1" }, context(["purchaseOrder:receive:tenant"]), tx);

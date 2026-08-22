@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { coursesWhere, teacherOwnedCourseIds, coursesListDataSource, courseDetailDataSource } from "./courses.data-sources";
+import { coursesWhere, teacherOwnedCourseIds, coursesListDataSource, courseDetailDataSource, coursesCapabilitiesDataSource } from "./courses.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -148,6 +148,35 @@ describe("courses.detail", () => {
         materialsVisible: boolean;
       };
       expect(data.materialsVisible).toBe(false);
+    });
+  });
+});
+
+describe("courses.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await coursesCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({ canCreate: false, canUpdateStatus: false });
+  });
+
+  it("canCreate true with only course:create", async () => {
+    expect(await coursesCapabilitiesDataSource.resolve({}, context(["course:create:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: false,
+    });
+  });
+
+  it("canUpdateStatus true with only course:update — a genuinely different resource action from course:create", async () => {
+    expect(await coursesCapabilitiesDataSource.resolve({}, context(["course:update:own"]), tx)).toEqual({
+      canCreate: false,
+      canUpdateStatus: true,
+    });
+  });
+
+  it("both true for a role holding both grants", async () => {
+    expect(await coursesCapabilitiesDataSource.resolve({}, context(["course:create:tenant", "course:update:tenant"]), tx)).toEqual({
+      canCreate: true,
+      canUpdateStatus: true,
     });
   });
 });

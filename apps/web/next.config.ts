@@ -10,7 +10,7 @@ loadEnv({ path: path.resolve(__dirname, "../../.env") });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@antigravity/manifest-schema"],
+  transpilePackages: ["@purnit/manifest-schema"],
 };
 
 export default nextConfig;

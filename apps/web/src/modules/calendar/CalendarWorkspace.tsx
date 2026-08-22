@@ -3,25 +3,26 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { Card, CardBody } from "../../ui/Card";
+import { PageHeader } from "../../ui/PageHeader";
+import { ViewSwitcher } from "../../ui/ViewSwitcher";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
-import { Badge } from "../../ui/Badge";
+import { StatusDot } from "../../ui/StatusDot";
 import { Icon } from "../../ui/Icon";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
+import { CALENDAR_ITEM_TONE, calendarItemTypeLabel, type CalendarItemType } from "../../lib/calendar-item-style";
 
 export const CalendarWorkspaceSchema = z.object({});
-type Props = z.infer<typeof CalendarWorkspaceSchema>;
 
 interface CalendarItem {
   id: string;
-  itemType: "meeting" | "calendarEvent" | "task" | "appointment" | "assignmentDue" | "invoiceDue" | "workOrderDue" | "purchaseOrderExpected";
+  itemType: CalendarItemType;
   title: string;
   start: string;
   end: string | null;
@@ -33,6 +34,12 @@ interface DepartmentOption {
   name: string;
 }
 
+interface CalendarCapabilities {
+  canCreate: boolean;
+  canBroadcast: boolean;
+  canTargetWholeCompany: boolean;
+}
+
 // Fixed frontend-only vocabulary, same treatment as TaskList's REMINDER_PRESETS.
 const REMINDER_PRESETS = [
   { value: "15", label: "15 minutes before" },
@@ -41,33 +48,10 @@ const REMINDER_PRESETS = [
   { value: "1440", label: "1 day before" },
 ];
 
-const ITEM_TONE: Record<CalendarItem["itemType"], "info" | "accent" | "warning" | "success"> = {
-  meeting: "info",
-  calendarEvent: "accent",
-  task: "warning",
-  // Healthcare Domain, Phase B — read-only here too, same treatment as the
-  // other three types (booking/status changes only happen through
-  // AppointmentsWorkspace).
-  appointment: "success",
-  // Education Domain, Phase B — reuses Task's own tone; both represent
-  // "work due," a shared visual language rather than a distinct 5th color.
-  // Read-only here too — status/grading changes only happen through
-  // CourseDetail's own Assignments tab.
-  assignmentDue: "warning",
-  // Finance Domain, Phase B — reuses Task's own tone too; "money due" is the
-  // same visual language as "work due." Read-only here — status/payment
-  // changes only happen through InvoiceDetail.
-  invoiceDue: "warning",
-  // Manufacturing Domain, Phase B — reuses Task's own tone too; "production
-  // due" is the same visual language as "work due." Read-only here —
-  // status/completion changes only happen through WorkOrderDetail.
-  workOrderDue: "warning",
-  // Manufacturing Domain, Phase B — deliberately NOT "warning": goods
-  // arriving is a scheduled event, not an obligation, so this reuses
-  // Meeting's own "info" tone instead. Read-only here — status/receipt
-  // changes only happen through PurchaseOrderDetail.
-  purchaseOrderExpected: "info",
-};
+const VIEWS = [
+  { id: "month", label: "Month", icon: "calendar_month" },
+  { id: "agenda", label: "Agenda", icon: "view_agenda" },
+];
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -103,24 +87,29 @@ function toLocalInputValue(date: Date): string {
 }
 
 /**
- * Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling — a
- * blueprint-registered composite, mirrors AnnouncementsWorkspace/MeetingsWorkspace's
- * "manages its own data via useDataSourceQuery" shape. `calendarEvent.create`'s
- * presence in `actions` is the only real permission-pruned gate — since
- * every tier holds `calendarEvent:create:own` (seed.ts's role.intern), it's
- * always present; the target selector below decides personal vs. broadcast
- * client-side, never offering a choice the backend would reject.
- * `calendarEvent.delete` visibility is data-driven off each item's
- * `meta.authorId`, same precedent as Announcements' delete button.
+ * Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling.
+ *
+ * Frontend Redesign, Phase 02 — moved off the SDUI Renderer onto a
+ * dedicated route (`/workspace/calendar`, see `WorkspaceSidebar.tsx`'s
+ * `hrefForNavItem`). Zero-prop now — `canCreate`/`canBroadcast`/
+ * `canTargetWholeCompany` come from the new `calendar.capabilities` data
+ * source instead of the `actions` prop the Renderer used to inject, and
+ * instead of the two hardcoded role-label checks this file used to run
+ * client-side (a real correctness gap: a custom role with the same
+ * effective scope but a different label would have been silently denied).
+ * Still registered as an SDUI primitive (`register-all.ts`) for the old
+ * `/workspace/page.calendar` catch-all path — harmless, unreachable via
+ * normal navigation now, not worth the risk of unregistering.
  */
-export function CalendarWorkspace({ actions }: Props & CommonRenderProps) {
+export function CalendarWorkspace() {
   const { user, tenant, callMutation } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "calendarEvent.create") ?? false;
-  const canBroadcast = ["Department Head", "Executive", "HR Manager", "Company Admin"].some((r) => user.roles.includes(r));
-  const canTargetWholeCompany = user.roles.includes("Company Admin") || user.roles.includes("HR Manager");
+  const { data: caps, isPending: capsPending } = useDataSourceQuery<CalendarCapabilities>("calendar.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const canBroadcast = caps?.canBroadcast ?? false;
+  const canTargetWholeCompany = caps?.canTargetWholeCompany ?? false;
 
   const [view, setView] = useState<"month" | "agenda">("month");
   const [referenceDate, setReferenceDate] = useState(() => new Date());
@@ -132,8 +121,9 @@ export function CalendarWorkspace({ actions }: Props & CommonRenderProps) {
   }, [view, referenceDate]);
 
   const params = { from: from.toISOString(), to: to.toISOString() };
-  const { data: itemsData, isPending } = useDataSourceQuery<CalendarItem[]>("calendar.list", params);
+  const { data: itemsData, isPending: itemsPending } = useDataSourceQuery<CalendarItem[]>("calendar.list", params);
   const items = Array.isArray(itemsData) ? itemsData : [];
+  const isPending = capsPending || itemsPending;
 
   const { data: departmentsData } = useDataSourceQuery<DepartmentOption[]>("departments.list", {}, { enabled: canCreate && canBroadcast });
   const departments = Array.isArray(departmentsData) ? departmentsData : [];
@@ -200,27 +190,23 @@ export function CalendarWorkspace({ actions }: Props & CommonRenderProps) {
   }, [items]);
 
   return (
-    <Card>
-      <CardHeader
+    <div className="flex flex-col gap-4">
+      <PageHeader
         title="Calendar"
-        action={
-          <div className="flex items-center gap-2">
-            <Select value={view} onChange={(e) => setView(e.target.value as "month" | "agenda")} className="h-8 text-xs">
-              <option value="month">Month</option>
-              <option value="agenda">Agenda</option>
-            </Select>
-            {canCreate && (
-              <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-                <Icon name="add" size={14} />
-                New Event
-              </Button>
-            )}
-          </div>
+        actions={
+          canCreate && (
+            <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+              <Icon name="add" size={14} />
+              New Event
+            </Button>
+          )
         }
+        viewSwitcher={<ViewSwitcher views={VIEWS} activeId={view} onChange={(id) => setView(id as "month" | "agenda")} />}
       />
-      <CardBody className="flex flex-col gap-4">
-        {showForm && canCreate && (
-          <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+
+      {showForm && canCreate && (
+        <Card>
+          <CardBody className="flex flex-col gap-2">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event title" />
             <textarea
               value={description}
@@ -271,26 +257,53 @@ export function CalendarWorkspace({ actions }: Props & CommonRenderProps) {
             <Button size="sm" onClick={handlePost} disabled={posting || !title.trim()} className="w-fit">
               {posting ? "Adding…" : "Add to calendar"}
             </Button>
-          </div>
-        )}
+          </CardBody>
+        </Card>
+      )}
 
-        {isPending && <SkeletonRows />}
+      <Card>
+        <CardBody className="flex flex-col gap-4">
+          {isPending && <SkeletonRows />}
 
-        {!isPending && view === "month" && (
-          <MonthGrid
-            referenceDate={referenceDate}
-            itemsByDay={itemsByDay}
-            userId={user.id}
-            onPrev={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-            onNext={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-            onToday={() => setReferenceDate(new Date())}
-            onDelete={handleDelete}
-          />
-        )}
+          {!isPending && view === "month" && (
+            <>
+              {/* Frontend Redesign, Phase 06 — a 7-column month grid has no
+                  honest way to stay readable at phone widths (cells shrink
+                  to ~45px regardless of padding/font tweaks), so below `md:`
+                  this falls back to the same stacked agenda list the
+                  "Agenda" view already renders — matches DashboardGrid's own
+                  established fork-to-a-list-below-768px precedent, reusing
+                  the already-fetched month-range `items` rather than a
+                  second fetch. Keeps its own month-nav header (MonthGrid's
+                  own prev/today/next controls are inside the hidden grid) so
+                  mobile doesn't also lose the ability to page months. */}
+              <div className="hidden md:block">
+                <MonthGrid
+                  referenceDate={referenceDate}
+                  itemsByDay={itemsByDay}
+                  userId={user.id}
+                  onPrev={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                  onNext={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                  onToday={() => setReferenceDate(new Date())}
+                  onDelete={handleDelete}
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:hidden">
+                <MonthNavHeader
+                  referenceDate={referenceDate}
+                  onPrev={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                  onNext={() => setReferenceDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                  onToday={() => setReferenceDate(new Date())}
+                />
+                <AgendaList items={items} userId={user.id} onDelete={handleDelete} />
+              </div>
+            </>
+          )}
 
-        {!isPending && view === "agenda" && <AgendaList items={items} userId={user.id} onDelete={handleDelete} />}
-      </CardBody>
-    </Card>
+          {!isPending && view === "agenda" && <AgendaList items={items} userId={user.id} onDelete={handleDelete} />}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 
@@ -312,33 +325,15 @@ function MonthGrid({
   onDelete: (id: string) => void;
 }) {
   const days = useMemo(() => monthGridDays(referenceDate), [referenceDate]);
-  const monthLabel = referenceDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const todayKey = startOfDay(new Date()).toDateString();
   const currentMonth = referenceDate.getMonth();
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium text-text">{monthLabel}</div>
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={onPrev} className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
-            <Icon name="chevron_left" size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={onToday}
-            className="rounded-md px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
-          >
-            Today
-          </button>
-          <button type="button" onClick={onNext} className="rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
-            <Icon name="chevron_right" size={16} />
-          </button>
-        </div>
-      </div>
+      <MonthNavHeader referenceDate={referenceDate} onPrev={onPrev} onNext={onNext} onToday={onToday} />
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-border bg-border text-xs">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-          <div key={d} className="bg-surface px-2 py-1 text-center font-medium text-text-muted">
+          <div key={d} className="bg-surface-sunk px-2 py-1 text-center font-medium text-text-muted">
             {d}
           </div>
         ))}
@@ -350,7 +345,7 @@ function MonthGrid({
           return (
             <div
               key={key}
-              className={`min-h-20 bg-surface p-1 ${day.getMonth() !== currentMonth ? "opacity-40" : ""} ${key === todayKey ? "ring-1 ring-inset ring-accent" : ""}`}
+              className={`min-h-20 bg-surface p-1 ${day.getMonth() !== currentMonth ? "opacity-40" : ""} ${key === todayKey ? "bg-surface-sunk ring-1 ring-inset ring-accent/40" : ""}`}
             >
               <div className="mb-1 text-right text-text-muted">{day.getDate()}</div>
               <div className="flex flex-col gap-0.5">
@@ -362,6 +357,43 @@ function MonthGrid({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Shared by MonthGrid and the Phase 06 mobile agenda fallback (see above) —
+// extracted so mobile keeps month-paging even though MonthGrid itself is
+// hidden below `md:`.
+function MonthNavHeader({
+  referenceDate,
+  onPrev,
+  onNext,
+  onToday,
+}: {
+  referenceDate: Date;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
+}) {
+  const monthLabel = referenceDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  return (
+    <div className="flex items-center justify-between">
+      <div className="text-sm font-medium text-text">{monthLabel}</div>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={onPrev} className="interactive-press rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
+          <Icon name="chevron_left" size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onToday}
+          className="interactive-press rounded-md px-2 py-1 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
+        >
+          Today
+        </button>
+        <button type="button" onClick={onNext} className="interactive-press rounded-md p-1 text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover">
+          <Icon name="chevron_right" size={16} />
+        </button>
       </div>
     </div>
   );
@@ -379,7 +411,7 @@ function AgendaList({ items, userId, onDelete }: { items: CalendarItem[]; userId
     return map;
   }, [items]);
 
-  if (byDay.size === 0) return <EmptyStateView message="Nothing on the calendar in the next 30 days." />;
+  if (byDay.size === 0) return <EmptyStateView icon="event_available" message="Nothing on the calendar in the next 30 days." />;
 
   return (
     <div className="flex flex-col gap-3">
@@ -417,8 +449,9 @@ function CalendarItemChip({
 
   if (compact) {
     return (
-      <div className="truncate" title={item.title}>
-        <Badge tone={ITEM_TONE[item.itemType]}>{item.title}</Badge>
+      <div className="flex items-center gap-1" title={item.title}>
+        <StatusDot tone={CALENDAR_ITEM_TONE[item.itemType]} />
+        <span className="truncate text-text">{item.title}</span>
       </div>
     );
   }
@@ -427,13 +460,8 @@ function CalendarItemChip({
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
       <div className="flex min-w-0 items-center gap-2">
-        <Badge tone={ITEM_TONE[item.itemType]}>
-          {item.itemType === "task" || item.itemType === "assignmentDue" || item.itemType === "invoiceDue" || item.itemType === "workOrderDue"
-            ? "Due"
-            : item.itemType === "purchaseOrderExpected"
-              ? "Expected"
-              : item.itemType}
-        </Badge>
+        <StatusDot tone={CALENDAR_ITEM_TONE[item.itemType]} />
+        <span className="shrink-0 text-xs uppercase tracking-wide text-text-muted">{calendarItemTypeLabel(item.itemType)}</span>
         <span className="truncate text-sm text-text">{item.title}</span>
         <span className="shrink-0 text-xs text-text-muted">{time}</span>
       </div>
@@ -441,7 +469,7 @@ function CalendarItemChip({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
+          className="interactive-press shrink-0 text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger"
           title="Delete calendar event"
         >
           <Icon name="delete" size={13} />

@@ -6,7 +6,7 @@ loadEnv({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { BlueprintDefinitionSchema } from "@antigravity/manifest-schema";
+import { BlueprintDefinitionSchema } from "@purnit/manifest-schema";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "../src/auth/materialize-roles";
 
 // First IT blueprint fixture — see the Phase 1 plan §4, filled in for Stage 4
@@ -45,7 +45,18 @@ const IT_BLUEPRINT_V1 = {
       // Workspace Phase 3): universal floor, same "granted at the ladder's
       // root" mechanism as calendarEvent:create:own — self-marking your own
       // daily attendance is available to literally everyone.
-      permissions: ["task:read:own", "task:update:own", "calendarEvent:create:own", "attendance:create:own", "attendance:read:own"],
+      // leave:create:own/leave:read:own — Leave Management: same universal-
+      // floor mechanism, ORG_HIERARCHY.md §9-10's first real consumer of
+      // User.managerId/user.setManager (see resolve-approver.ts).
+      permissions: [
+        "task:read:own",
+        "task:update:own",
+        "calendarEvent:create:own",
+        "attendance:create:own",
+        "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
+      ],
     },
     {
       // Was "Employee" — relabeled to match ORG_HIERARCHY.md's universal
@@ -92,6 +103,15 @@ const IT_BLUEPRINT_V1 = {
         "+meeting:create:team",
         "+document:create:team",
         "+document:update:team",
+        // leave:approve:own — Leave Management: "own" here means "requests
+        // where I am literally the assigned approver" (ARCHITECTURE.md
+        // §5.2's "own is contextual to the resource" precedent, same shape
+        // as department:manage:own), not row-ownership. First appears here,
+        // not at Manager — same "Lead tier and above" reading
+        // ORG_HIERARCHY.md's project:create note already establishes,
+        // since anyone from Lead tier up can plausibly be someone's direct
+        // manager in this org model.
+        "+leave:approve:own",
       ],
     },
     {
@@ -111,6 +131,20 @@ const IT_BLUEPRINT_V1 = {
         "+document:create:department",
         "+document:update:department",
         "+document:delete:team",
+        // contact/deal:*:own — CRM: IT has no dedicated sales-facing role
+        // (unlike Finance's Sales Rep), so Manager tier — already the tier
+        // that holds general business-development authority elsewhere
+        // (project/meeting/document creation) — is where CRM starts. `:own`
+        // here is real, not inert: contact.create/deal.create default
+        // ownerId to the creator, so a Manager who creates a contact/deal
+        // genuinely owns it from day one, same shape as Client's own
+        // Sales Rep precedent.
+        "+contact:create:own",
+        "+contact:read:own",
+        "+contact:update:own",
+        "+deal:create:own",
+        "+deal:read:own",
+        "+deal:update:own",
       ],
     },
     {
@@ -151,6 +185,24 @@ const IT_BLUEPRINT_V1 = {
         // Self-correction is special-cased before this check ever runs.
         "+attendance:read:department",
         "+attendance:update:department",
+        // leave:approve:department — Leave Management: the override-
+        // visibility safety valve (ORG_HIERARCHY.md §10) — can act on any
+        // pending request within their own department, whether or not
+        // they're the requester's direct manager.
+        "+leave:approve:department",
+        // contact/deal:read:tenant — CRM: oversight visibility (see the
+        // whole pipeline, not just what you personally own), not broader
+        // create/update authority — editing someone else's contact/deal
+        // stays owner-or-Admin only, same restraint Client's own design
+        // shows (no tier grants blanket edit rights over another Sales
+        // Rep's clients either). `:tenant` here (not `:department-subtree`)
+        // is deliberate: Contact/Deal carry no departmentId at all, so a
+        // `:department-subtree` grant would silently collapse to behaving
+        // exactly like `:own` in `isRowInScope` (its subject.departmentId
+        // branch can never match) — a real, checked-before-using footgun,
+        // not an oversight.
+        "+contact:read:tenant",
+        "+deal:read:tenant",
       ],
     },
     {
@@ -186,6 +238,10 @@ const IT_BLUEPRINT_V1 = {
         "+calendarEvent:create:department-subtree",
         "+attendance:read:department-subtree",
         "+attendance:update:department-subtree",
+        // leave:approve:department-subtree — Leave Management: same
+        // override-visibility widening every other subtree grant here
+        // already follows.
+        "+leave:approve:department-subtree",
       ],
     },
     {
@@ -217,6 +273,10 @@ const IT_BLUEPRINT_V1 = {
         // above.
         "+attendance:read:tenant",
         "+attendance:update:tenant",
+        // leave:approve:tenant — Leave Management: same "HR Manager is the
+        // natural tenant-wide authority" bonus-grant channel as attendance
+        // above — leave is squarely HR's domain.
+        "+leave:approve:tenant",
       ],
     },
     {
@@ -233,6 +293,10 @@ const IT_BLUEPRINT_V1 = {
         "task:update:tenant",
         "task:delete:tenant",
         "role:manage:tenant",
+        "audit:read:tenant",
+        "billing:manage:tenant",
+        "featureFlag:manage:tenant",
+        "sso:manage:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -248,6 +312,20 @@ const IT_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // leave:* — Leave Management: full tenant-wide authority (create/
+        // read for the Admin's own requests, approve for anyone's, plus
+        // manageTypes to define the tenant's leave types).
+        "leave:create:tenant",
+        "leave:read:tenant",
+        "leave:approve:tenant",
+        "leave:manageTypes:tenant",
+        // contact/deal:* — CRM: full tenant-wide authority.
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:tenant",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:tenant",
         // Analytics Phase D — permission-controlled widgets. Only Company
         // Admin holds these by default; every other role starts with zero,
         // grantable via Roles & Permissions/Delegation like everything else.
@@ -386,10 +464,14 @@ const IT_BLUEPRINT_V1 = {
   // (Sidebar Navigation Phase 1 — see CONTEXT.md §41, ARCHITECTURE.md §6.9/
   // §7.8). Every `requiredPermission` below reuses a permission that already
   // exists on a role above — no new permission strings were introduced for
-  // this reorg. Items marked "placeholder module" are new nav entries whose
-  // page is a minimal `EmptyState` "coming soon" page — no real data source,
-  // mutation, or functionality exists for them yet (see ORG_HIERARCHY.md §12
-  // for which of these are their own future design sessions).
+  // this reorg.
+  //
+  // "Coming soon" placeholder pages (Team Management, Recruitment, Reviews,
+  // Company, Account) removed — a UI/UX audit flagged them as real,
+  // permission-gated nav items that led nowhere. See ORG_HIERARCHY.md §12
+  // for which of these remain real future design sessions; when one is
+  // actually built, give it a real nav entry + page then, not a placeholder
+  // ahead of time.
   navigation: [
     { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
@@ -453,17 +535,6 @@ const IT_BLUEPRINT_V1 = {
       pageId: "page.calendar",
     },
     {
-      // Placeholder module. Gated on project:create rather than a new
-      // permission — that grant first appears at the Lead tier (see
-      // ORG_HIERARCHY.md §2) and up, i.e. this reads the diagram's "Manager"
-      // bucket as "Lead tier and above", not exactly role.project-manager alone.
-      id: "nav.team-management",
-      label: "Team Management",
-      icon: "team-management",
-      pageId: "page.team-management",
-      requiredPermission: "project:create",
-    },
-    {
       // Pure disclosure group (no pageId) — every child is gated on
       // user:manage, so this whole group is absent, not empty, for any tier
       // that lacks it (permission-pruner.ts drops emptied-out groups).
@@ -481,11 +552,6 @@ const IT_BLUEPRINT_V1 = {
           pageId: "page.team",
           requiredPermission: "user:manage",
         },
-        // Placeholder modules below — no data source/mutation exists yet for
-        // any of them (ORG_HIERARCHY.md §4.4/§4.5). Reuse user:manage (the
-        // existing HR-tier signal) rather than inventing dedicated
-        // permissions ahead of real functionality.
-        { id: "nav.recruitment", label: "Recruitment", icon: "recruitment", pageId: "page.recruitment", requiredPermission: "user:manage" },
         // Core Workspace Modules, Phase 3, Submodule 2: Attendance —
         // real module now, no longer a placeholder. requiredPermission
         // changed from the placeholder's generic user:manage to
@@ -494,7 +560,6 @@ const IT_BLUEPRINT_V1 = {
         // pruned for anyone, same "always reachable" shape as
         // calendarEvent:create:own's nav entry.
         { id: "nav.attendance", label: "Attendance", icon: "attendance", pageId: "page.attendance", requiredPermission: "attendance:read" },
-        { id: "nav.reviews", label: "Reviews", icon: "reviews", pageId: "page.reviews", requiredPermission: "user:manage" },
         // nav.insights retired — consolidated into nav.analytics (Core
         // Workspace Modules, Phase 4: Analytics & Insights).
       ],
@@ -516,9 +581,6 @@ const IT_BLUEPRINT_V1 = {
           pageId: "page.hr",
           requiredPermission: "department:manage",
         },
-        // Placeholder modules — Admin-only (settings:manage/role:manage are
-        // held only by role.admin in this blueprint).
-        { id: "nav.company", label: "Company", icon: "company", pageId: "page.company", requiredPermission: "settings:manage" },
         {
           id: "nav.roles-permissions",
           label: "Roles & Permissions",
@@ -556,16 +618,58 @@ const IT_BLUEPRINT_V1 = {
       pageId: "page.analytics",
     },
     {
-      // Placeholder module — a personal account page, visible to everyone,
-      // same treatment as nav.dashboard/nav.settings/nav.meetings.
-      id: "nav.account",
-      label: "Account",
-      icon: "account",
-      pageId: "page.account",
+      // Leave Management — universal visibility, no requiredPermission,
+      // same treatment as nav.dashboard/nav.settings: leave:create:own/
+      // leave:read:own are a universal floor (see role.intern above), so
+      // everyone can at least submit their own requests. Ships as a
+      // dedicated route from day one (Frontend Redesign's own "kill the
+      // generic renderer" pattern) — no catch-all detour needed since this
+      // module never existed on the old renderer to begin with.
+      id: "nav.leave",
+      label: "Leave",
+      icon: "event_busy",
+      pageId: "page.leave",
+      // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements
+      // can actually gate this (previously no moduleKey at all, meaning
+      // entitlement filtering had zero effect on it).
+      moduleKey: "leave",
+    },
+    {
+      // CRM — gated on contact:read (not universal like Leave/Notifications
+      // — Contact/Deal require a real grant, absent for most roles in the
+      // flat blueprints and for Intern-through-Senior-Practitioner tiers
+      // here in IT).
+      id: "nav.crm",
+      label: "CRM",
+      icon: "handshake",
+      pageId: "page.crm",
+      requiredPermission: "contact:read",
+      // Stripe Billing — same moduleKey addition as nav.leave above.
+      moduleKey: "crm",
+    },
+    {
+      // Notifications — universal visibility, no requiredPermission, same
+      // treatment as nav.dashboard/nav.chat/nav.settings: this is core
+      // chrome (the bell already exists ungated), not an entitlement-gated
+      // business module — no moduleKey, not added to `modules` below either.
+      id: "nav.notifications",
+      label: "Notifications",
+      icon: "notifications",
+      pageId: "page.notifications",
+    },
+    {
+      // Audit Logs — Company-Admin-only (audit:read is granted to
+      // role.admin alone, everywhere), same nav-gating shape as nav.crm's
+      // contact:read.
+      id: "nav.audit-logs",
+      label: "Audit Logs",
+      icon: "audit-logs",
+      pageId: "page.audit-logs",
+      requiredPermission: "audit:read",
     },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["projects", "tasks"],
+  modules: ["projects", "tasks", "leave", "crm"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -1083,6 +1187,34 @@ const IT_BLUEPRINT_V1 = {
               input: { ref: "form.logoUpload" },
               requiredPermission: "settings:manage",
             },
+            {
+              // Stripe Billing — Admin-only (billing:manage), same gate the
+              // whole "Billing & Plan" card presence-checks on.
+              kind: "mutation",
+              mutation: "billing.createCheckoutSession",
+              input: { ref: "form.checkout" },
+              requiredPermission: "billing:manage",
+            },
+            {
+              kind: "mutation",
+              mutation: "billing.createPortalSession",
+              input: { ref: "form.portal" },
+              requiredPermission: "billing:manage",
+            },
+            {
+              // Feature Flags (module 3 of the 4-initiative backlog) — Admin-only.
+              kind: "mutation",
+              mutation: "featureFlag.set",
+              input: { ref: "form.featureFlag" },
+              requiredPermission: "featureFlag:manage",
+            },
+            {
+              // Enterprise SSO (initiative 2 of the 4-initiative backlog) — Admin-only.
+              kind: "mutation",
+              mutation: "sso.configure",
+              input: { ref: "form.sso" },
+              requiredPermission: "sso:manage",
+            },
           ],
         },
       ],
@@ -1206,55 +1338,8 @@ const IT_BLUEPRINT_V1 = {
         },
       ],
     },
-    // Placeholder pages below (Sidebar Navigation Phase 1) — each is
-    // deliberately just a Heading + EmptyState "coming soon" message, no
-    // real data source or mutation. Their `requiredPermission` mirrors the
-    // matching nav item exactly, so a permission-gated placeholder can't be
-    // reached by a direct pageId fetch either (see permission-pruner.ts's
-    // page/nav sync fix). None have a `moduleKey` — not entitlement-gated
-    // modules, same treatment as page.team/page.hr/page.settings.
-    "page.team-management": {
-      id: "page.team-management",
-      type: "Page",
-      version: 1,
-      requiredPermission: "project:create",
-      children: [
-        { id: "team-management-heading", type: "Heading", version: 1, props: { text: "Team Management" } },
-        { id: "team-management-empty", type: "EmptyState", version: 1, props: { message: "Team Management is coming soon." } },
-      ],
-    },
-    "page.recruitment": {
-      id: "page.recruitment",
-      type: "Page",
-      version: 1,
-      requiredPermission: "user:manage",
-      children: [
-        { id: "recruitment-heading", type: "Heading", version: 1, props: { text: "Recruitment" } },
-        { id: "recruitment-empty", type: "EmptyState", version: 1, props: { message: "Recruitment is coming soon." } },
-      ],
-    },
-    "page.reviews": {
-      id: "page.reviews",
-      type: "Page",
-      version: 1,
-      requiredPermission: "user:manage",
-      children: [
-        { id: "reviews-heading", type: "Heading", version: 1, props: { text: "Reviews" } },
-        { id: "reviews-empty", type: "EmptyState", version: 1, props: { message: "Reviews is coming soon." } },
-      ],
-    },
     // page.insights retired — consolidated into page.analytics (Core
     // Workspace Modules, Phase 4: Analytics & Insights).
-    "page.company": {
-      id: "page.company",
-      type: "Page",
-      version: 1,
-      requiredPermission: "settings:manage",
-      children: [
-        { id: "company-heading", type: "Heading", version: 1, props: { text: "Company" } },
-        { id: "company-empty", type: "EmptyState", version: 1, props: { message: "Company settings are coming soon." } },
-      ],
-    },
     // Roles & Permissions Management (Core Workspace Modules, Phase 3,
     // priority insert ahead of Leave Management). Real module now — was a
     // placeholder EmptyState stub, replaced in place, same transition
@@ -1348,14 +1433,47 @@ const IT_BLUEPRINT_V1 = {
         },
       ],
     },
-    "page.account": {
-      id: "page.account",
+    // Leave Management — ships as a dedicated route from day one (no
+    // catch-all detour, this module never existed on the old renderer).
+    // This backing Page node exists only for nav-permission-sync and a
+    // graceful direct-fetch fallback (permission-pruner.ts) — the real UI
+    // is LeaveWorkspace.tsx, mounted by /workspace/leave.
+    "page.leave": {
+      id: "page.leave",
       type: "Page",
       version: 1,
-      children: [
-        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
-        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
-      ],
+      children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
+    },
+    // CRM — requiredPermission mirrors nav.crm's own gate (permission-
+    // pruner.ts's page/nav sync — a permission-gated nav item's backing
+    // page must carry the same gate, or a direct pageId fetch could reach
+    // it without the grant).
+    "page.crm": {
+      id: "page.crm",
+      type: "Page",
+      version: 1,
+      requiredPermission: "contact:read",
+      children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
+    },
+    // Notifications — trivial placeholder, same reasoning as page.leave/
+    // page.crm above: the permission-pruner's nav/page sync needs a real
+    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
+    // navigation before this tree ever actually renders.
+    "page.notifications": {
+      id: "page.notifications",
+      type: "Page",
+      version: 1,
+      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
+    },
+    // Audit Logs — trivial placeholder, same reasoning as page.leave/
+    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
+    // navigation before this tree ever actually renders.
+    "page.audit-logs": {
+      id: "page.audit-logs",
+      type: "Page",
+      version: 1,
+      requiredPermission: "audit:read",
+      children: [{ id: "audit-logs-heading", type: "Heading", version: 1, props: { text: "Audit Logs" } }],
     },
   },
 };
@@ -1420,6 +1538,10 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
+        "audit:read:tenant",
+        "billing:manage:tenant",
+        "featureFlag:manage:tenant",
+        "sso:manage:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -1431,6 +1553,27 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // leave:* — Leave Management: full tenant-wide authority. Healthcare
+        // has no generic manager-tier ladder (flat 4-role structure, unlike
+        // IT), so — matching that same flatness rather than inventing a
+        // middle-management concept that doesn't exist here — approval
+        // authority stops at Admin; Doctor/Nurse/Receptionist get only the
+        // universal create/read floor below.
+        "leave:create:tenant",
+        "leave:read:tenant",
+        "leave:approve:tenant",
+        "leave:manageTypes:tenant",
+        // contact/deal:* — CRM: full tenant-wide authority. Same "flat
+        // structure, no natural sales-facing role, Admin-only" reasoning as
+        // Leave Management's own approval tier in this blueprint —
+        // Doctor/Nurse/Receptionist get nothing, a deliberate, disclosed
+        // choice, not an oversight.
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:tenant",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:tenant",
       ],
     },
     {
@@ -1456,6 +1599,8 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -1477,6 +1622,8 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -1500,6 +1647,8 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
   ],
@@ -1547,10 +1696,26 @@ const HEALTHCARE_BLUEPRINT_V1 = {
       requiredPermission: "role:manage",
     },
     { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+    // Leave Management — universal visibility (leave:create/read:own is a
+    // universal floor across every role above), dedicated route from day
+    // one, same treatment as the IT blueprint's own nav.leave.
+    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
+    // actually gate these (previously declared with no moduleKey at all,
+    // meaning entitlement filtering had zero effect on them).
+    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
+    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
+    // Notifications — universal visibility, no requiredPermission, same
+    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
+    // (the bell already exists ungated), not an entitlement-gated business
+    // module — no moduleKey, not added to this blueprint's own `modules`
+    // array either.
+    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
+    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
+    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
+    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["patients", "appointments"],
+  modules: ["patients", "appointments", "leave", "crm"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -1753,18 +1918,55 @@ const HEALTHCARE_BLUEPRINT_V1 = {
             },
             { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
             { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+            // Stripe Billing — Admin-only (billing:manage), same gate the
+            // whole "Billing & Plan" card presence-checks on.
+            { kind: "mutation", mutation: "billing.createCheckoutSession", input: { ref: "form.checkout" }, requiredPermission: "billing:manage" },
+            { kind: "mutation", mutation: "billing.createPortalSession", input: { ref: "form.portal" }, requiredPermission: "billing:manage" },
+            // Feature Flags (module 3 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "featureFlag.set", input: { ref: "form.featureFlag" }, requiredPermission: "featureFlag:manage" },
+            // Enterprise SSO (initiative 2 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "sso.configure", input: { ref: "form.sso" }, requiredPermission: "sso:manage" },
           ],
         },
       ],
     },
-    "page.account": {
-      id: "page.account",
+    // Leave Management — see the IT blueprint's own page.leave comment.
+    "page.leave": {
+      id: "page.leave",
       type: "Page",
       version: 1,
-      children: [
-        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
-        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
-      ],
+      children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
+    },
+    // CRM — requiredPermission mirrors nav.crm's own gate (permission-
+    // pruner.ts's page/nav sync — a permission-gated nav item's backing
+    // page must carry the same gate, or a direct pageId fetch could reach
+    // it without the grant).
+    "page.crm": {
+      id: "page.crm",
+      type: "Page",
+      version: 1,
+      requiredPermission: "contact:read",
+      children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
+    },
+    // Notifications — trivial placeholder, same reasoning as page.leave/
+    // page.crm above: the permission-pruner's nav/page sync needs a real
+    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
+    // navigation before this tree ever actually renders.
+    "page.notifications": {
+      id: "page.notifications",
+      type: "Page",
+      version: 1,
+      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
+    },
+    // Audit Logs — trivial placeholder, same reasoning as page.leave/
+    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
+    // navigation before this tree ever actually renders.
+    "page.audit-logs": {
+      id: "page.audit-logs",
+      type: "Page",
+      version: 1,
+      requiredPermission: "audit:read",
+      children: [{ id: "audit-logs-heading", type: "Heading", version: 1, props: { text: "Audit Logs" } }],
     },
   },
 };
@@ -1806,6 +2008,10 @@ const EDUCATION_BLUEPRINT_V1 = {
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
+        "audit:read:tenant",
+        "billing:manage:tenant",
+        "featureFlag:manage:tenant",
+        "sso:manage:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -1817,6 +2023,22 @@ const EDUCATION_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // leave:* — Leave Management: full tenant-wide authority. Same
+        // "flat structure, approval stops at Admin" reasoning as Healthcare
+        // — Education has no generic manager-tier ladder either.
+        "leave:create:tenant",
+        "leave:read:tenant",
+        "leave:approve:tenant",
+        "leave:manageTypes:tenant",
+        // contact/deal:* — CRM: full tenant-wide authority. Same flat-
+        // blueprint, Admin-only reasoning as Healthcare — Teacher/Teaching
+        // Assistant/Registrar get nothing.
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:tenant",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:tenant",
       ],
     },
     {
@@ -1853,6 +2075,8 @@ const EDUCATION_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -1876,6 +2100,8 @@ const EDUCATION_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -1901,6 +2127,8 @@ const EDUCATION_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
   ],
@@ -1949,10 +2177,23 @@ const EDUCATION_BLUEPRINT_V1 = {
       requiredPermission: "role:manage",
     },
     { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
+    // actually gate these (previously declared with no moduleKey at all,
+    // meaning entitlement filtering had zero effect on them).
+    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
+    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
+    // Notifications — universal visibility, no requiredPermission, same
+    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
+    // (the bell already exists ungated), not an entitlement-gated business
+    // module — no moduleKey, not added to this blueprint's own `modules`
+    // array either.
+    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
+    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
+    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
+    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["students", "courses"],
+  modules: ["students", "courses", "leave", "crm"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -2143,18 +2384,54 @@ const EDUCATION_BLUEPRINT_V1 = {
             },
             { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
             { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+            // Stripe Billing — Admin-only (billing:manage), same gate the
+            // whole "Billing & Plan" card presence-checks on.
+            { kind: "mutation", mutation: "billing.createCheckoutSession", input: { ref: "form.checkout" }, requiredPermission: "billing:manage" },
+            { kind: "mutation", mutation: "billing.createPortalSession", input: { ref: "form.portal" }, requiredPermission: "billing:manage" },
+            // Feature Flags (module 3 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "featureFlag.set", input: { ref: "form.featureFlag" }, requiredPermission: "featureFlag:manage" },
+            // Enterprise SSO (initiative 2 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "sso.configure", input: { ref: "form.sso" }, requiredPermission: "sso:manage" },
           ],
         },
       ],
     },
-    "page.account": {
-      id: "page.account",
+    "page.leave": {
+      id: "page.leave",
       type: "Page",
       version: 1,
-      children: [
-        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
-        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
-      ],
+      children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
+    },
+    // CRM — requiredPermission mirrors nav.crm's own gate (permission-
+    // pruner.ts's page/nav sync — a permission-gated nav item's backing
+    // page must carry the same gate, or a direct pageId fetch could reach
+    // it without the grant).
+    "page.crm": {
+      id: "page.crm",
+      type: "Page",
+      version: 1,
+      requiredPermission: "contact:read",
+      children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
+    },
+    // Notifications — trivial placeholder, same reasoning as page.leave/
+    // page.crm above: the permission-pruner's nav/page sync needs a real
+    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
+    // navigation before this tree ever actually renders.
+    "page.notifications": {
+      id: "page.notifications",
+      type: "Page",
+      version: 1,
+      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
+    },
+    // Audit Logs — trivial placeholder, same reasoning as page.leave/
+    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
+    // navigation before this tree ever actually renders.
+    "page.audit-logs": {
+      id: "page.audit-logs",
+      type: "Page",
+      version: 1,
+      requiredPermission: "audit:read",
+      children: [{ id: "audit-logs-heading", type: "Heading", version: 1, props: { text: "Audit Logs" } }],
     },
   },
 };
@@ -2197,6 +2474,10 @@ const FINANCE_BLUEPRINT_V1 = {
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
+        "audit:read:tenant",
+        "billing:manage:tenant",
+        "featureFlag:manage:tenant",
+        "sso:manage:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -2208,6 +2489,20 @@ const FINANCE_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // leave:* — Leave Management: full tenant-wide authority. Same
+        // "flat structure, approval stops at Admin" reasoning as
+        // Healthcare/Education — Finance has no generic manager-tier ladder.
+        "leave:create:tenant",
+        "leave:read:tenant",
+        "leave:approve:tenant",
+        "leave:manageTypes:tenant",
+        // contact/deal:* — CRM: full tenant-wide authority.
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:tenant",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:tenant",
       ],
     },
     {
@@ -2237,6 +2532,8 @@ const FINANCE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -2260,6 +2557,8 @@ const FINANCE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -2291,6 +2590,21 @@ const FINANCE_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
+        // contact/deal:*:own — CRM: the one blueprint where this maps onto
+        // an existing, real identity — Account Manager already owns client
+        // relationships (client:*:own above); Leads/Deals are the same kind
+        // of relationship, just pre-billing. Same asymmetric shape as
+        // Client itself: create/read wide open (:tenant — a Sales Rep can
+        // see the whole team's pipeline for coverage/handoff), update
+        // restricted to what they actually own.
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:own",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:own",
       ],
     },
   ],
@@ -2339,10 +2653,23 @@ const FINANCE_BLUEPRINT_V1 = {
       requiredPermission: "role:manage",
     },
     { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
+    // actually gate these (previously declared with no moduleKey at all,
+    // meaning entitlement filtering had zero effect on them).
+    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
+    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
+    // Notifications — universal visibility, no requiredPermission, same
+    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
+    // (the bell already exists ungated), not an entitlement-gated business
+    // module — no moduleKey, not added to this blueprint's own `modules`
+    // array either.
+    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
+    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
+    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
+    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["clients", "invoices"],
+  modules: ["clients", "invoices", "leave", "crm"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -2532,18 +2859,54 @@ const FINANCE_BLUEPRINT_V1 = {
             },
             { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
             { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+            // Stripe Billing — Admin-only (billing:manage), same gate the
+            // whole "Billing & Plan" card presence-checks on.
+            { kind: "mutation", mutation: "billing.createCheckoutSession", input: { ref: "form.checkout" }, requiredPermission: "billing:manage" },
+            { kind: "mutation", mutation: "billing.createPortalSession", input: { ref: "form.portal" }, requiredPermission: "billing:manage" },
+            // Feature Flags (module 3 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "featureFlag.set", input: { ref: "form.featureFlag" }, requiredPermission: "featureFlag:manage" },
+            // Enterprise SSO (initiative 2 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "sso.configure", input: { ref: "form.sso" }, requiredPermission: "sso:manage" },
           ],
         },
       ],
     },
-    "page.account": {
-      id: "page.account",
+    "page.leave": {
+      id: "page.leave",
       type: "Page",
       version: 1,
-      children: [
-        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
-        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
-      ],
+      children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
+    },
+    // CRM — requiredPermission mirrors nav.crm's own gate (permission-
+    // pruner.ts's page/nav sync — a permission-gated nav item's backing
+    // page must carry the same gate, or a direct pageId fetch could reach
+    // it without the grant).
+    "page.crm": {
+      id: "page.crm",
+      type: "Page",
+      version: 1,
+      requiredPermission: "contact:read",
+      children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
+    },
+    // Notifications — trivial placeholder, same reasoning as page.leave/
+    // page.crm above: the permission-pruner's nav/page sync needs a real
+    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
+    // navigation before this tree ever actually renders.
+    "page.notifications": {
+      id: "page.notifications",
+      type: "Page",
+      version: 1,
+      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
+    },
+    // Audit Logs — trivial placeholder, same reasoning as page.leave/
+    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
+    // navigation before this tree ever actually renders.
+    "page.audit-logs": {
+      id: "page.audit-logs",
+      type: "Page",
+      version: 1,
+      requiredPermission: "audit:read",
+      children: [{ id: "audit-logs-heading", type: "Heading", version: 1, props: { text: "Audit Logs" } }],
     },
   },
 };
@@ -2598,6 +2961,10 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
+        "audit:read:tenant",
+        "billing:manage:tenant",
+        "featureFlag:manage:tenant",
+        "sso:manage:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -2609,6 +2976,24 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "attendance:create:tenant",
         "attendance:read:tenant",
         "attendance:update:tenant",
+        // leave:* — Leave Management: full tenant-wide authority. Same
+        // "flat structure, approval stops at Admin" reasoning as
+        // Healthcare/Education/Finance — no generic manager-tier ladder here.
+        "leave:create:tenant",
+        "leave:read:tenant",
+        "leave:approve:tenant",
+        "leave:manageTypes:tenant",
+        // contact/deal:* — CRM: full tenant-wide authority. Same flat-
+        // blueprint, Admin-only reasoning as Healthcare/Education —
+        // Production Planner/Procurement Officer/Warehouse Staff get
+        // nothing (this blueprint's 3 non-admin roles are all internal-
+        // operations-focused, not customer/sales-facing).
+        "contact:create:tenant",
+        "contact:read:tenant",
+        "contact:update:tenant",
+        "deal:create:tenant",
+        "deal:read:tenant",
+        "deal:update:tenant",
       ],
     },
     {
@@ -2642,6 +3027,8 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -2671,6 +3058,8 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
     {
@@ -2700,6 +3089,8 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "calendarEvent:create:own",
         "attendance:create:own",
         "attendance:read:own",
+        "leave:create:own",
+        "leave:read:own",
       ],
     },
   ],
@@ -2764,10 +3155,23 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       requiredPermission: "role:manage",
     },
     { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    { id: "nav.account", label: "Account", icon: "account", pageId: "page.account" },
+    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
+    // actually gate these (previously declared with no moduleKey at all,
+    // meaning entitlement filtering had zero effect on them).
+    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
+    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
+    // Notifications — universal visibility, no requiredPermission, same
+    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
+    // (the bell already exists ungated), not an entitlement-gated business
+    // module — no moduleKey, not added to this blueprint's own `modules`
+    // array either.
+    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
+    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
+    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
+    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["suppliers", "inventory-items", "purchase-orders", "work-orders"],
+  modules: ["suppliers", "inventory-items", "purchase-orders", "work-orders", "leave", "crm"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -2995,18 +3399,54 @@ const MANUFACTURING_BLUEPRINT_V1 = {
             },
             { kind: "mutation", mutation: "tenant.updateProfile", input: { ref: "form.profile" }, requiredPermission: "settings:manage" },
             { kind: "mutation", mutation: "tenant.createLogoUploadUrl", input: { ref: "form.logoUpload" }, requiredPermission: "settings:manage" },
+            // Stripe Billing — Admin-only (billing:manage), same gate the
+            // whole "Billing & Plan" card presence-checks on.
+            { kind: "mutation", mutation: "billing.createCheckoutSession", input: { ref: "form.checkout" }, requiredPermission: "billing:manage" },
+            { kind: "mutation", mutation: "billing.createPortalSession", input: { ref: "form.portal" }, requiredPermission: "billing:manage" },
+            // Feature Flags (module 3 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "featureFlag.set", input: { ref: "form.featureFlag" }, requiredPermission: "featureFlag:manage" },
+            // Enterprise SSO (initiative 2 of the 4-initiative backlog) — Admin-only.
+            { kind: "mutation", mutation: "sso.configure", input: { ref: "form.sso" }, requiredPermission: "sso:manage" },
           ],
         },
       ],
     },
-    "page.account": {
-      id: "page.account",
+    "page.leave": {
+      id: "page.leave",
       type: "Page",
       version: 1,
-      children: [
-        { id: "account-heading", type: "Heading", version: 1, props: { text: "Account" } },
-        { id: "account-empty", type: "EmptyState", version: 1, props: { message: "Account settings are coming soon." } },
-      ],
+      children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
+    },
+    // CRM — requiredPermission mirrors nav.crm's own gate (permission-
+    // pruner.ts's page/nav sync — a permission-gated nav item's backing
+    // page must carry the same gate, or a direct pageId fetch could reach
+    // it without the grant).
+    "page.crm": {
+      id: "page.crm",
+      type: "Page",
+      version: 1,
+      requiredPermission: "contact:read",
+      children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
+    },
+    // Notifications — trivial placeholder, same reasoning as page.leave/
+    // page.crm above: the permission-pruner's nav/page sync needs a real
+    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
+    // navigation before this tree ever actually renders.
+    "page.notifications": {
+      id: "page.notifications",
+      type: "Page",
+      version: 1,
+      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
+    },
+    // Audit Logs — trivial placeholder, same reasoning as page.leave/
+    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
+    // navigation before this tree ever actually renders.
+    "page.audit-logs": {
+      id: "page.audit-logs",
+      type: "Page",
+      version: 1,
+      requiredPermission: "audit:read",
+      children: [{ id: "audit-logs-heading", type: "Heading", version: 1, props: { text: "Audit Logs" } }],
     },
   },
 };
@@ -3086,6 +3526,211 @@ async function main() {
     update: { definition: MANUFACTURING_BLUEPRINT_V1 },
   });
   console.log("Seeded blueprint: Manufacturing v1");
+
+  // Stripe Billing — `Plan` is genuinely global (no tenantId), seeded once
+  // here rather than per-blueprint. A flat union of every blueprint's own
+  // core-domain moduleKeys works as Free's entitlement list because
+  // filterByEntitlements only ever filters a nav item that literally
+  // declares a matching moduleKey (entitlement-filter.ts) — an IT tenant's
+  // Free-plan entitlements listing "patients" has no effect on it, since no
+  // IT nav item has moduleKey: "patients". This is what lets one global Plan
+  // catalog work across all 5 differently-shaped blueprints.
+  const CORE_DOMAIN_MODULE_KEYS = [
+    "projects", "tasks", // IT
+    "patients", "appointments", // Healthcare
+    "students", "courses", // Education
+    "clients", "invoices", // Finance
+    "suppliers", "inventory-items", "purchase-orders", "work-orders", // Manufacturing
+  ];
+  // Go-Live — the four-tier per-seat catalog. The entitlement ladder is
+  // built only from module keys that are ACTUALLY gated: `leave` and `crm`
+  // are the only two non-core modules carrying a `moduleKey` anywhere in any
+  // blueprint (confirmed by grep, not assumed), so they are the only ones a
+  // plan can genuinely unlock or withhold today. Everything else that
+  // differentiates a tier is enforced by a real mechanism too — seat count
+  // (`maxSeats`/`Tenant.seatsPurchased`, enforced in user.invite) and the AI
+  // daily cap. Nothing in `highlights` below claims a gate that doesn't
+  // exist; see docs/PRICING.md for the honest breakdown of what each tier
+  // actually enforces versus what is a support commitment.
+  const FREE_ENTITLEMENTS = CORE_DOMAIN_MODULE_KEYS;
+  const STARTER_ENTITLEMENTS = [...CORE_DOMAIN_MODULE_KEYS, "leave"];
+  const PRO_ENTITLEMENTS = [...CORE_DOMAIN_MODULE_KEYS, "leave", "crm"];
+
+  // Yearly unit price is 10x monthly, not 12x — the "2 months free" discount
+  // is expressed in the price itself rather than as a Stripe coupon, so one
+  // number drives both the marketing copy and the actual charge.
+  const YEARLY_MULTIPLIER = 10;
+
+  /** Upserts a plan plus its monthly/yearly PlanPrice rows in one call.
+   * `unitMonthlyCents: null` means the tier has no self-serve price at all
+   * (Enterprise) and gets no PlanPrice rows. Stripe ids come from env and
+   * stay null until a real Stripe account exists — the catalog is fully
+   * functional without them (they are the charge authority, these rows are
+   * the display authority). */
+  async function upsertPlan(spec: {
+    key: string;
+    name: string;
+    tagline: string;
+    entitlements: string[];
+    aiMessageDailyCap: number | null;
+    seatModel: "per_seat" | "flat" | "contact";
+    minSeats: number;
+    maxSeats: number | null;
+    trialDays: number;
+    sortOrder: number;
+    highlights: string[];
+    unitMonthlyCents: number | null;
+    stripeProductId?: string | null;
+    stripeMonthlyPriceId?: string | null;
+    stripeYearlyPriceId?: string | null;
+  }) {
+    const fields = {
+      name: spec.name,
+      tagline: spec.tagline,
+      entitlements: spec.entitlements,
+      aiMessageDailyCap: spec.aiMessageDailyCap,
+      seatModel: spec.seatModel,
+      minSeats: spec.minSeats,
+      maxSeats: spec.maxSeats,
+      trialDays: spec.trialDays,
+      isPublic: true,
+      sortOrder: spec.sortOrder,
+      highlights: spec.highlights,
+      stripeProductId: spec.stripeProductId || null,
+    };
+    const plan = await prisma.plan.upsert({
+      where: { key: spec.key },
+      create: { key: spec.key, ...fields },
+      update: fields,
+    });
+
+    if (spec.unitMonthlyCents === null) {
+      // Enterprise — make a rerun after a catalog change idempotent rather
+      // than leaving a stale price behind if a tier ever loses self-serve.
+      await prisma.planPrice.deleteMany({ where: { planId: plan.id } });
+      return;
+    }
+
+    for (const [interval, cents, stripePriceId] of [
+      ["month", spec.unitMonthlyCents, spec.stripeMonthlyPriceId],
+      ["year", spec.unitMonthlyCents * YEARLY_MULTIPLIER, spec.stripeYearlyPriceId],
+    ] as const) {
+      await prisma.planPrice.upsert({
+        where: { planId_interval_currency: { planId: plan.id, interval, currency: "usd" } },
+        create: { planId: plan.id, interval, currency: "usd", unitAmountCents: cents, stripePriceId: stripePriceId || null },
+        update: { unitAmountCents: cents, stripePriceId: stripePriceId || null },
+      });
+    }
+  }
+
+  await upsertPlan({
+    key: "free",
+    name: "Free",
+    tagline: "For small teams getting started",
+    entitlements: FREE_ENTITLEMENTS,
+    aiMessageDailyCap: 50,
+    seatModel: "flat",
+    minSeats: 1,
+    maxSeats: 3,
+    trialDays: 0,
+    sortOrder: 1,
+    unitMonthlyCents: 0,
+    highlights: [
+      "Up to 3 users",
+      "Core workspace modules for your industry",
+      "Projects, tasks, calendar, documents and chat",
+      "50 AI assistant messages per day",
+      "Analytics dashboards",
+    ],
+  });
+
+  await upsertPlan({
+    key: "starter",
+    name: "Starter",
+    tagline: "For growing teams that need more room",
+    entitlements: STARTER_ENTITLEMENTS,
+    aiMessageDailyCap: 500,
+    seatModel: "per_seat",
+    minSeats: 3,
+    maxSeats: null,
+    trialDays: 14,
+    sortOrder: 2,
+    unitMonthlyCents: 1200,
+    stripeProductId: process.env.STRIPE_PRODUCT_STARTER,
+    stripeMonthlyPriceId: process.env.STRIPE_PRICE_STARTER_MONTHLY,
+    stripeYearlyPriceId: process.env.STRIPE_PRICE_STARTER_YEARLY,
+    highlights: [
+      "Everything in Free",
+      "Unlimited users",
+      "Leave management and approvals",
+      "500 AI assistant messages per day",
+      "14-day free trial",
+    ],
+  });
+
+  await upsertPlan({
+    key: "professional",
+    name: "Professional",
+    tagline: "For organizations running their whole operation on Purnit",
+    entitlements: PRO_ENTITLEMENTS,
+    aiMessageDailyCap: 2000,
+    seatModel: "per_seat",
+    minSeats: 5,
+    maxSeats: null,
+    trialDays: 14,
+    sortOrder: 3,
+    unitMonthlyCents: 2900,
+    stripeProductId: process.env.STRIPE_PRODUCT_PROFESSIONAL,
+    stripeMonthlyPriceId: process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY,
+    stripeYearlyPriceId: process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY,
+    highlights: [
+      "Everything in Starter",
+      "CRM pipeline and contact management",
+      "2,000 AI assistant messages per day",
+      "Priority email support",
+      "14-day free trial",
+    ],
+  });
+
+  // Enterprise deliberately has no PlanPrice rows — "Contact us," not
+  // self-serve checkout (see billing.data-sources.ts's own selfServe flag).
+  // aiMessageDailyCap: null — unlimited.
+  await upsertPlan({
+    key: "enterprise",
+    name: "Enterprise",
+    tagline: "For organizations with compliance and scale requirements",
+    entitlements: PRO_ENTITLEMENTS,
+    aiMessageDailyCap: null,
+    seatModel: "contact",
+    minSeats: 1,
+    maxSeats: null,
+    trialDays: 0,
+    sortOrder: 4,
+    unitMonthlyCents: null,
+    highlights: [
+      "Everything in Professional",
+      "Unlimited AI assistant usage",
+      "Enterprise SSO / SAML via your own identity provider",
+      "Dedicated support and onboarding",
+      "Custom contract and invoicing",
+    ],
+  });
+
+  // The old "pro" tier is superseded by "starter"/"professional". Any tenant
+  // still pointing at it keeps working (its row stays, entitlements intact) —
+  // it is simply withdrawn from the public catalog rather than deleted, since
+  // deleting it would null out those tenants' planId and silently grant them
+  // MORE access ("no plan = everything entitled", entitlement-filter.ts).
+  const legacyPro = await prisma.plan.findUnique({ where: { key: "pro" } });
+  if (legacyPro) {
+    await prisma.plan.update({
+      where: { key: "pro" },
+      data: { isPublic: false, tagline: "Legacy plan — no longer offered", sortOrder: 99 },
+    });
+    console.log("Withdrew legacy plan 'pro' from the public catalog (existing tenants unaffected)");
+  }
+
+  console.log("Seeded plans: free, starter, professional, enterprise (+ prices)");
 
   // Roles are materialized at tenant provisioning (AuthService.signup) —
   // a `Role` row's `permissions` is a snapshot copied from the blueprint at

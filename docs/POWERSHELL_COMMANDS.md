@@ -55,8 +55,8 @@ pnpm run test
 ```
 Runs the test suites for every package that has one (Jest for `apps/api`, Vitest for `apps/web`). If it's slow or flaky, run one package at a time instead:
 ```powershell
-pnpm --filter @antigravity/api run test
-pnpm --filter @antigravity/web run test
+pnpm --filter @purnit/api run test
+pnpm --filter @purnit/web run test
 ```
 
 ```powershell
@@ -69,21 +69,21 @@ Production build for every package (`nest build` for the API, `next build` for t
 These operate on whichever database `DATABASE_URL`/`DIRECT_URL` in your `.env` currently point at.
 
 ```powershell
-pnpm --filter @antigravity/api exec prisma studio
+pnpm --filter @purnit/api exec prisma studio
 ```
 Opens Prisma Studio — a browser-based GUI for browsing/editing the database directly. Handy for inspecting data without writing SQL.
 
 ```powershell
-pnpm --filter @antigravity/api run prisma:seed
+pnpm --filter @purnit/api run prisma:seed
 ```
 Re-runs `prisma/seed.ts` — re-materializes the IT blueprint and re-syncs every existing tenant's role permissions to match it. **Run this after any change to `seed.ts`** (new nav items, new permission triples, etc.) so real tenants actually pick up the change — otherwise the change only exists in the blueprint definition, not in any tenant's already-materialized `Role.permissions`.
 
 ```powershell
-pnpm --filter @antigravity/api run prisma:deploy
+pnpm --filter @purnit/api run prisma:deploy
 ```
 Applies any migrations under `apps/api/prisma/migrations/` that haven't been applied yet, then regenerates the Prisma client. This is the **only** migration command that should ever run against a real database — see the warning below.
 
-> **⚠️ Never run `pnpm --filter @antigravity/api run prisma:migrate`** (aliased to `prisma migrate dev`) against the real database. This project's migrations are hand-written, not auto-diffed — `migrate dev`'s shadow-database diffing doesn't understand Supabase's `auth`/`storage` schemas or the custom `app_runtime` role and has caused real breakage before. See `DEVELOPMENT.md`'s "Migrations" section for the full explanation.
+> **⚠️ Never run `pnpm --filter @purnit/api run prisma:migrate`** (aliased to `prisma migrate dev`) against the real database. This project's migrations are hand-written, not auto-diffed — `migrate dev`'s shadow-database diffing doesn't understand Supabase's `auth`/`storage` schemas or the custom `app_runtime` role and has caused real breakage before. See `DEVELOPMENT.md`'s "Migrations" section for the full explanation.
 
 ## Supabase (local Docker stack only)
 

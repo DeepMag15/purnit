@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 async function requireBomLineExists(tx: PrismaTx, ctx: MutationContext, bomLineId: string) {
   const existing = await tx.bOMLine.findFirst({ where: { id: bomLineId, tenantId: ctx.tenantId } });
@@ -38,7 +39,7 @@ export const bomLineCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
     });
     if (existingLine) throw new BadRequestException("This component is already on the bill of materials");
 
-    return tx.bOMLine.create({
+    const bomLine = await tx.bOMLine.create({
       data: {
         tenantId: ctx.tenantId,
         parentItemId: input.parentItemId,
@@ -47,6 +48,8 @@ export const bomLineCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "bomLine", bomLine.id); // AI RAG Phase C
+    return bomLine;
   },
 };
 
@@ -58,7 +61,9 @@ export const bomLineUpdateMutation: MutationDefinition<z.infer<typeof UpdateInpu
   requiredPermission: "bomLine:update",
   async resolve(input, ctx, tx) {
     const existing = await requireBomLineExists(tx, ctx, input.id);
-    return tx.bOMLine.update({ where: { id: existing.id }, data: { quantityRequired: input.quantityRequired } });
+    const updated = await tx.bOMLine.update({ where: { id: existing.id }, data: { quantityRequired: input.quantityRequired } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "bomLine", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 

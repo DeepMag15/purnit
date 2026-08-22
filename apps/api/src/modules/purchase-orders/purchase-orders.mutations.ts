@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 async function requirePurchaseOrderExists(tx: PrismaTx, ctx: MutationContext, purchaseOrderId: string) {
   const existing = await tx.purchaseOrder.findFirst({ where: { id: purchaseOrderId, tenantId: ctx.tenantId, deletedAt: null } });
@@ -44,7 +45,7 @@ export const purchaseOrderCreateMutation: MutationDefinition<z.infer<typeof Crea
     const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
     const tax = input.tax ?? 0;
 
-    return tx.purchaseOrder.create({
+    const purchaseOrder = await tx.purchaseOrder.create({
       data: {
         tenantId: ctx.tenantId,
         supplierId: input.supplierId,
@@ -57,6 +58,8 @@ export const purchaseOrderCreateMutation: MutationDefinition<z.infer<typeof Crea
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "purchaseOrder", purchaseOrder.id); // AI RAG Phase C
+    return purchaseOrder;
   },
 };
 
@@ -83,7 +86,9 @@ export const purchaseOrderUpdateStatusMutation: MutationDefinition<z.infer<typeo
     if (existing.status !== input.status && !VALID_TRANSITIONS[existing.status]?.includes(input.status)) {
       throw new BadRequestException(`Cannot move a purchase order from "${existing.status}" to "${input.status}"`);
     }
-    return tx.purchaseOrder.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.purchaseOrder.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "purchaseOrder", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -116,6 +121,8 @@ export const purchaseOrderReceiveMutation: MutationDefinition<z.infer<typeof Rec
       });
     }
 
-    return tx.purchaseOrder.update({ where: { id: existing.id }, data: { status: "received" } });
+    const updated = await tx.purchaseOrder.update({ where: { id: existing.id }, data: { status: "received" } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "purchaseOrder", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

@@ -9,7 +9,7 @@ export default function HomePage() {
         <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-accent-fg">
           <Icon name="auto_awesome" size={18} />
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text">Antigravity</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-text">Purnit</h1>
         <p className="mt-2 text-sm text-text-muted">The configuration-driven, AI-powered enterprise workspace platform.</p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <a href="/signup">

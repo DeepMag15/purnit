@@ -23,8 +23,8 @@ model InventoryItem {
   deletedAt      DateTime? @map("deleted_at")
 
   workOrders          WorkOrder[]
-  bomLinesAsParent     BOMLine[] @relation("BOMParent")
-  bomLinesAsComponent  BOMLine[] @relation("BOMComponent")
+  bomLinesAsParent    BOMLine[]   @relation("BOMParent")
+  bomLinesAsComponent BOMLine[]   @relation("BOMComponent")
 
   @@unique([tenantId, sku])
   @@index([tenantId])

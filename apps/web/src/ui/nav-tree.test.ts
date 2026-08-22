@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { NavItem, WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { NavItem, WorkspaceManifest } from "@purnit/manifest-schema";
 import { findNavPath } from "./nav-tree";
 
 const manifest: WorkspaceManifest = {
   schemaVersion: 1,
   tenant: { id: "t1", name: "Test Co", workspaceId: "test-co", industry: "IT", branding: {}, profile: {} },
-  user: { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x" },
+  user: { id: "u1", displayName: "Test User", roles: ["Admin"], permissionsHash: "x", digestOptOut: false },
   navigation: [],
   page: { id: "page.dashboard", type: "Page", version: 1 },
   featureFlags: {},

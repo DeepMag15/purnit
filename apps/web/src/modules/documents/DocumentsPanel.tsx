@@ -8,15 +8,25 @@ import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-bind
 import { supabase } from "../../lib/supabase-client";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
-import { Badge } from "../../ui/Badge";
+import { StatusDot, type StatusTone } from "../../ui/StatusDot";
 import { Select } from "../../ui/Select";
-import { Input } from "../../ui/Input";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
+import { SearchBar } from "../../sdui/primitives/SearchBar";
 
 const DOCUMENTS_BUCKET = "documents";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+// Frontend Redesign, Phase 03 — StatusDot's tone vocabulary doesn't include
+// "accent"/"success" (see StatusDot.tsx), so approved/rejected/pending map
+// onto the closest workflow-status equivalents instead of carrying over the
+// old Badge tone values verbatim.
+const APPROVAL_STATUS_TONE: Record<string, StatusTone> = {
+  approved: "done",
+  rejected: "danger",
+  pending: "queued",
+};
 
 interface DocumentRow {
   id: string;
@@ -179,7 +189,9 @@ export function DocumentsPanel({
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface/50 p-2">
       <div className="flex items-center gap-2">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search documents…" className="h-7 flex-1 text-xs" />
+        <div className="flex-1">
+          <SearchBar value={search} onChange={setSearch} placeholder="Search documents…" nodeId="documents-search" renderChild={() => null} />
+        </div>
         {canCreate && (
           <>
             <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -212,7 +224,10 @@ export function DocumentsPanel({
                     <span>·</span>
                     <span>{formatRelativeTime(d.updatedAt)}</span>
                     {d.approvalStatus && (
-                      <Badge tone={d.approvalStatus === "approved" ? "success" : d.approvalStatus === "rejected" ? "danger" : "accent"}>{d.approvalStatus}</Badge>
+                      <span className="inline-flex items-center gap-1">
+                        <StatusDot tone={APPROVAL_STATUS_TONE[d.approvalStatus] ?? "neutral"} />
+                        {d.approvalStatus}
+                      </span>
                     )}
                   </div>
                 </div>

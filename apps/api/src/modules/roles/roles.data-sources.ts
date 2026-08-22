@@ -76,3 +76,23 @@ export function createUsersEffectivePermissionsDataSource(
     },
   };
 }
+
+const RolesPermissionsCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 04 — `RolesPermissionsWorkspace.tsx`'s move off
+ * the generic Renderer loses the `actions` prop its edit controls currently
+ * check. Every one of its gated mutations (`role.createCustom`,
+ * `role.updateCustom`, `role.clone`, `role.delete`, `role.reorder`,
+ * `delegation.grant`, `delegation.revoke`) declares the identical
+ * `requiredPermission: "role:manage"` (confirmed directly against each
+ * mutation, not assumed from the shared "role"/"delegation" naming) — one
+ * flag genuinely covers the whole composite, no `canBrowseOrg`/
+ * `canBrowseProjects`-style split needed here. No `requiredPermission` of
+ * its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const rolesPermissionsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof RolesPermissionsCapabilitiesParamsSchema>> = {
+  name: "rolesPermissions.capabilities",
+  paramsSchema: RolesPermissionsCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return { canManageRoles: ctx.effective.has("role", "manage") !== null };
+  },
+};

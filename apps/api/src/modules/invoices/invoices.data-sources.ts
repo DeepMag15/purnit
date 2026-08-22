@@ -130,3 +130,24 @@ export const invoiceDetailDataSource: DataSourceDefinition<z.infer<typeof Detail
     };
   },
 };
+
+const InvoicesCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `InvoicesWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `invoice.create`/`invoice.updateStatus` declare
+ * genuinely different resources (`invoice:create`/`invoice:update`,
+ * confirmed directly), so both get their own flag. No `requiredPermission`
+ * of its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const invoicesCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof InvoicesCapabilitiesParamsSchema>> = {
+  name: "invoices.capabilities",
+  paramsSchema: InvoicesCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("invoice", "create") !== null,
+      canUpdateStatus: ctx.effective.has("invoice", "update") !== null,
+    };
+  },
+};

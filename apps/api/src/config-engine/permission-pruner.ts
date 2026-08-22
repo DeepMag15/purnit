@@ -1,6 +1,6 @@
 import type { EffectivePermissions } from "../rbac/permission-collapse";
 import { isPermissionGranted as isAllowed } from "../rbac/permission-gate";
-import type { BlueprintDefinition, NavItem, UINode } from "@antigravity/manifest-schema";
+import type { BlueprintDefinition, NavItem, UINode } from "@purnit/manifest-schema";
 
 function pruneNavItems(items: NavItem[], effective: EffectivePermissions): NavItem[] {
   return items

@@ -95,3 +95,28 @@ export const patientsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
     }));
   },
 };
+
+const PatientsCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `PatientsWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop its edit/chart controls
+ * currently check. `patient.updateStatus`/`patient.assignDoctor` share
+ * `requiredPermission: "patient:update"` (confirmed directly against each
+ * mutation) and collapse to one `canUpdatePatient`; `patient.register` gets
+ * its own `canRegisterPatient`; the 3 `document.*` chart-section flags each
+ * gate a genuinely different resource (`document:create/update/delete`),
+ * same as every other Documents-embedding composite. No `requiredPermission`
+ * of its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const patientsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof PatientsCapabilitiesParamsSchema>> = {
+  name: "patients.capabilities",
+  paramsSchema: PatientsCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canRegisterPatient: ctx.effective.has("patient", "create") !== null,
+      canUpdatePatient: ctx.effective.has("patient", "update") !== null,
+      canCreateDocuments: ctx.effective.has("document", "create") !== null,
+      canUpdateDocuments: ctx.effective.has("document", "update") !== null,
+      canDeleteDocuments: ctx.effective.has("document", "delete") !== null,
+    };
+  },
+};

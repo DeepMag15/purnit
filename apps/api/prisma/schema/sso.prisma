@@ -1,0 +1,41 @@
+// Enterprise SSO/SAML (initiative 2 of the 4-initiative backlog) — brokered
+// through a self-hosted Keycloak realm rather than Supabase's own native
+// Enterprise SSO (confirmed unavailable on this project's Supabase tier).
+// One row per tenant. No per-tenant IdP secrets live here or anywhere else
+// in this codebase's own Postgres — the app registers as exactly one OIDC
+// client against Keycloak (KEYCLOAK_CLIENT_ID/SECRET, env vars), and each
+// tenant's real upstream IdP credentials (their Okta/Azure AD client
+// secret, SAML signing cert) live inside Keycloak's own database,
+// configured via its Admin Console when onboarding that tenant.
+model SsoConfig {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String   @unique @map("tenant_id") @db.Uuid
+  enabled              Boolean  @default(false)
+  // System-generated ("idp-<tenantId>") the first time sso.configure is
+  // called, `@@unique`, and never admin-editable afterward. Identity
+  // Brokering aliases live in one shared Keycloak realm, so they're globally
+  // unique and globally reachable via ?kc_idp_hint=<alias> — an admin-typed
+  // free-text field would let one tenant's admin (deliberately or by
+  // copy-paste error) point their SSO button at a different tenant's real
+  // corporate IdP. The admin's own manual step becomes "create an Identity
+  // Provider in Keycloak using *this exact*, app-provided alias."
+  idpAlias             String   @unique @map("idp_alias")
+  displayName          String?  @map("display_name")
+  // Role newly JIT-provisioned SSO users are assigned. Validated tenant-
+  // scoped at write time (sso.mutations.ts), same as user.invite's roleId
+  // check. Null/removed-since means JIT provisioning fails closed with a
+  // clear error rather than guessing a role — no relation declared, same
+  // no-FK-for-cross-model-references precedent as RoleAssignment.roleId's
+  // sibling fields and PermissionDelegation's userId/grantedById.
+  defaultRoleId        String?  @map("default_role_id") @db.Uuid
+  // Gates JIT provisioning on the upstream IdP's own `email_verified` ID
+  // token claim — an SSO login delegates "this email belongs to this
+  // person" entirely to the upstream IdP's assertion, which is only a safe
+  // trust boundary if that IdP actually verified the email. Defaults true
+  // (fail closed on an absent/false claim), not false.
+  requireEmailVerified Boolean  @default(true) @map("require_email_verified")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("sso_configs")
+}

@@ -3,7 +3,7 @@ import type {
   KeyedListPatch,
   TenantConfigOverrides,
   UINode,
-} from "@antigravity/manifest-schema";
+} from "@purnit/manifest-schema";
 
 function findInsertionIndex<T extends { id: string }>(list: T[], after?: string, before?: string): number {
   if (after) {

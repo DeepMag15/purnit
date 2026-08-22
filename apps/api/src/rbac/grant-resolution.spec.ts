@@ -1,5 +1,5 @@
 import { applyGrantDeltas, resolveBlueprintRoles } from "./grant-resolution";
-import type { BlueprintRoleDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef } from "@purnit/manifest-schema";
 
 describe("applyGrantDeltas", () => {
   it("adds a plain (unprefixed) delta as-is", () => {

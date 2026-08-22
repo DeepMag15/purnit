@@ -10,4 +10,16 @@ describe("permission-catalog", () => {
   it("does not know an unrelated made-up triple", () => {
     expect(isKnownPermission("analytics", "financial")).toBe(false);
   });
+
+  it("knows the Stripe Billing permission", () => {
+    expect(isKnownPermission("billing", "manage")).toBe(true);
+  });
+
+  it("knows the Feature Flags permission", () => {
+    expect(isKnownPermission("featureFlag", "manage")).toBe(true);
+  });
+
+  it("knows the Enterprise SSO permission", () => {
+    expect(isKnownPermission("sso", "manage")).toBe(true);
+  });
 });

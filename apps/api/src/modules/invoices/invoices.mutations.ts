@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** No `isRowInScope` check here (unlike `requireClientInScope`/
  * `requireCourseInScope`) — deliberately: no role in this blueprint ever
@@ -45,7 +46,7 @@ export const invoiceCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
     const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
     const tax = input.tax ?? 0;
 
-    return tx.invoice.create({
+    const invoice = await tx.invoice.create({
       data: {
         tenantId: ctx.tenantId,
         clientId: input.clientId,
@@ -59,6 +60,8 @@ export const invoiceCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
         createdById: ctx.userId,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "invoice", invoice.id); // AI RAG Phase C
+    return invoice;
   },
 };
 
@@ -82,6 +85,8 @@ export const invoiceUpdateStatusMutation: MutationDefinition<z.infer<typeof Upda
     if (existing.status !== input.status && !VALID_TRANSITIONS[existing.status]?.includes(input.status)) {
       throw new BadRequestException(`Cannot move an invoice from "${existing.status}" to "${input.status}"`);
     }
-    return tx.invoice.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.invoice.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "invoice", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

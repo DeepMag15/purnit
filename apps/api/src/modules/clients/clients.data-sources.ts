@@ -144,3 +144,24 @@ export const clientsAccountManagerOptionsDataSource: DataSourceDefinition<z.infe
     return tx.user.findMany({ where: { id: { in: userIds }, deletedAt: null }, select: { id: true, displayName: true } });
   },
 };
+
+const ClientsCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `ClientsWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `client.create`/`client.updateStatus` declare
+ * genuinely different resources (`client:create`/`client:update`,
+ * confirmed directly), so both get their own flag. No `requiredPermission`
+ * of its own (callable by anyone), same precedent as `analytics.capabilities`. */
+export const clientsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof ClientsCapabilitiesParamsSchema>> = {
+  name: "clients.capabilities",
+  paramsSchema: ClientsCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("client", "create") !== null,
+      canUpdateStatus: ctx.effective.has("client", "update") !== null,
+    };
+  },
+};

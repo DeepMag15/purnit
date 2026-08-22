@@ -83,3 +83,25 @@ export const workOrderDetailDataSource: DataSourceDefinition<z.infer<typeof Deta
     };
   },
 };
+
+const WorkOrdersCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 05 — `WorkOrdersWorkspace.tsx`'s move off the
+ * generic Renderer loses the `actions` prop — both its own top-level
+ * `canCreate` check, and the one it forwards, unchanged, into the nested
+ * `KanbanBoard` primitive's own `actions?.some(mutation===updateMutation)`
+ * gate for drag-to-update. `workOrder.create`/`workOrder.updateStatus`
+ * declare genuinely different resources (`workOrder:create`/
+ * `workOrder:update`, confirmed directly), so both get their own flag. No
+ * `requiredPermission` of its own (callable by anyone), same precedent as
+ * `analytics.capabilities`. */
+export const workOrdersCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof WorkOrdersCapabilitiesParamsSchema>> = {
+  name: "workOrders.capabilities",
+  paramsSchema: WorkOrdersCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canCreate: ctx.effective.has("workOrder", "create") !== null,
+      canUpdateStatus: ctx.effective.has("workOrder", "update") !== null,
+    };
+  },
+};

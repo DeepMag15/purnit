@@ -1,8 +1,8 @@
 "use client";
 
 import { z } from "zod";
-import { useState, type MouseEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, type MouseEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../../ui/Icon";
 import type { CommonRenderProps } from "../../sdui/registry";
 import { useDataBinding } from "../../sdui/use-data-binding";
@@ -69,6 +69,7 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  */
 export function ProjectBoard({ title, bind, actions }: Props & CommonRenderProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data, loading, error, refetch } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
@@ -89,6 +90,17 @@ export function ProjectBoard({ title, bind, actions }: Props & CommonRenderProps
     clearFieldError("name");
     setCreateOpen(true);
   }
+
+  // Frontend Redesign, Phase 01 — same `?compose=1` convention as
+  // TaskList's own, shared by the dashboard/header/Command Palette
+  // quick-create surfaces (see that component's matching comment).
+  useEffect(() => {
+    if (searchParams.get("compose") === "1" && canCreate) {
+      openCreate();
+      router.replace("/workspace/page.projects");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once intent; openCreate/canCreate are recreated every render but their identity isn't what this effect should react to.
+  }, [searchParams]);
 
   async function handleCreate() {
     if (!validate({ name: newName })) return;

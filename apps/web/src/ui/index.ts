@@ -4,6 +4,7 @@ export { Input } from "./Input";
 export { Select } from "./Select";
 export { Card, CardHeader, CardBody } from "./Card";
 export { Badge } from "./Badge";
+export { StatusDot, type StatusTone } from "./StatusDot";
 export { Skeleton, SkeletonRows } from "./Skeleton";
 export { Alert } from "./Alert";
 export { ToastProvider, useToast } from "./Toast";

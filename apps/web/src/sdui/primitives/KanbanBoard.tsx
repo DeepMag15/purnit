@@ -6,8 +6,7 @@ import { DndContext, useDraggable, useDroppable, type DragEndEvent } from "@dnd-
 import type { CommonRenderProps } from "../registry";
 import { useDataBinding } from "../use-data-binding";
 import { useRenderContext } from "../render-context";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
-import { Badge } from "../../ui/Badge";
+import { StatusDot, type StatusTone } from "../../ui/StatusDot";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { EmptyStateView } from "./EmptyState";
@@ -28,6 +27,36 @@ interface Row {
   [key: string]: unknown;
 }
 
+/* Frontend Redesign, post-Phase 03 amendment — matched to reference_design.png's
+ * own To-do/In progress/In review/Complete board exactly: pixel-sampled, its 4
+ * column dots are violet/amber/blue/green — the same 4 hues StatusDot's own
+ * queued/progress/review/done tones were already chosen to mirror (see
+ * StatusDot.tsx). `columns` is an arbitrary per-module status-string list with
+ * no shared vocabulary across callers (todo/in_progress/done for Tasks,
+ * planning/active/completed for Projects, ordered/received for Purchase
+ * Orders, ...), so tone is derived positionally rather than by string match:
+ * the first column is always "queued" (backlog/not-started) and the last is
+ * always "done" (terminal/complete) — the two endpoints every module's status
+ * list agrees on — with columns in between interpolated through
+ * progress/review by relative position. For exactly 4 columns this reproduces
+ * the reference's own tone sequence exactly. */
+const TONE_SEQUENCE: StatusTone[] = ["queued", "progress", "review", "done"];
+function toneForColumn(index: number, total: number): StatusTone {
+  if (total <= 1) return "done";
+  const fraction = index / (total - 1);
+  return TONE_SEQUENCE[Math.round(fraction * (TONE_SEQUENCE.length - 1))] ?? "done";
+}
+
+// Every caller passes a raw status slug ("in_progress", "no-show") as both
+// the column id (grouping/drag-target key, unchanged) and, before this, the
+// literal rendered label too. reference_design.png's own headers ("In
+// progress", "Complete") are clean Title-Case-first-word — this only affects
+// display, `id` itself still drives grouping/`updateMutation` untouched.
+function formatColumnLabel(raw: string): string {
+  const spaced = raw.replace(/[_-]+/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function KanbanCard({ row, labelKey, draggable }: { row: Row; labelKey: string; draggable: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: row.id, disabled: !draggable });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 10 } : undefined;
@@ -38,24 +67,25 @@ function KanbanCard({ row, labelKey, draggable }: { row: Row; labelKey: string; 
       style={style}
       {...(draggable ? attributes : {})}
       {...(draggable ? listeners : {})}
-      className={`rounded-md border border-border bg-surface p-2.5 text-sm text-text ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragging ? "opacity-50" : ""}`}
+      className={`rounded-lg border border-border bg-surface p-3 text-sm text-text transition-colors duration-[var(--duration-fast)] ${draggable ? "interactive-lift cursor-grab active:cursor-grabbing" : ""} ${isDragging ? "opacity-50" : ""}`}
     >
       {String(row[labelKey] ?? "")}
     </div>
   );
 }
 
-function KanbanColumn({ id, cards, labelKey, draggable }: { id: string; cards: Row[]; labelKey: string; draggable: boolean }) {
+function KanbanColumn({ id, tone, cards, labelKey, draggable }: { id: string; tone: StatusTone; cards: Row[]; labelKey: string; draggable: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-64 shrink-0 flex-col gap-2 rounded-lg border border-border p-2.5 transition-colors duration-[var(--duration-fast)] ${isOver ? "bg-surface-hover" : "bg-surface-elevated"}`}
+      className={`flex w-72 shrink-0 flex-col gap-3 rounded-lg p-2 transition-colors duration-[var(--duration-fast)] ${isOver ? "bg-surface-hover" : ""}`}
     >
-      <div className="flex items-center justify-between px-0.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">{id}</span>
-        <Badge tone="neutral">{cards.length}</Badge>
+      <div className="flex items-center gap-1.5 px-1 py-1">
+        <StatusDot tone={tone} />
+        <span className="text-[13px] font-medium text-text">{formatColumnLabel(id)}</span>
+        <span className="text-[13px] text-text-muted">{cards.length}</span>
       </div>
       <div className="flex flex-col gap-2">
         {cards.map((row) => (
@@ -79,8 +109,17 @@ function KanbanColumn({ id, cards, labelKey, draggable }: { id: string; cards: R
  * read of an already-authorized decision, not a second check. A viewer
  * without the grant still sees every card grouped correctly — just not
  * draggable — "prune the capability, not the widget," the same guarantee
- * every other Analytics widget already gives. */
-export function KanbanBoard({ title, groupKey, labelKey, columns, updateMutation, updateValueKey, bind, actions }: Props & CommonRenderProps) {
+ * every other Analytics widget already gives.
+ *
+ * Frontend Redesign, post-Phase 03 amendment — the `<Card><CardHeader
+ * title/></Card>` box this used to render itself in is gone: all 10 real
+ * call sites (Projects, Tasks, and 8 domain workspaces) already render their
+ * own `PageHeader` above the board and never pass `title`, so the box was
+ * always an empty, redundant frame — and reference_design.png's own board
+ * sits directly on the page background with no boxed container at all.
+ * `title` stays in the schema (harmless, unused) rather than being a
+ * breaking prop removal. */
+export function KanbanBoard({ groupKey, labelKey, columns, updateMutation, updateValueKey, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch, queryKey } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
   const queryClient = useQueryClient();
@@ -113,23 +152,24 @@ export function KanbanBoard({ title, groupKey, labelKey, columns, updateMutation
     }
   }
 
+  if (loading) return <Skeleton className="h-40 w-full" />;
+  if (error) return <Alert tone="danger">Couldn&apos;t load board: {error}</Alert>;
+  if (rows.length === 0) return <EmptyStateView message="No items yet." />;
+
   return (
-    <Card>
-      <CardHeader title={title} />
-      <CardBody>
-        {loading && <Skeleton className="h-40 w-full" />}
-        {error && <Alert tone="danger">Couldn&apos;t load board: {error}</Alert>}
-        {!loading && !error && rows.length === 0 && <EmptyStateView message="No items yet." />}
-        {!loading && !error && rows.length > 0 && (
-          <DndContext onDragEnd={handleDragEnd}>
-            <div className="flex gap-4 overflow-x-auto pb-1">
-              {columns.map((col) => (
-                <KanbanColumn key={col} id={col} cards={rows.filter((r) => r[groupKey] === col)} labelKey={labelKey} draggable={canDrag} />
-              ))}
-            </div>
-          </DndContext>
-        )}
-      </CardBody>
-    </Card>
+    <DndContext onDragEnd={handleDragEnd}>
+      <div className="flex gap-6 overflow-x-auto pb-1">
+        {columns.map((col, i) => (
+          <KanbanColumn
+            key={col}
+            id={col}
+            tone={toneForColumn(i, columns.length)}
+            cards={rows.filter((r) => r[groupKey] === col)}
+            labelKey={labelKey}
+            draggable={canDrag}
+          />
+        ))}
+      </div>
+    </DndContext>
   );
 }

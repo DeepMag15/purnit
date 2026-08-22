@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import type { z } from "zod";
-import type { ActionSpec, DataBinding, UINode } from "@antigravity/manifest-schema";
+import type { ActionSpec, DataBinding, UINode } from "@purnit/manifest-schema";
 
 /** Every primitive/composite component receives its Zod-validated props
  * spread at the top level, plus these — matching ARCHITECTURE.md §7.5's

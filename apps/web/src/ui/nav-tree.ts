@@ -1,4 +1,4 @@
-import type { NavItem, WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { NavItem, WorkspaceManifest } from "@purnit/manifest-schema";
 import { hrefForNavItem } from "./WorkspaceSidebar";
 
 /** Depth-first flatten of a (already permission-pruned) nav tree — every

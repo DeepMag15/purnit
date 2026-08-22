@@ -4,8 +4,8 @@ import { z } from "zod";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
-import { useDataBinding } from "../../sdui/use-data-binding";
+import type { DataBinding } from "@purnit/manifest-schema";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { useAsyncAction } from "../../sdui/use-async-action";
 import { useFormValidation } from "../../sdui/use-form-validation";
@@ -23,7 +23,6 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 
 export const StudentsWorkspaceSchema = z.object({ title: z.string().optional() });
-type Props = z.infer<typeof StudentsWorkspaceSchema>;
 
 interface StudentRow {
   id: string;
@@ -52,10 +51,21 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
  * view's columns are derived from whatever statuses are actually present
  * (Student.status is free-text, no fixed enum, same treatment as
  * Project.status).
+ *
+ * Frontend Redesign Phase 05 — a dedicated route, replacing the generic
+ * `/workspace/page.students` catch-all. `bind`/`actions` are gone;
+ * `students.list` is fetched directly, `students.capabilities` (new,
+ * additive, read-only) replaces `actions`. `KanbanBoard`/`Table3` below
+ * still need a `bind`-shaped object and `actions` array (they call
+ * `useDataBinding`/gate on `actions?.some(...)` internally) — a local
+ * literal `bind` (identical shape to the old Renderer-supplied one, no
+ * dynamic params either had) and a synthetic `actions` array built from the
+ * real capability flag reproduce them unchanged.
  */
-export function StudentsWorkspace({ title, bind, actions }: Props & CommonRenderProps) {
+export function StudentsWorkspace() {
   const router = useRouter();
-  const { data, loading, error, refetch } = useDataBinding(bind);
+  const bind: DataBinding = { source: "students.list", params: {} };
+  const { data, isPending, error, refetch } = useDataSourceQuery<StudentRow[]>("students.list");
   const { callMutation } = useRenderContext();
   const [view, setView] = useState("board");
   const [createOpen, setCreateOpen] = useState(false);
@@ -66,9 +76,11 @@ export function StudentsWorkspace({ title, bind, actions }: Props & CommonRender
   const { pending: creating, error: createError, run: runCreate, clearError } = useAsyncAction();
   const { fieldErrors, validate, clearFieldError } = useFormValidation<{ name: string }>({ name: required("Student name is required") });
 
-  const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "student.register") ?? false;
+  const { data: caps } = useDataSourceQuery<{ canCreate: boolean; canUpdateStatus: boolean }>("students.capabilities");
+  const canCreate = caps?.canCreate ?? false;
+  const actions = caps?.canUpdateStatus ? [{ kind: "mutation" as const, mutation: "student.updateStatus", input: { const: null } }] : [];
 
-  const rows = Array.isArray(data) ? (data as StudentRow[]) : [];
+  const rows = Array.isArray(data) ? data : [];
   const statusColumns = [...new Set(rows.map((s) => s.status))];
 
   function openCreate() {
@@ -102,7 +114,7 @@ export function StudentsWorkspace({ title, bind, actions }: Props & CommonRender
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={title ?? "Students"}
+        title="Students"
         description="Manage your school's student records."
         actions={
           canCreate && (
@@ -140,11 +152,11 @@ export function StudentsWorkspace({ title, bind, actions }: Props & CommonRender
         </div>
       </Dialog>
 
-      {loading && <SkeletonRows />}
-      {error && <Alert tone="danger">Couldn&apos;t load students: {error}</Alert>}
-      {!loading && !error && rows.length === 0 && <EmptyStateView message="No students yet." />}
+      {isPending && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load students: {error.message}</Alert>}
+      {!isPending && !error && rows.length === 0 && <EmptyStateView message="No students yet." />}
 
-      {!loading && !error && rows.length > 0 && view === "board" && (
+      {!isPending && !error && rows.length > 0 && view === "board" && (
         <KanbanBoard
           nodeId="students-board-kanban"
           groupKey="status"
@@ -158,7 +170,7 @@ export function StudentsWorkspace({ title, bind, actions }: Props & CommonRender
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "table" && (
+      {!isPending && !error && rows.length > 0 && view === "table" && (
         <Table3
           nodeId="students-table"
           columns={["name", "status", "contactEmail"]}
@@ -172,7 +184,7 @@ export function StudentsWorkspace({ title, bind, actions }: Props & CommonRender
         />
       )}
 
-      {!loading && !error && rows.length > 0 && view === "list" && (
+      {!isPending && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((student) => (
             <li

@@ -13,6 +13,7 @@ describe("client.create", () => {
       project: { create: jest.fn().mockResolvedValue({ id: "proj1" }) },
       client: { create: jest.fn().mockResolvedValue({ id: "c1" }) },
       projectMember: { create: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await clientCreateMutation.resolve({ name: "Acme Co" }, context(["client:create:tenant"]), tx);
@@ -33,6 +34,7 @@ describe("client.create", () => {
       project: { create: jest.fn().mockResolvedValue({ id: "proj1" }) },
       client: { create: jest.fn().mockResolvedValue({ id: "c1" }) },
       projectMember: { create: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await clientCreateMutation.resolve({ name: "Acme Co", accountManagerId: "rep2" }, context(["client:create:tenant"]), tx);
@@ -63,6 +65,7 @@ describe("client.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "c1", accountManagerId: "someone-else" }),
         update: jest.fn().mockResolvedValue({ id: "c1", status: "inactive" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await clientUpdateStatusMutation.resolve({ id: "c1", status: "inactive" }, context(["client:update:tenant"]), tx);
@@ -87,6 +90,7 @@ describe("client.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "c1", accountManagerId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "c1", status: "inactive" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await clientUpdateStatusMutation.resolve({ id: "c1", status: "inactive" }, context(["client:update:own"], "u1"), tx);
     expect((tx as unknown as { client: { update: jest.Mock } }).client.update).toHaveBeenCalled();

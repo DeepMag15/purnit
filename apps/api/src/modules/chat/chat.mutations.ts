@@ -4,6 +4,7 @@ import type { MutationDefinition } from "../../mutations/mutation-registry.servi
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { resolveValidMentions } from "../comments/comments.mutations";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 export const CONVERSATION_TYPES = ["channel", "dm"] as const;
 export type ConversationType = (typeof CONVERSATION_TYPES)[number];
@@ -186,6 +187,7 @@ export const messageSendMutation: MutationDefinition<z.infer<typeof SendInputSch
     const message = await tx.message.create({
       data: { tenantId: ctx.tenantId, conversationId: input.conversationId, authorId: ctx.userId, body: input.body },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "message", message.id); // AI RAG Phase C
 
     const memberIds = await getConversationMemberIds(tx, input.conversationId);
     const validMentions = resolveValidMentions(input.mentionedUserIds ?? [], memberIds, ctx.userId);

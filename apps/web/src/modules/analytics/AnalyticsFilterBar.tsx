@@ -3,8 +3,12 @@
 import { Select } from "../../ui/Select";
 import { Input } from "../../ui/Input";
 import { useDataSourceQuery } from "../../sdui/use-data-binding";
-import { useRenderContext } from "../../sdui/render-context";
 import { useAnalyticsFilters } from "./analytics-filter-state";
+
+interface AnalyticsCapabilities {
+  canBrowseOrg: boolean;
+  canBrowseProjects: boolean;
+}
 
 interface DepartmentOption {
   id: string;
@@ -36,23 +40,26 @@ const PRESETS = [
 ];
 
 export function AnalyticsFilterBar() {
-  const { user } = useRenderContext();
   const filters = useAnalyticsFilters();
 
-  // departments.list/teams.list/users.list are all gated on department:manage
-  // /user:manage — held only by Company Admin and HR Manager (seed.ts) — so
-  // these dropdowns are only ever populated for those two roles, mirroring
-  // the identical enabled-gate precedent TeamMembers.tsx/CalendarWorkspace.tsx
-  // already use for the same three sources. Every other tier still gets the
-  // full date-range control and the Company/Personal view tabs; narrowing by
-  // a specific department/team/employee they can't browse simply isn't
-  // offered as a picker (their own real data scope already applies
-  // server-side regardless of whether they can see this control).
-  const canBrowseOrg = ["Company Admin", "HR Manager"].some((r) => user.roles.includes(r));
+  // Frontend Redesign, Phase 03 — `canBrowseOrg`/`canBrowseProjects` used to
+  // be one hardcoded client-side `["Company Admin","HR Manager"].includes(role)`
+  // check covering all four dropdowns below — a real bug, not just a role-
+  // label fragility issue: `projects.list` actually requires `project:read`
+  // (held from Practitioner tier up), not `department:manage`/`user:manage`
+  // (Admin/HR-tier only, the real gate for `departments.list`/`teams.list`/
+  // `users.list`) — the old check silently hid the Project filter from every
+  // mid-tier role that could actually use it. Now sourced from
+  // `analytics.capabilities` (same `ctx.effective.has()`-based precedent as
+  // `calendar.capabilities`/`attendance.capabilities`), with the two real
+  // gates kept independent rather than re-collapsed into one.
+  const { data: caps } = useDataSourceQuery<AnalyticsCapabilities>("analytics.capabilities");
+  const canBrowseOrg = caps?.canBrowseOrg ?? false;
+  const canBrowseProjects = caps?.canBrowseProjects ?? false;
 
   const { data: departmentsData } = useDataSourceQuery<DepartmentOption[]>("departments.list", {}, { enabled: canBrowseOrg });
   const { data: teamsData } = useDataSourceQuery<TeamOption[]>("teams.list", {}, { enabled: canBrowseOrg });
-  const { data: projectsData } = useDataSourceQuery<ProjectOption[]>("projects.list", {}, { enabled: canBrowseOrg });
+  const { data: projectsData } = useDataSourceQuery<ProjectOption[]>("projects.list", {}, { enabled: canBrowseProjects });
   const { data: usersData } = useDataSourceQuery<UserOption[]>("users.list", {}, { enabled: canBrowseOrg });
 
   const departments = Array.isArray(departmentsData) ? departmentsData : [];
@@ -63,7 +70,7 @@ export function AnalyticsFilterBar() {
   const teamsInDepartment = filters.departmentId ? teams.filter((t) => t.departmentId === filters.departmentId) : teams;
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-muted p-3">
+    <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-sunk p-3">
       <div className="flex flex-col gap-1">
         <label className="text-xs text-text-muted">From</label>
         <Input type="date" value={filters.from} max={filters.to} onChange={(e) => filters.setDateRange(e.target.value, filters.to)} />
@@ -121,17 +128,6 @@ export function AnalyticsFilterBar() {
             </Select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-muted">Project</label>
-            <Select value={filters.projectId ?? ""} onChange={(e) => filters.setFilter("projectId", e.target.value || undefined)}>
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
             <label className="text-xs text-text-muted">Employee</label>
             <Select value={filters.employeeId ?? ""} onChange={(e) => filters.setFilter("employeeId", e.target.value || undefined)}>
               <option value="">All employees</option>
@@ -143,6 +139,22 @@ export function AnalyticsFilterBar() {
             </Select>
           </div>
         </>
+      )}
+
+      {/* Independent from canBrowseOrg — project:read is held from Practitioner
+          tier up, a much wider audience than department:manage/user:manage. */}
+      {canBrowseProjects && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-text-muted">Project</label>
+          <Select value={filters.projectId ?? ""} onChange={(e) => filters.setFilter("projectId", e.target.value || undefined)}>
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       )}
     </div>
   );

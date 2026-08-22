@@ -1,4 +1,4 @@
-import type { BlueprintRoleDef, DepartmentTypeDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef, DepartmentTypeDef } from "@purnit/manifest-schema";
 import { Prisma } from "../generated/prisma/client";
 import type { PrismaClient, Role } from "../generated/prisma/client";
 import type { PrismaTx } from "../tenancy/tenant-prisma.service";

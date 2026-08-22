@@ -1,4 +1,4 @@
-import type { NavItem } from "@antigravity/manifest-schema";
+import type { NavItem } from "@purnit/manifest-schema";
 import { Icon } from "./Icon";
 import { cn } from "./utils";
 

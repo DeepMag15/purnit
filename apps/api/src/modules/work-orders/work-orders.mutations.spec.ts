@@ -12,6 +12,7 @@ describe("workOrder.create", () => {
     const tx = {
       inventoryItem: { findFirst: jest.fn().mockResolvedValue({ id: "i1" }) },
       workOrder: { create: jest.fn().mockResolvedValue({ id: "wo1" }) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await workOrderCreateMutation.resolve({ itemId: "i1", quantity: 5, dueDate: "2026-03-01" }, context(["workOrder:create:tenant"]), tx);
@@ -34,6 +35,7 @@ describe("workOrder.updateStatus", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "wo1", status: "planned", assignedToId: "u1" }),
         update: jest.fn().mockResolvedValue({ id: "wo1", status: "in_progress" }),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
     await workOrderUpdateStatusMutation.resolve({ id: "wo1", status: "in_progress" }, context(["workOrder:update:own"], "u1"), tx);
     expect((tx as unknown as { workOrder: { update: jest.Mock } }).workOrder.update).toHaveBeenCalled();
@@ -112,6 +114,7 @@ describe("workOrder.complete", () => {
         ]),
         update: jest.fn().mockResolvedValue({}),
       },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await workOrderCompleteMutation.resolve({ id: "wo1" }, context(["workOrder:complete:tenant"]), tx);
@@ -134,6 +137,7 @@ describe("workOrder.complete", () => {
       },
       bOMLine: { findMany: jest.fn().mockResolvedValue([]) },
       inventoryItem: { update: jest.fn().mockResolvedValue({}) },
+      embeddingJob: { create: jest.fn() }, // AI RAG Phase C
     } as unknown as PrismaTx;
 
     await workOrderCompleteMutation.resolve({ id: "wo1" }, context(["workOrder:complete:tenant"]), tx);

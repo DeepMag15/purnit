@@ -1,5 +1,5 @@
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { patientsWhere, patientsListDataSource, patientsDoctorOptionsDataSource } from "./patients.data-sources";
+import { patientsWhere, patientsListDataSource, patientsDoctorOptionsDataSource, patientsCapabilitiesDataSource } from "./patients.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -120,5 +120,65 @@ describe("patients.doctorOptions", () => {
   it("returns [] with no doctors, no crash", async () => {
     const tx = { roleAssignment: { findMany: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
     expect(await patientsDoctorOptionsDataSource.resolve({}, context(["patient:read:tenant"]), tx)).toEqual([]);
+  });
+});
+
+describe("patients.capabilities", () => {
+  const tx = {} as unknown as PrismaTx;
+
+  it("all false with no grants at all", async () => {
+    expect(await patientsCapabilitiesDataSource.resolve({}, context([]), tx)).toEqual({
+      canRegisterPatient: false,
+      canUpdatePatient: false,
+      canCreateDocuments: false,
+      canUpdateDocuments: false,
+      canDeleteDocuments: false,
+    });
+  });
+
+  it("canRegisterPatient true with only patient:create", async () => {
+    expect(await patientsCapabilitiesDataSource.resolve({}, context(["patient:create:tenant"]), tx)).toEqual({
+      canRegisterPatient: true,
+      canUpdatePatient: false,
+      canCreateDocuments: false,
+      canUpdateDocuments: false,
+      canDeleteDocuments: false,
+    });
+  });
+
+  it("canUpdatePatient true with only patient:update — a genuinely different resource action from patient:create", async () => {
+    expect(await patientsCapabilitiesDataSource.resolve({}, context(["patient:update:own"]), tx)).toEqual({
+      canRegisterPatient: false,
+      canUpdatePatient: true,
+      canCreateDocuments: false,
+      canUpdateDocuments: false,
+      canDeleteDocuments: false,
+    });
+  });
+
+  it("document flags are independent of each other and of the patient flags", async () => {
+    const data = await patientsCapabilitiesDataSource.resolve({}, context(["document:create:tenant", "document:delete:tenant"]), tx);
+    expect(data).toEqual({
+      canRegisterPatient: false,
+      canUpdatePatient: false,
+      canCreateDocuments: true,
+      canUpdateDocuments: false,
+      canDeleteDocuments: true,
+    });
+  });
+
+  it("all true for a role holding every grant (e.g. Doctor + Admin combined)", async () => {
+    const data = await patientsCapabilitiesDataSource.resolve(
+      {},
+      context(["patient:create:tenant", "patient:update:tenant", "document:create:tenant", "document:update:tenant", "document:delete:tenant"]),
+      tx,
+    );
+    expect(data).toEqual({
+      canRegisterPatient: true,
+      canUpdatePatient: true,
+      canCreateDocuments: true,
+      canUpdateDocuments: true,
+      canDeleteDocuments: true,
+    });
   });
 });

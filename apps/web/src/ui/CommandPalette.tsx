@@ -53,11 +53,11 @@ export function CommandPalette({ open, onClose, items }: { open: boolean; onClos
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[15vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[15vh] backdrop-enter"
       onClick={onClose}
     >
       <div
-        className="glass-panel w-full max-w-lg overflow-hidden rounded-xl border border-border shadow-2xl"
+        className="glass-panel panel-enter w-full max-w-lg overflow-hidden rounded-xl border border-border shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">

@@ -22,12 +22,19 @@ export function Dialog({
   onClose,
   title,
   size = "md",
+  variant = "modal",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title?: string;
   size?: "sm" | "md" | "lg";
+  /** "drawer" reuses every mechanism below (focus trap, Escape, restore-
+   * focus) unchanged — only the outer positioning/animation differs: a
+   * fixed-width panel anchored to the right edge, full height, instead of a
+   * centered box. `size` is ignored for drawers (full-height panels use
+   * their own fixed width). */
+  variant?: "modal" | "drawer";
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -79,19 +86,30 @@ export function Dialog({
 
   if (!open) return null;
 
+  const isDrawer = variant === "drawer";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className={cn(
+        "fixed inset-0 z-50 bg-black/40 backdrop-blur-sm backdrop-enter",
+        isDrawer ? "flex justify-end" : "flex items-center justify-center p-4",
+      )}
+      onClick={onClose}
+    >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
-        className={cn("glass-panel w-full overflow-hidden rounded-xl border border-border shadow-xl", SIZE_CLASSES[size])}
+        className={cn(
+          "glass-panel overflow-y-auto border-border shadow-xl",
+          isDrawer ? "drawer-enter h-full w-full max-w-md border-l" : cn("panel-enter w-full overflow-hidden rounded-xl border", SIZE_CLASSES[size]),
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="sticky top-0 flex items-center justify-between border-b border-border bg-surface/95 px-4 py-3">
             <h2 id={titleId} className="text-sm font-semibold text-text">
               {title}
             </h2>

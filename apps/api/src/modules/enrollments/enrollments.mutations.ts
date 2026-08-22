@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MutationContext, MutationDefinition } from "../../mutations/mutation-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Same `requirePatientInScope` shape every module follows — defensive, not
  * exercised in Phase A (only Admin/Registrar hold `enrollment:update`, both
@@ -32,9 +33,11 @@ export const enrollmentEnrollMutation: MutationDefinition<z.infer<typeof EnrollI
     const existing = await tx.enrollment.findFirst({ where: { studentId: input.studentId, courseId: input.courseId } });
     if (existing) throw new BadRequestException("Already has an enrollment record for this course — update its status instead");
 
-    return tx.enrollment.create({
+    const enrollment = await tx.enrollment.create({
       data: { tenantId: ctx.tenantId, studentId: input.studentId, courseId: input.courseId, enrolledById: ctx.userId },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "enrollment", enrollment.id); // AI RAG Phase C
+    return enrollment;
   },
 };
 
@@ -46,7 +49,9 @@ export const enrollmentUpdateStatusMutation: MutationDefinition<z.infer<typeof U
   requiredPermission: "enrollment:update",
   async resolve(input, ctx, tx) {
     const existing = await requireEnrollmentInScope(tx, ctx, input.id);
-    return tx.enrollment.update({ where: { id: existing.id }, data: { status: input.status } });
+    const updated = await tx.enrollment.update({ where: { id: existing.id }, data: { status: input.status } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "enrollment", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -61,6 +66,8 @@ export const enrollmentRecordFinalGradeMutation: MutationDefinition<z.infer<type
   requiredPermission: "enrollment:update",
   async resolve(input, ctx, tx) {
     const existing = await requireEnrollmentInScope(tx, ctx, input.id);
-    return tx.enrollment.update({ where: { id: existing.id }, data: { finalGrade: input.finalGrade } });
+    const updated = await tx.enrollment.update({ where: { id: existing.id }, data: { finalGrade: input.finalGrade } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "enrollment", updated.id); // AI RAG Phase C
+    return updated;
   },
 };

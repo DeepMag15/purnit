@@ -2,23 +2,23 @@
 // per-day status record — deliberately day-level, not a check-in/check-out
 // clock (see CONTEXT.md's as-built record for the reasoning).
 model AttendanceRecord {
-  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId String   @map("tenant_id") @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
   // Whose attendance this is. No FK, no departmentId column of its own —
   // attendance.correct resolves the SUBJECT's own User.departmentId via a
   // direct lookup at write time (assertInviteesInScope's exact precedent,
   // meetings.mutations.ts) rather than duplicating it here.
-  userId   String   @map("user_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
   // Normalized to UTC midnight at every write site — the uniqueness
   // constraint below depends on every writer doing this consistently.
-  date     DateTime @map("date")
+  date       DateTime @map("date")
   // present | absent | late | half_day — free-text vocabulary, same
   // treatment as Task.status/Conversation.type, not a DB enum.
-  status   String
-  note     String?
+  status     String
+  note       String?
   // Who actually wrote this row: the subject (self-mark) or a Department
   // Head+ correcting a report's record. No FK, same as userId above.
-  markedById String @map("marked_by_id") @db.Uuid
+  markedById String   @map("marked_by_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
