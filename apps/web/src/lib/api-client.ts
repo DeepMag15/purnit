@@ -45,9 +45,28 @@ export interface SignupInput {
   companyName: string;
   displayName: string;
   industry: "IT" | "Healthcare" | "Education" | "Finance" | "Manufacturing";
+  // Go-Live, Phase 03 — the wizard's plan choice. Optional: omitting all
+  // three provisions a Free workspace, exactly as signup did before.
+  planKey?: string;
+  interval?: "month" | "year";
+  seats?: number;
 }
 
-export function signup(input: SignupInput): Promise<{ tenantId: string; userId: string; workspaceId: string }> {
+export interface SignupResult {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  /** The plan actually provisioned — not necessarily the one requested. The
+   * server falls back to Free for an unavailable tier rather than erroring,
+   * so the wizard reads this instead of assuming its own input was honoured. */
+  plan: string | null;
+  billingInterval: string | null;
+  seats: number;
+  /** True only for a paid plan on a Stripe-configured deployment. */
+  checkoutRequired: boolean;
+}
+
+export function signup(input: SignupInput): Promise<SignupResult> {
   return apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(input) });
 }
 

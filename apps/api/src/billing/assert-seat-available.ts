@@ -1,6 +1,38 @@
 import { BadRequestException } from "@nestjs/common";
 import type { PrismaTx, TenantPrismaService } from "../tenancy/tenant-prisma.service";
 
+/** Only the tenant fields the seat ceiling depends on. */
+export interface TenantSeatState {
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string | null;
+  seatsPurchased: number;
+}
+
+/**
+ * The seat ceiling a tenant is actually held to — **the single definition**.
+ *
+ * This exists as its own function because the rule was briefly implemented
+ * twice (here and in `billing.capabilities`) and immediately drifted: live
+ * verification found the UI reporting "unlimited" while invites were being
+ * blocked at 3. A limit that the product enforces but cannot describe is
+ * worse than no limit, so both callers now share this one function.
+ *
+ * `null` means genuinely uncapped.
+ */
+export function resolveSeatLimit(tenant: TenantSeatState, planMaxSeats: number | null): number | null {
+  // A live subscription is capped at what it bought. So is a tenant that
+  // *chose* a paid tier at signup but hasn't paid yet ("pending_payment"),
+  // otherwise picking Starter and never paying would grant unlimited seats,
+  // since every paid tier has `maxSeats: null`.
+  if (tenant.stripeSubscriptionId || tenant.subscriptionStatus === "pending_payment") {
+    return tenant.seatsPurchased;
+  }
+  // No plan at all means the Phase-1 "everything entitled" default, which has
+  // never implied a seat cap — leave it uncapped rather than inventing one
+  // that would suddenly block existing tenants.
+  return planMaxSeats;
+}
+
 /**
  * Go-Live — the seat ceiling, enforced in one place.
  *
@@ -30,16 +62,14 @@ export async function assertSeatAvailable(
   const tenant = await tenantPrisma.root.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) return;
 
-  let limit: number | null;
-  if (tenant.stripeSubscriptionId) {
-    limit = tenant.seatsPurchased;
-  } else {
-    const plan = tenant.planId ? await tenantPrisma.root.plan.findUnique({ where: { id: tenant.planId } }) : null;
-    // No plan at all means the Phase-1 "everything entitled" default, which
-    // has never implied a seat cap — leave it uncapped rather than inventing
-    // one that would suddenly block existing tenants.
-    limit = plan?.maxSeats ?? null;
-  }
+  // Only loaded when it could actually matter — a subscribed or
+  // pending-payment tenant is capped by its own seat count, not by the plan.
+  const plan =
+    tenant.stripeSubscriptionId || tenant.subscriptionStatus === "pending_payment" || !tenant.planId
+      ? null
+      : await tenantPrisma.root.plan.findUnique({ where: { id: tenant.planId } });
+
+  const limit = resolveSeatLimit(tenant, plan?.maxSeats ?? null);
   if (limit === null) return;
 
   const activeUsers = await tx.user.count({ where: { tenantId, deletedAt: null } });
@@ -48,7 +78,7 @@ export async function assertSeatAvailable(
   // The message names the number and the way out — a bare "limit reached"
   // leaves an admin guessing whether to delete someone or pay.
   throw new BadRequestException(
-    tenant.stripeSubscriptionId
+    tenant.stripeSubscriptionId || tenant.subscriptionStatus === "pending_payment"
       ? `All ${limit} seats are in use. Add seats in Settings → Billing to invite more people.`
       : `Your plan includes ${limit} user${limit === 1 ? "" : "s"}. Upgrade in Settings → Billing to invite more people.`,
   );

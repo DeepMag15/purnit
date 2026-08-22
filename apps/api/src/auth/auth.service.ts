@@ -5,6 +5,7 @@ import { SupabaseAdminService } from "./supabase-admin.service";
 import { generateUniqueWorkspaceId } from "./workspace-id";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "./materialize-roles";
 import type { SignupInput } from "./signup.schema";
+import { resolvePlanSelection } from "./resolve-plan-selection";
 import type { WidgetLayoutEntry } from "../modules/analytics/dashboard-layout.types";
 
 // Analytics Phase E — initial widget order per role's default dashboard.
@@ -199,6 +200,17 @@ export class AuthService {
     // never actually happen, but signup must never hard-fail on it.
     const freePlan = await this.tenantPrisma.root.plan.findFirst({ where: { key: "free" } });
 
+    // Go-Live, Phase 03 — the plan chosen in the signup wizard. Looked up
+    // here, decided in `resolvePlanSelection` (a pure function, so the
+    // "never trust what a public endpoint was sent" rules it enforces are
+    // directly testable). A `planKey` that isn't a real, public, self-serve
+    // tier resolves to Free rather than erroring.
+    const requestedPlan =
+      input.planKey && input.planKey !== "free"
+        ? await this.tenantPrisma.root.plan.findUnique({ where: { key: input.planKey }, include: { prices: true } })
+        : null;
+    const selection = resolvePlanSelection(input, freePlan, requestedPlan);
+
     const authUser = await this.supabaseAdmin.createUser(input.email, input.password);
     const workspaceId = await generateUniqueWorkspaceId(this.tenantPrisma, input.companyName);
 
@@ -210,8 +222,16 @@ export class AuthService {
             workspaceId,
             industry: input.industry,
             blueprintVersion: blueprint.version,
-            planId: freePlan?.id ?? null,
+            planId: selection.planId,
             status: "active",
+            // Go-Live, Phase 03 — the chosen shape, recorded up front so the
+            // workspace is immediately consistent with what the wizard
+            // quoted. `subscriptionStatus` is deliberately NOT "active" for
+            // a paid selection: nothing has been paid yet, and only the
+            // signed Stripe webhook is ever trusted to write that.
+            seatsPurchased: selection.seats,
+            billingInterval: selection.interval,
+            subscriptionStatus: selection.subscriptionStatus,
           },
         });
 
@@ -260,7 +280,22 @@ export class AuthService {
           },
         });
 
-        return { tenantId: tenant.id, userId: user.id, workspaceId: tenant.workspaceId };
+        return {
+          tenantId: tenant.id,
+          userId: user.id,
+          workspaceId: tenant.workspaceId,
+          // Go-Live, Phase 03 — what the wizard should do next. Returned
+          // rather than inferred client-side so the browser never has to
+          // reason about whether Stripe is configured or whether the plan it
+          // asked for was actually honoured.
+          plan: selection.planKey,
+          billingInterval: selection.interval,
+          seats: selection.seats,
+          /** True only for a paid plan on a Stripe-configured deployment.
+           * The wizard sends the user to Checkout when this is set, and
+           * straight into the workspace when it isn't. */
+          checkoutRequired: selection.checkoutRequired,
+        };
       });
     } catch (err) {
       // Signup must be all-or-nothing across Supabase Auth + our Postgres.

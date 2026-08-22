@@ -129,6 +129,29 @@ describe("billing.capabilities", () => {
     expect(result.hasSubscription).toBe(true);
   });
 
+  // The reported limit and the enforced limit must agree. They briefly did
+  // not: a pending_payment tenant was described as "unlimited" here while
+  // user.invite blocked it at its selected seat count. Both now share
+  // `resolveSeatLimit`, and this locks that in.
+  it("reports the selected seat count for a pending_payment tenant, matching what invites enforce", async () => {
+    const result = await run(
+      fakeTenantPrisma({
+        tenant: {
+          ...UNSUBSCRIBED,
+          planId: "plan_starter",
+          subscriptionStatus: "pending_payment",
+          seatsPurchased: 3,
+        },
+        // Every paid tier has maxSeats: null — the exact reason the old
+        // duplicated logic reported "unlimited".
+        currentPlan: planRow({ key: "starter", maxSeats: null }),
+        activeUsers: 3,
+      }),
+    );
+    expect(result.seatLimit).toBe(3);
+    expect(result.seatsRemaining).toBe(0);
+  });
+
   it("never reports negative seats remaining when a tenant is over its limit", async () => {
     const result = await run(
       fakeTenantPrisma({

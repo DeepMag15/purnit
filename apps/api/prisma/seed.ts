@@ -647,16 +647,12 @@ const IT_BLUEPRINT_V1 = {
       // Stripe Billing — same moduleKey addition as nav.leave above.
       moduleKey: "crm",
     },
-    {
-      // Notifications — universal visibility, no requiredPermission, same
-      // treatment as nav.dashboard/nav.chat/nav.settings: this is core
-      // chrome (the bell already exists ungated), not an entitlement-gated
-      // business module — no moduleKey, not added to `modules` below either.
-      id: "nav.notifications",
-      label: "Notifications",
-      icon: "notifications",
-      pageId: "page.notifications",
-    },
+    // Notifications is deliberately NOT a sidebar item. It is chrome, not a
+    // business module: the bell in the header is the real entry point, and
+    // its "See all" link goes straight to /workspace/notifications. Listing
+    // it in the sidebar alongside Projects/Tasks/CRM implied it was a module
+    // of the same kind, which it never was. The `page.notifications` node
+    // below stays — the dedicated route still needs to be reachable.
     {
       // Audit Logs — Company-Admin-only (audit:read is granted to
       // role.admin alone, everywhere), same nav-gating shape as nav.crm's
@@ -1709,7 +1705,6 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     // (the bell already exists ungated), not an entitlement-gated business
     // module — no moduleKey, not added to this blueprint's own `modules`
     // array either.
-    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
     // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
     // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
     { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
@@ -2187,7 +2182,6 @@ const EDUCATION_BLUEPRINT_V1 = {
     // (the bell already exists ungated), not an entitlement-gated business
     // module — no moduleKey, not added to this blueprint's own `modules`
     // array either.
-    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
     // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
     // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
     { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
@@ -2663,7 +2657,6 @@ const FINANCE_BLUEPRINT_V1 = {
     // (the bell already exists ungated), not an entitlement-gated business
     // module — no moduleKey, not added to this blueprint's own `modules`
     // array either.
-    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
     // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
     // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
     { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
@@ -3165,7 +3158,6 @@ const MANUFACTURING_BLUEPRINT_V1 = {
     // (the bell already exists ungated), not an entitlement-gated business
     // module — no moduleKey, not added to this blueprint's own `modules`
     // array either.
-    { id: "nav.notifications", label: "Notifications", icon: "notifications", pageId: "page.notifications" },
     // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
     // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
     { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },

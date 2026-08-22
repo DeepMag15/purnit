@@ -62,6 +62,28 @@ describe("assertSeatAvailable", () => {
     await expect(assertSeatAvailable(tx, tenantPrisma, "t1")).rejects.toThrow(BadRequestException);
   });
 
+  // Found during Phase 03's live verification, not by a unit test: a tenant
+  // that picked a paid tier at signup and never paid has no Stripe
+  // subscription, so it used to fall through to `plan.maxSeats` — null on
+  // every paid tier — and got unlimited seats for free.
+  it("holds a pending_payment tenant to the seats it selected at signup", async () => {
+    const { tx, tenantPrisma } = setup({
+      tenant: { id: "t1", stripeSubscriptionId: null, subscriptionStatus: "pending_payment", seatsPurchased: 7, planId: "p_starter" },
+      plan: { maxSeats: null },
+      activeUsers: 7,
+    });
+    await expect(assertSeatAvailable(tx, tenantPrisma, "t1")).rejects.toThrow(/All 7 seats are in use/);
+  });
+
+  it("still allows a pending_payment tenant room inside its selected seats", async () => {
+    const { tx, tenantPrisma } = setup({
+      tenant: { id: "t1", stripeSubscriptionId: null, subscriptionStatus: "pending_payment", seatsPurchased: 7, planId: "p_starter" },
+      plan: { maxSeats: null },
+      activeUsers: 3,
+    });
+    await expect(assertSeatAvailable(tx, tenantPrisma, "t1")).resolves.toBeUndefined();
+  });
+
   it("leaves a plan with no maxSeats uncapped", async () => {
     const { tx, tenantPrisma } = setup({
       tenant: { id: "t1", stripeSubscriptionId: null, seatsPurchased: 1, planId: "p_ent" },

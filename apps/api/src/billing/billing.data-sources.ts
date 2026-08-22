@@ -3,6 +3,7 @@ import type { DataSourceDefinition } from "../data-sources/data-source-registry.
 import type { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { StripeService } from "./stripe.service";
 import { toPublicPlan } from "./plan-catalog";
+import { resolveSeatLimit } from "./assert-seat-available";
 
 const CapabilitiesParamsSchema = z.object({});
 
@@ -38,12 +39,12 @@ export function createBillingCapabilitiesDataSource(
         }),
       ]);
 
-      // The seat ceiling a tenant is actually held to. A paid subscription is
-      // capped by what it bought; an unsubscribed tenant is capped by its
-      // plan's own `maxSeats` (Free's 3). Null means genuinely uncapped —
-      // only reachable on a paid plan with no `maxSeats`, which is why the
-      // subscription branch is checked first.
-      const seatLimit = tenant?.stripeSubscriptionId ? tenant.seatsPurchased : (currentPlan?.maxSeats ?? null);
+      // The seat ceiling this tenant is actually held to. Shares ONE
+      // definition with the code that enforces it (`resolveSeatLimit`) — this
+      // was briefly duplicated and immediately drifted, with the UI reporting
+      // "unlimited" while invites were being blocked at 3. A limit the
+      // product enforces but cannot describe is worse than no limit.
+      const seatLimit = tenant ? resolveSeatLimit(tenant, currentPlan?.maxSeats ?? null) : null;
 
       return {
         currentPlan: currentPlan ? toPublicPlan(currentPlan) : null,
