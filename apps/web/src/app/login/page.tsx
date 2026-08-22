@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../lib/supabase-client";
 import { setAccessToken } from "../../lib/session";
 import { verifyWorkspace, getWorkspaceSsoStatus, ApiError } from "../../lib/api-client";
@@ -116,10 +117,18 @@ function LoginPageInner() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-4">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,var(--color-accent)_0%,transparent_70%)] opacity-[0.1]" />
       <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-surface p-7 shadow-sm">
+        {/* Go-Live, Phase 02 — a way back to the public site. Landing on an
+         * auth page with no route home is a small dead end, and it is the
+         * one piece of chrome the marketing layout deliberately doesn't
+         * wrap these pages in. */}
         <div className="mb-5 flex justify-center">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-fg">
+          <Link
+            href="/"
+            aria-label="Purnit home"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-fg transition-colors duration-[var(--duration-base)] hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          >
             <Icon name="auto_awesome" size={16} />
-          </div>
+          </Link>
         </div>
         <h1 className="text-center text-lg font-semibold text-text">Log in</h1>
 
@@ -162,11 +171,15 @@ function LoginPageInner() {
           </form>
         )}
 
+        {/* `next/link`, not a plain `<a href>` — an internal `<a>` forces a
+         * full browser navigation, tearing down and remounting the whole
+         * React tree. That was a real, measured bug in the workspace
+         * sidebar (ARCHITECTURE.md §7.8) and is now a standing rule. */}
         <p className="mt-5 text-center text-sm text-text-muted">
           No workspace yet?{" "}
-          <a href="/signup" className="font-medium text-accent hover:underline">
+          <Link href="/signup" className="font-medium text-accent hover:underline">
             Create one
-          </a>
+          </Link>
         </p>
       </div>
     </main>

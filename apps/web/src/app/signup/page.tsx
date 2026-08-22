@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { signup, ApiError } from "../../lib/api-client";
 import { supabase } from "../../lib/supabase-client";
 import { setAccessToken } from "../../lib/session";
@@ -137,9 +138,9 @@ export default function SignupPage() {
         </form>
         <p className="mt-5 text-center text-sm text-text-muted">
           Already have a workspace?{" "}
-          <a href="/login" className="font-medium text-accent hover:underline">
+          <Link href="/login" className="font-medium text-accent hover:underline">
             Log in
-          </a>
+          </Link>
         </p>
       </div>
     </main>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../../lib/supabase-client";
 import { setAccessToken } from "../../../lib/session";
 import { completePostLoginRedirect } from "../../../lib/post-login";
@@ -63,9 +64,9 @@ export default function SsoCallbackPage() {
         {error ? (
           <>
             <Alert tone="danger">{error}</Alert>
-            <a href="/login" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+            <Link href="/login" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
               Back to login
-            </a>
+            </Link>
           </>
         ) : (
           <p className="text-sm text-text-muted">Completing sign-in…</p>
