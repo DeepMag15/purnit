@@ -136,6 +136,22 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
     // settings:manage/role:manage. See the metric files' own doc comments.
     module: "Analytics",
     entries: [
+      // Role-Based Workspaces, Stage A — the gate on the Analytics *surface*
+      // itself, as opposed to the three cross-cutting comparison widgets
+      // below which gate specific sensitive views.
+      //
+      // Added because Analytics was one of 7-8 nav items in every blueprint
+      // carrying no `requiredPermission` at all, which is a large part of why
+      // an Intern's sidebar was 63% identical to a Company Admin's. Every
+      // individual metric was already permission-gated (all 46 of them), so
+      // a junior role opening Analytics saw a nearly-empty page — the module
+      // was visible without being useful.
+      //
+      // Presence-only and always tenant-wide when granted, the same shape as
+      // `settings:manage`/`role:manage`. It does NOT widen what any metric
+      // returns: each metric still enforces its own permission and scope, so
+      // holding this grants the page, never the numbers on it.
+      { resource: "analytics", action: "read", label: "Open the Analytics workspace" },
       { resource: "analytics", action: "departmentPerformance", label: "View cross-department performance comparisons" },
       { resource: "analytics", action: "productivity", label: "View cross-employee productivity comparisons" },
       { resource: "analytics", action: "aiUsage", label: "View AI usage analytics" },

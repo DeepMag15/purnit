@@ -112,6 +112,13 @@ const IT_BLUEPRINT_V1 = {
         // since anyone from Lead tier up can plausibly be someone's direct
         // manager in this org model.
         "+leave:approve:own",
+        // Role-Based Workspaces, Stage A — Analytics becomes visible from the
+        // Lead tier up, and is inherited by Manager / Department Head /
+        // Executive / HR Manager through the extends chain. Below this tier a
+        // person's own work is the whole job; organizational analytics is
+        // noise they cannot act on. Opening the page only — every metric on
+        // it still enforces its own permission and scope.
+        "+analytics:read:tenant",
       ],
     },
     {
@@ -298,6 +305,7 @@ const IT_BLUEPRINT_V1 = {
         "featureFlag:manage:tenant",
         "sso:manage:tenant",
         "tenant:delete:tenant",
+        "analytics:read:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -473,115 +481,149 @@ const IT_BLUEPRINT_V1 = {
   // for which of these remain real future design sessions; when one is
   // actually built, give it a real nav entry + page then, not a placeholder
   // ahead of time.
+  // Role-Based Workspaces, Stage A — grouped, fully-gated navigation.
+  //
+  // One static tree per blueprint; the per-role sidebar is produced entirely
+  // by `pruneNavItems` (permission-pruner.ts), which removes items a role
+  // lacks the permission for and then removes any group left empty. Adding a
+  // role — Student included — is therefore blueprint data plus grants, never
+  // a frontend change.
+  //
+  // Previously 7-8 of these carried no `requiredPermission` at all, which is
+  // why a Doctor, a Nurse and a Receptionist all opened the identical eleven
+  // items. Everything here is now either genuinely universal (Dashboard,
+  // Calendar, Leave, Chat, Meetings, Announcements) or gated on a real
+  // permission.
   navigation: [
-    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
-      id: "nav.projects",
-      label: "Projects",
-      icon: "folder",
-      pageId: "page.projects",
-      requiredPermission: "project:read",
-      moduleKey: "projects",
+      id: "nav.dashboard",
+      label: "Dashboard",
+      icon: "home",
+      pageId: "page.dashboard",
     },
     {
-      id: "nav.tasks",
-      label: "Tasks",
-      icon: "check-square",
-      pageId: "page.tasks",
-      requiredPermission: "task:read",
-      moduleKey: "tasks",
-    },
-    {
-      // Core Workspace Modules, Phase 1, Submodule 2: Channels & Direct
-      // Messages. No requiredPermission — chat is core tooling, same
-      // "visible to every tenant member" treatment as nav.dashboard/
-      // nav.settings, not an entitlement-gated module like Projects/Tasks.
-      id: "nav.chat",
-      label: "Chat",
-      icon: "chat",
-      pageId: "page.chat",
-    },
-    {
-      // Core Workspace Modules, Phase 1, Submodule 3: Meetings (complete) —
-      // no requiredPermission, deliberately, same "visible to every tenant
-      // member" treatment as nav.dashboard/nav.settings/nav.chat; scheduling
-      // authority is enforced at the meeting.create mutation itself.
-      id: "nav.meetings",
-      label: "Meetings",
-      icon: "meetings",
-      pageId: "page.meetings",
-    },
-    {
-      // Core Workspace Modules, Phase 1, Submodule 4: Announcements
-      // (complete) — no requiredPermission, same "visible to every tenant
-      // member" treatment as nav.dashboard/nav.chat/nav.meetings; posting
-      // authority (announcement:create:<scope>) is enforced at the
-      // announcement.create mutation itself. Brand-new — no prior
-      // placeholder existed here (unlike Meetings' old EmptyState stub).
-      id: "nav.announcements",
-      label: "Announcements",
-      icon: "announcements",
-      pageId: "page.announcements",
-    },
-    {
-      // Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling —
-      // no requiredPermission, same "visible to every tenant member"
-      // treatment as nav.meetings/nav.announcements; creation authority
-      // (calendarEvent:create:<scope>) is enforced at calendarEvent.create.
-      // Every tier holds at least :own (see role.intern below), so this is
-      // never pruned for anyone.
-      id: "nav.calendar",
-      label: "Calendar",
-      icon: "calendar",
-      pageId: "page.calendar",
-    },
-    {
-      // Pure disclosure group (no pageId) — every child is gated on
-      // user:manage, so this whole group is absent, not empty, for any tier
-      // that lacks it (permission-pruner.ts drops emptied-out groups).
-      id: "nav.hr-group",
-      label: "HR",
-      icon: "hr-group",
+      id: "nav.work",
+      label: "Work",
+      icon: "work",
       children: [
         {
-          // Existing item, relabeled ("Team" -> "Employees") and moved under
-          // this new group; id/pageId/permission unchanged for tenant
-          // nav-override stability (see override-applier.ts).
+          id: "nav.projects",
+          label: "Projects",
+          icon: "folder",
+          pageId: "page.projects",
+          requiredPermission: "project:read",
+          moduleKey: "projects",
+        },
+        {
+          id: "nav.tasks",
+          label: "Tasks",
+          icon: "check-square",
+          pageId: "page.tasks",
+          requiredPermission: "task:read",
+          moduleKey: "tasks",
+        },
+        {
+          id: "nav.crm",
+          label: "CRM",
+          icon: "handshake",
+          pageId: "page.crm",
+          requiredPermission: "contact:read",
+          moduleKey: "crm",
+        },
+      ],
+    },
+    {
+      id: "nav.people",
+      label: "People",
+      icon: "people",
+      children: [
+        {
           id: "nav.team",
           label: "Employees",
           icon: "users",
           pageId: "page.team",
           requiredPermission: "user:manage",
         },
-        // Core Workspace Modules, Phase 3, Submodule 2: Attendance —
-        // real module now, no longer a placeholder. requiredPermission
-        // changed from the placeholder's generic user:manage to
-        // attendance's own real triple — attendance:read:own is a
-        // universal floor (see role.intern above), so this is never
-        // pruned for anyone, same "always reachable" shape as
-        // calendarEvent:create:own's nav entry.
-        { id: "nav.attendance", label: "Attendance", icon: "attendance", pageId: "page.attendance", requiredPermission: "attendance:read" },
-        // nav.insights retired — consolidated into nav.analytics (Core
-        // Workspace Modules, Phase 4: Analytics & Insights).
-      ],
-    },
-    {
-      // Pure disclosure group, same empty-drop treatment as nav.hr-group.
-      id: "nav.workspace-admin",
-      label: "Workspace Administration",
-      icon: "workspace-admin",
-      children: [
         {
-          // Existing item, relabeled ("Org Structure" -> "Teams") and moved
-          // under this new group; id kept as "nav.hr" (its original id, even
-          // though the label no longer says "HR") for override stability —
-          // it predates and is unrelated to the new nav.hr-group above.
           id: "nav.hr",
           label: "Teams",
           icon: "sitemap",
           pageId: "page.hr",
           requiredPermission: "department:manage",
         },
+      ],
+    },
+    {
+      id: "nav.insights",
+      label: "Insights",
+      icon: "insights",
+      children: [
+        {
+          id: "nav.analytics",
+          label: "Analytics",
+          icon: "analytics",
+          pageId: "page.analytics",
+          requiredPermission: "analytics:read",
+        },
+      ],
+    },
+    {
+      id: "nav.collaborate",
+      label: "Collaborate",
+      icon: "collaborate",
+      children: [
+        {
+          id: "nav.chat",
+          label: "Chat",
+          icon: "chat",
+          pageId: "page.chat",
+        },
+        {
+          id: "nav.meetings",
+          label: "Meetings",
+          icon: "meetings",
+          pageId: "page.meetings",
+        },
+        {
+          id: "nav.announcements",
+          label: "Announcements",
+          icon: "announcements",
+          pageId: "page.announcements",
+        },
+      ],
+    },
+    {
+      id: "nav.personal",
+      label: "My Work",
+      icon: "personal",
+      children: [
+        {
+          id: "nav.calendar",
+          label: "Calendar",
+          icon: "calendar",
+          pageId: "page.calendar",
+        },
+        {
+          id: "nav.attendance",
+          label: "Attendance",
+          icon: "attendance",
+          pageId: "page.attendance",
+          requiredPermission: "attendance:read",
+        },
+        {
+          id: "nav.leave",
+          label: "Leave",
+          icon: "event_busy",
+          pageId: "page.leave",
+          moduleKey: "leave",
+        },
+      ],
+    },
+    {
+      id: "nav.administration",
+      label: "Administration",
+      icon: "workspace-admin",
+      children: [
         {
           id: "nav.roles-permissions",
           label: "Roles & Permissions",
@@ -589,80 +631,21 @@ const IT_BLUEPRINT_V1 = {
           pageId: "page.roles-permissions",
           requiredPermission: "role:manage",
         },
+        {
+          id: "nav.settings",
+          label: "Settings",
+          icon: "settings",
+          pageId: "page.settings",
+          requiredPermission: "settings:manage",
+        },
+        {
+          id: "nav.audit-logs",
+          label: "Audit Logs",
+          icon: "audit-logs",
+          pageId: "page.audit-logs",
+          requiredPermission: "audit:read",
+        },
       ],
-    },
-    {
-      id: "nav.settings",
-      label: "Settings",
-      icon: "settings",
-      pageId: "page.settings",
-      // No requiredPermission, deliberately — visible to every authenticated
-      // tenant member (same treatment as nav.dashboard). Workspace details
-      // and "my profile" are readable by anyone; the edit controls inside
-      // page.settings are still individually gated on settings:manage.
-      // No moduleKey — not an entitlement-gated module, core tooling.
-      // Deliberately NOT nested under Workspace Administration despite the
-      // label similarity — nesting it there would make Settings invisible
-      // to non-admins, regressing its existing universal visibility.
-    },
-    {
-      // Core Workspace Modules, Phase 4: Analytics & Insights — real module
-      // now (was two separate dead placeholders, nav.insights/nav.analytics;
-      // consolidated into this one). Broad visibility, no page-level gate —
-      // every widget inside AnalyticsDashboard is independently gated by its
-      // own metric's requiredPermission (analytics.dashboard's resolve
-      // loop), same "prune per-widget, not the whole page" treatment
-      // nav.dashboard/nav.chat already get.
-      id: "nav.analytics",
-      label: "Analytics",
-      icon: "analytics",
-      pageId: "page.analytics",
-    },
-    {
-      // Leave Management — universal visibility, no requiredPermission,
-      // same treatment as nav.dashboard/nav.settings: leave:create:own/
-      // leave:read:own are a universal floor (see role.intern above), so
-      // everyone can at least submit their own requests. Ships as a
-      // dedicated route from day one (Frontend Redesign's own "kill the
-      // generic renderer" pattern) — no catch-all detour needed since this
-      // module never existed on the old renderer to begin with.
-      id: "nav.leave",
-      label: "Leave",
-      icon: "event_busy",
-      pageId: "page.leave",
-      // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements
-      // can actually gate this (previously no moduleKey at all, meaning
-      // entitlement filtering had zero effect on it).
-      moduleKey: "leave",
-    },
-    {
-      // CRM — gated on contact:read (not universal like Leave/Notifications
-      // — Contact/Deal require a real grant, absent for most roles in the
-      // flat blueprints and for Intern-through-Senior-Practitioner tiers
-      // here in IT).
-      id: "nav.crm",
-      label: "CRM",
-      icon: "handshake",
-      pageId: "page.crm",
-      requiredPermission: "contact:read",
-      // Stripe Billing — same moduleKey addition as nav.leave above.
-      moduleKey: "crm",
-    },
-    // Notifications is deliberately NOT a sidebar item. It is chrome, not a
-    // business module: the bell in the header is the real entry point, and
-    // its "See all" link goes straight to /workspace/notifications. Listing
-    // it in the sidebar alongside Projects/Tasks/CRM implied it was a module
-    // of the same kind, which it never was. The `page.notifications` node
-    // below stays — the dedicated route still needs to be reachable.
-    {
-      // Audit Logs — Company-Admin-only (audit:read is granted to
-      // role.admin alone, everywhere), same nav-gating shape as nav.crm's
-      // contact:read.
-      id: "nav.audit-logs",
-      label: "Audit Logs",
-      icon: "audit-logs",
-      pageId: "page.audit-logs",
-      requiredPermission: "audit:read",
     },
   ],
   dashboards: { default: "page.dashboard" },
@@ -1142,6 +1125,9 @@ const IT_BLUEPRINT_V1 = {
       id: "page.settings",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "settings:manage",
       children: [
         {
           id: "workspace-settings",
@@ -1383,6 +1369,9 @@ const IT_BLUEPRINT_V1 = {
       id: "page.analytics",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "analytics:read",
       children: [
         { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
         // Phase C (Visual & Widget-Type Depth) — a "Core Widget (Always
@@ -1540,6 +1529,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "featureFlag:manage:tenant",
         "sso:manage:tenant",
         "tenant:delete:tenant",
+        "analytics:read:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -1579,6 +1569,10 @@ const HEALTHCARE_BLUEPRINT_V1 = {
       label: "Doctor",
       rank: 1,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         // Needs to look up any patient (referrals/coverage), but may only
         // update their own assigned patients' profile/status.
         "patient:read:tenant",
@@ -1653,66 +1647,156 @@ const HEALTHCARE_BLUEPRINT_V1 = {
   // No Healthcare department taxonomy in Phase A — see this fixture's own
   // header comment. Additive to populate later; not a redesign.
   departmentTypes: [],
+  // Role-Based Workspaces, Stage A — grouped, fully-gated navigation.
+  //
+  // One static tree per blueprint; the per-role sidebar is produced entirely
+  // by `pruneNavItems` (permission-pruner.ts), which removes items a role
+  // lacks the permission for and then removes any group left empty. Adding a
+  // role — Student included — is therefore blueprint data plus grants, never
+  // a frontend change.
+  //
+  // Previously 7-8 of these carried no `requiredPermission` at all, which is
+  // why a Doctor, a Nurse and a Receptionist all opened the identical eleven
+  // items. Everything here is now either genuinely universal (Dashboard,
+  // Calendar, Leave, Chat, Meetings, Announcements) or gated on a real
+  // permission.
   navigation: [
-    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
-      id: "nav.patients",
-      label: "Patients",
-      icon: "group",
-      pageId: "page.patients",
-      requiredPermission: "patient:read",
-      moduleKey: "patients",
+      id: "nav.dashboard",
+      label: "Dashboard",
+      icon: "home",
+      pageId: "page.dashboard",
     },
     {
-      id: "nav.appointments",
-      label: "Appointments",
-      icon: "calendar",
-      pageId: "page.appointments",
-      requiredPermission: "appointment:read",
-      moduleKey: "appointments",
+      id: "nav.care",
+      label: "Care",
+      icon: "care",
+      children: [
+        {
+          id: "nav.patients",
+          label: "Patients",
+          icon: "group",
+          pageId: "page.patients",
+          requiredPermission: "patient:read",
+          moduleKey: "patients",
+        },
+        {
+          id: "nav.appointments",
+          label: "Appointments",
+          icon: "calendar",
+          pageId: "page.appointments",
+          requiredPermission: "appointment:read",
+          moduleKey: "appointments",
+        },
+        {
+          id: "nav.tasks",
+          label: "Care Tasks",
+          icon: "check-square",
+          pageId: "page.tasks",
+          requiredPermission: "task:read",
+          moduleKey: "tasks",
+        },
+      ],
     },
-    // Everything below reuses an existing module's own nav entry verbatim
-    // (same pageId-bearing composite, same permission gate where one
-    // exists) — zero new code, only blueprint content, per this initiative's
-    // own "reuse as many existing modules as possible" mandate.
-    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
-    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
-    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
-    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
     {
-      id: "nav.attendance",
-      label: "Attendance",
-      icon: "attendance",
-      pageId: "page.attendance",
-      requiredPermission: "attendance:read",
+      id: "nav.insights",
+      label: "Insights",
+      icon: "insights",
+      children: [
+        {
+          id: "nav.analytics",
+          label: "Analytics",
+          icon: "analytics",
+          pageId: "page.analytics",
+          requiredPermission: "analytics:read",
+        },
+      ],
     },
     {
-      id: "nav.roles-permissions",
-      label: "Roles & Permissions",
-      icon: "roles-permissions",
-      pageId: "page.roles-permissions",
-      requiredPermission: "role:manage",
+      id: "nav.collaborate",
+      label: "Collaborate",
+      icon: "collaborate",
+      children: [
+        {
+          id: "nav.chat",
+          label: "Chat",
+          icon: "chat",
+          pageId: "page.chat",
+        },
+        {
+          id: "nav.meetings",
+          label: "Meetings",
+          icon: "meetings",
+          pageId: "page.meetings",
+        },
+      ],
     },
-    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    // Leave Management — universal visibility (leave:create/read:own is a
-    // universal floor across every role above), dedicated route from day
-    // one, same treatment as the IT blueprint's own nav.leave.
-    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
-    // actually gate these (previously declared with no moduleKey at all,
-    // meaning entitlement filtering had zero effect on them).
-    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
-    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
-    // Notifications — universal visibility, no requiredPermission, same
-    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
-    // (the bell already exists ungated), not an entitlement-gated business
-    // module — no moduleKey, not added to this blueprint's own `modules`
-    // array either.
-    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
-    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
-    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
+    {
+      id: "nav.personal",
+      label: "My Work",
+      icon: "personal",
+      children: [
+        {
+          id: "nav.calendar",
+          label: "Calendar",
+          icon: "calendar",
+          pageId: "page.calendar",
+        },
+        {
+          id: "nav.attendance",
+          label: "Attendance",
+          icon: "attendance",
+          pageId: "page.attendance",
+          requiredPermission: "attendance:read",
+        },
+        {
+          id: "nav.leave",
+          label: "Leave",
+          icon: "event_busy",
+          pageId: "page.leave",
+          moduleKey: "leave",
+        },
+      ],
+    },
+    {
+      id: "nav.administration",
+      label: "Administration",
+      icon: "workspace-admin",
+      children: [
+        {
+          id: "nav.crm",
+          label: "CRM",
+          icon: "handshake",
+          pageId: "page.crm",
+          requiredPermission: "contact:read",
+          moduleKey: "crm",
+        },
+        {
+          id: "nav.roles-permissions",
+          label: "Roles & Permissions",
+          icon: "roles-permissions",
+          pageId: "page.roles-permissions",
+          requiredPermission: "role:manage",
+        },
+        {
+          id: "nav.settings",
+          label: "Settings",
+          icon: "settings",
+          pageId: "page.settings",
+          requiredPermission: "settings:manage",
+        },
+        {
+          id: "nav.audit-logs",
+          label: "Audit Logs",
+          icon: "audit-logs",
+          pageId: "page.audit-logs",
+          requiredPermission: "audit:read",
+        },
+      ],
+    },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["patients", "appointments", "leave", "crm"],
+  modules: ["patients", "appointments", "leave", "crm", "tasks"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -1785,10 +1869,36 @@ const HEALTHCARE_BLUEPRINT_V1 = {
     // verbatim (same composite type, same actions/mutations) — copied, not
     // referenced, since `pages` is a per-blueprint map; zero new frontend
     // code either way, only JSON.
+    // Role-Based Workspaces, Stage A — the existing Tasks module, surfaced
+    // in this blueprint for the first time. Defaults to the signed-in
+    // person's own items (`assigneeId: user.id`), matching IT's page.tasks.
+    "page.tasks": {
+      id: "page.tasks",
+      type: "Page",
+      version: 1,
+      requiredPermission: "task:read",
+      children: [
+        {
+          id: "task-list",
+          type: "TaskList",
+          version: 1,
+          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+          actions: [
+            { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
+            { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "task.reassign", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "comment.create", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
     "page.analytics": {
       id: "page.analytics",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "analytics:read",
       children: [
         { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
         {
@@ -1899,6 +2009,9 @@ const HEALTHCARE_BLUEPRINT_V1 = {
       id: "page.settings",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "settings:manage",
       children: [
         {
           id: "workspace-settings",
@@ -2010,6 +2123,7 @@ const EDUCATION_BLUEPRINT_V1 = {
         "featureFlag:manage:tenant",
         "sso:manage:tenant",
         "tenant:delete:tenant",
+        "analytics:read:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -2044,6 +2158,10 @@ const EDUCATION_BLUEPRINT_V1 = {
       label: "Teacher",
       rank: 1,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         // Needs to look up any student/course (coordination, substitute
         // coverage), but may only edit courses actually assigned to them —
         // identical reasoning to Doctor's patient:read:tenant / patient:update:own.
@@ -2107,6 +2225,10 @@ const EDUCATION_BLUEPRINT_V1 = {
       label: "Registrar",
       rank: 3,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         // Owns the Student/Enrollment lifecycle tenant-wide — no
         // project/task/document, no assignment/grade at all. A registrar
         // never becomes a course's materialsProject member and never touches
@@ -2134,63 +2256,156 @@ const EDUCATION_BLUEPRINT_V1 = {
   // narrowing as Healthcare's own Phase A; none of the 5 new models have a
   // departmentId column.
   departmentTypes: [],
+  // Role-Based Workspaces, Stage A — grouped, fully-gated navigation.
+  //
+  // One static tree per blueprint; the per-role sidebar is produced entirely
+  // by `pruneNavItems` (permission-pruner.ts), which removes items a role
+  // lacks the permission for and then removes any group left empty. Adding a
+  // role — Student included — is therefore blueprint data plus grants, never
+  // a frontend change.
+  //
+  // Previously 7-8 of these carried no `requiredPermission` at all, which is
+  // why a Doctor, a Nurse and a Receptionist all opened the identical eleven
+  // items. Everything here is now either genuinely universal (Dashboard,
+  // Calendar, Leave, Chat, Meetings, Announcements) or gated on a real
+  // permission.
   navigation: [
-    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
-      id: "nav.students",
-      label: "Students",
-      icon: "group",
-      pageId: "page.students",
-      requiredPermission: "student:read",
-      moduleKey: "students",
+      id: "nav.dashboard",
+      label: "Dashboard",
+      icon: "home",
+      pageId: "page.dashboard",
     },
     {
-      id: "nav.courses",
-      label: "Courses",
-      icon: "school",
-      pageId: "page.courses",
-      requiredPermission: "course:read",
-      moduleKey: "courses",
+      id: "nav.academics",
+      label: "Academics",
+      icon: "academics",
+      children: [
+        {
+          id: "nav.students",
+          label: "Students",
+          icon: "group",
+          pageId: "page.students",
+          requiredPermission: "student:read",
+          moduleKey: "students",
+        },
+        {
+          id: "nav.courses",
+          label: "Courses",
+          icon: "school",
+          pageId: "page.courses",
+          requiredPermission: "course:read",
+          moduleKey: "courses",
+        },
+        {
+          id: "nav.tasks",
+          label: "Coursework",
+          icon: "check-square",
+          pageId: "page.tasks",
+          requiredPermission: "task:read",
+          moduleKey: "tasks",
+        },
+      ],
     },
-    // Everything below reuses an existing module's own nav entry verbatim
-    // (same pageId-bearing composite, same permission gate where one
-    // exists) — zero new code, only blueprint content, same "reuse as many
-    // existing modules as possible" mandate Healthcare's own Phase A used.
-    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
-    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
-    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
-    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
     {
-      id: "nav.attendance",
-      label: "Attendance",
-      icon: "attendance",
-      pageId: "page.attendance",
-      requiredPermission: "attendance:read",
+      id: "nav.insights",
+      label: "Insights",
+      icon: "insights",
+      children: [
+        {
+          id: "nav.analytics",
+          label: "Analytics",
+          icon: "analytics",
+          pageId: "page.analytics",
+          requiredPermission: "analytics:read",
+        },
+      ],
     },
     {
-      id: "nav.roles-permissions",
-      label: "Roles & Permissions",
-      icon: "roles-permissions",
-      pageId: "page.roles-permissions",
-      requiredPermission: "role:manage",
+      id: "nav.collaborate",
+      label: "Collaborate",
+      icon: "collaborate",
+      children: [
+        {
+          id: "nav.chat",
+          label: "Chat",
+          icon: "chat",
+          pageId: "page.chat",
+        },
+        {
+          id: "nav.meetings",
+          label: "Meetings",
+          icon: "meetings",
+          pageId: "page.meetings",
+        },
+      ],
     },
-    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
-    // actually gate these (previously declared with no moduleKey at all,
-    // meaning entitlement filtering had zero effect on them).
-    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
-    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
-    // Notifications — universal visibility, no requiredPermission, same
-    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
-    // (the bell already exists ungated), not an entitlement-gated business
-    // module — no moduleKey, not added to this blueprint's own `modules`
-    // array either.
-    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
-    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
-    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
+    {
+      id: "nav.personal",
+      label: "My Work",
+      icon: "personal",
+      children: [
+        {
+          id: "nav.calendar",
+          label: "Calendar",
+          icon: "calendar",
+          pageId: "page.calendar",
+        },
+        {
+          id: "nav.attendance",
+          label: "Attendance",
+          icon: "attendance",
+          pageId: "page.attendance",
+          requiredPermission: "attendance:read",
+        },
+        {
+          id: "nav.leave",
+          label: "Leave",
+          icon: "event_busy",
+          pageId: "page.leave",
+          moduleKey: "leave",
+        },
+      ],
+    },
+    {
+      id: "nav.administration",
+      label: "Administration",
+      icon: "workspace-admin",
+      children: [
+        {
+          id: "nav.crm",
+          label: "CRM",
+          icon: "handshake",
+          pageId: "page.crm",
+          requiredPermission: "contact:read",
+          moduleKey: "crm",
+        },
+        {
+          id: "nav.roles-permissions",
+          label: "Roles & Permissions",
+          icon: "roles-permissions",
+          pageId: "page.roles-permissions",
+          requiredPermission: "role:manage",
+        },
+        {
+          id: "nav.settings",
+          label: "Settings",
+          icon: "settings",
+          pageId: "page.settings",
+          requiredPermission: "settings:manage",
+        },
+        {
+          id: "nav.audit-logs",
+          label: "Audit Logs",
+          icon: "audit-logs",
+          pageId: "page.audit-logs",
+          requiredPermission: "audit:read",
+        },
+      ],
+    },
   ],
   dashboards: { default: "page.dashboard" },
-  modules: ["students", "courses", "leave", "crm"],
+  modules: ["students", "courses", "leave", "crm", "tasks"],
   pages: {
     "page.dashboard": {
       id: "page.dashboard",
@@ -2251,10 +2466,36 @@ const EDUCATION_BLUEPRINT_V1 = {
     // useRenderContext().callMutation, not declared here — exactly how
     // ProjectDetail.tsx already calls project.addMember/removeMember today
     // without them appearing in page.projects's own actions.
+    // Role-Based Workspaces, Stage A — the existing Tasks module, surfaced
+    // in this blueprint for the first time. Defaults to the signed-in
+    // person's own items (`assigneeId: user.id`), matching IT's page.tasks.
+    "page.tasks": {
+      id: "page.tasks",
+      type: "Page",
+      version: 1,
+      requiredPermission: "task:read",
+      children: [
+        {
+          id: "task-list",
+          type: "TaskList",
+          version: 1,
+          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+          actions: [
+            { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
+            { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "task.reassign", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "comment.create", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
     "page.analytics": {
       id: "page.analytics",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "analytics:read",
       children: [
         { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
         {
@@ -2365,6 +2606,9 @@ const EDUCATION_BLUEPRINT_V1 = {
       id: "page.settings",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "settings:manage",
       children: [
         {
           id: "workspace-settings",
@@ -2476,6 +2720,7 @@ const FINANCE_BLUEPRINT_V1 = {
         "featureFlag:manage:tenant",
         "sso:manage:tenant",
         "tenant:delete:tenant",
+        "analytics:read:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -2511,6 +2756,10 @@ const FINANCE_BLUEPRINT_V1 = {
       label: "Accountant",
       rank: 1,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         "client:read:tenant",
         "invoice:create:tenant",
         "invoice:read:tenant",
@@ -2570,6 +2819,10 @@ const FINANCE_BLUEPRINT_V1 = {
       label: "Account Manager",
       rank: 3,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         "client:create:tenant",
         "client:read:tenant",
         "client:update:own",
@@ -2610,60 +2863,145 @@ const FINANCE_BLUEPRINT_V1 = {
   // narrowing as Healthcare/Education's own Phase A; none of the 3 new
   // models have a departmentId column.
   departmentTypes: [],
+  // Role-Based Workspaces, Stage A — grouped, fully-gated navigation.
+  //
+  // One static tree per blueprint; the per-role sidebar is produced entirely
+  // by `pruneNavItems` (permission-pruner.ts), which removes items a role
+  // lacks the permission for and then removes any group left empty. Adding a
+  // role — Student included — is therefore blueprint data plus grants, never
+  // a frontend change.
+  //
+  // Previously 7-8 of these carried no `requiredPermission` at all, which is
+  // why a Doctor, a Nurse and a Receptionist all opened the identical eleven
+  // items. Everything here is now either genuinely universal (Dashboard,
+  // Calendar, Leave, Chat, Meetings, Announcements) or gated on a real
+  // permission.
   navigation: [
-    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
-      id: "nav.clients",
-      label: "Clients",
-      icon: "group",
-      pageId: "page.clients",
-      requiredPermission: "client:read",
-      moduleKey: "clients",
+      id: "nav.dashboard",
+      label: "Dashboard",
+      icon: "home",
+      pageId: "page.dashboard",
     },
     {
-      id: "nav.invoices",
-      label: "Invoices",
-      icon: "receipt",
-      pageId: "page.invoices",
-      requiredPermission: "invoice:read",
-      moduleKey: "invoices",
+      id: "nav.accounts",
+      label: "Accounts",
+      icon: "accounts",
+      children: [
+        {
+          id: "nav.clients",
+          label: "Clients",
+          icon: "group",
+          pageId: "page.clients",
+          requiredPermission: "client:read",
+          moduleKey: "clients",
+        },
+        {
+          id: "nav.invoices",
+          label: "Invoices",
+          icon: "receipt",
+          pageId: "page.invoices",
+          requiredPermission: "invoice:read",
+          moduleKey: "invoices",
+        },
+        {
+          id: "nav.crm",
+          label: "CRM",
+          icon: "handshake",
+          pageId: "page.crm",
+          requiredPermission: "contact:read",
+          moduleKey: "crm",
+        },
+      ],
     },
-    // Everything below reuses an existing module's own nav entry verbatim
-    // (same pageId-bearing composite, same permission gate where one
-    // exists) — zero new code, only blueprint content, same "reuse as many
-    // existing modules as possible" mandate every prior domain used.
-    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
-    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
-    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
-    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
     {
-      id: "nav.attendance",
-      label: "Attendance",
-      icon: "attendance",
-      pageId: "page.attendance",
-      requiredPermission: "attendance:read",
+      id: "nav.insights",
+      label: "Insights",
+      icon: "insights",
+      children: [
+        {
+          id: "nav.analytics",
+          label: "Analytics",
+          icon: "analytics",
+          pageId: "page.analytics",
+          requiredPermission: "analytics:read",
+        },
+      ],
     },
     {
-      id: "nav.roles-permissions",
-      label: "Roles & Permissions",
-      icon: "roles-permissions",
-      pageId: "page.roles-permissions",
-      requiredPermission: "role:manage",
+      id: "nav.collaborate",
+      label: "Collaborate",
+      icon: "collaborate",
+      children: [
+        {
+          id: "nav.chat",
+          label: "Chat",
+          icon: "chat",
+          pageId: "page.chat",
+        },
+        {
+          id: "nav.meetings",
+          label: "Meetings",
+          icon: "meetings",
+          pageId: "page.meetings",
+        },
+      ],
     },
-    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
-    // actually gate these (previously declared with no moduleKey at all,
-    // meaning entitlement filtering had zero effect on them).
-    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
-    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
-    // Notifications — universal visibility, no requiredPermission, same
-    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
-    // (the bell already exists ungated), not an entitlement-gated business
-    // module — no moduleKey, not added to this blueprint's own `modules`
-    // array either.
-    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
-    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
-    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
+    {
+      id: "nav.personal",
+      label: "My Work",
+      icon: "personal",
+      children: [
+        {
+          id: "nav.calendar",
+          label: "Calendar",
+          icon: "calendar",
+          pageId: "page.calendar",
+        },
+        {
+          id: "nav.attendance",
+          label: "Attendance",
+          icon: "attendance",
+          pageId: "page.attendance",
+          requiredPermission: "attendance:read",
+        },
+        {
+          id: "nav.leave",
+          label: "Leave",
+          icon: "event_busy",
+          pageId: "page.leave",
+          moduleKey: "leave",
+        },
+      ],
+    },
+    {
+      id: "nav.administration",
+      label: "Administration",
+      icon: "workspace-admin",
+      children: [
+        {
+          id: "nav.roles-permissions",
+          label: "Roles & Permissions",
+          icon: "roles-permissions",
+          pageId: "page.roles-permissions",
+          requiredPermission: "role:manage",
+        },
+        {
+          id: "nav.settings",
+          label: "Settings",
+          icon: "settings",
+          pageId: "page.settings",
+          requiredPermission: "settings:manage",
+        },
+        {
+          id: "nav.audit-logs",
+          label: "Audit Logs",
+          icon: "audit-logs",
+          pageId: "page.audit-logs",
+          requiredPermission: "audit:read",
+        },
+      ],
+    },
   ],
   dashboards: { default: "page.dashboard" },
   modules: ["clients", "invoices", "leave", "crm"],
@@ -2730,6 +3068,9 @@ const FINANCE_BLUEPRINT_V1 = {
       id: "page.analytics",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "analytics:read",
       children: [
         { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
         {
@@ -2840,6 +3181,9 @@ const FINANCE_BLUEPRINT_V1 = {
       id: "page.settings",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "settings:manage",
       children: [
         {
           id: "workspace-settings",
@@ -2963,6 +3307,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "featureFlag:manage:tenant",
         "sso:manage:tenant",
         "tenant:delete:tenant",
+        "analytics:read:tenant",
         "role:assign:tenant",
         "user:invite:tenant",
         "user:manage:tenant",
@@ -3007,6 +3352,10 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       label: "Production Planner",
       rank: 1,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         "workOrder:create:tenant",
         "workOrder:read:tenant",
         "workOrder:update:own",
@@ -3039,6 +3388,10 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       label: "Procurement Officer",
       rank: 2,
       permissions: [
+        // Role-Based Workspaces, Stage A — this role owns a real book of
+        // work whose numbers it is accountable for, so it opens Analytics.
+        // Page access only; every metric still enforces its own permission.
+        "analytics:read:tenant",
         "purchaseOrder:create:tenant",
         "purchaseOrder:read:tenant",
         "purchaseOrder:update:tenant",
@@ -3096,76 +3449,161 @@ const MANUFACTURING_BLUEPRINT_V1 = {
   // narrowing as Healthcare/Education/Finance's own Phase A; none of the 5
   // new models have a departmentId column.
   departmentTypes: [],
+  // Role-Based Workspaces, Stage A — grouped, fully-gated navigation.
+  //
+  // One static tree per blueprint; the per-role sidebar is produced entirely
+  // by `pruneNavItems` (permission-pruner.ts), which removes items a role
+  // lacks the permission for and then removes any group left empty. Adding a
+  // role — Student included — is therefore blueprint data plus grants, never
+  // a frontend change.
+  //
+  // Previously 7-8 of these carried no `requiredPermission` at all, which is
+  // why a Doctor, a Nurse and a Receptionist all opened the identical eleven
+  // items. Everything here is now either genuinely universal (Dashboard,
+  // Calendar, Leave, Chat, Meetings, Announcements) or gated on a real
+  // permission.
   navigation: [
-    { id: "nav.dashboard", label: "Dashboard", icon: "home", pageId: "page.dashboard" },
     {
-      id: "nav.suppliers",
-      label: "Suppliers",
-      icon: "local_shipping",
-      pageId: "page.suppliers",
-      requiredPermission: "supplier:read",
-      moduleKey: "suppliers",
+      id: "nav.dashboard",
+      label: "Dashboard",
+      icon: "home",
+      pageId: "page.dashboard",
     },
     {
-      id: "nav.inventory-items",
-      label: "Inventory",
-      icon: "inventory_2",
-      pageId: "page.inventory-items",
-      requiredPermission: "inventoryItem:read",
-      moduleKey: "inventory-items",
+      id: "nav.operations",
+      label: "Operations",
+      icon: "operations",
+      children: [
+        {
+          id: "nav.inventory-items",
+          label: "Inventory",
+          icon: "inventory_2",
+          pageId: "page.inventory-items",
+          requiredPermission: "inventoryItem:read",
+          moduleKey: "inventory-items",
+        },
+        {
+          id: "nav.work-orders",
+          label: "Work Orders",
+          icon: "precision_manufacturing",
+          pageId: "page.work-orders",
+          requiredPermission: "workOrder:read",
+          moduleKey: "work-orders",
+        },
+        {
+          id: "nav.purchase-orders",
+          label: "Purchase Orders",
+          icon: "shopping_cart",
+          pageId: "page.purchase-orders",
+          requiredPermission: "purchaseOrder:read",
+          moduleKey: "purchase-orders",
+        },
+        {
+          id: "nav.suppliers",
+          label: "Suppliers",
+          icon: "local_shipping",
+          pageId: "page.suppliers",
+          requiredPermission: "supplier:read",
+          moduleKey: "suppliers",
+        },
+      ],
     },
     {
-      id: "nav.purchase-orders",
-      label: "Purchase Orders",
-      icon: "shopping_cart",
-      pageId: "page.purchase-orders",
-      requiredPermission: "purchaseOrder:read",
-      moduleKey: "purchase-orders",
+      id: "nav.insights",
+      label: "Insights",
+      icon: "insights",
+      children: [
+        {
+          id: "nav.analytics",
+          label: "Analytics",
+          icon: "analytics",
+          pageId: "page.analytics",
+          requiredPermission: "analytics:read",
+        },
+      ],
     },
     {
-      id: "nav.work-orders",
-      label: "Work Orders",
-      icon: "precision_manufacturing",
-      pageId: "page.work-orders",
-      requiredPermission: "workOrder:read",
-      moduleKey: "work-orders",
-    },
-    // Everything below reuses an existing module's own nav entry verbatim
-    // (same pageId-bearing composite, same permission gate where one
-    // exists) — zero new code, only blueprint content, same "reuse as many
-    // existing modules as possible" mandate every prior domain used.
-    { id: "nav.analytics", label: "Analytics", icon: "analytics", pageId: "page.analytics" },
-    { id: "nav.chat", label: "Chat", icon: "chat", pageId: "page.chat" },
-    { id: "nav.meetings", label: "Meetings", icon: "meetings", pageId: "page.meetings" },
-    { id: "nav.calendar", label: "Calendar", icon: "calendar", pageId: "page.calendar" },
-    {
-      id: "nav.attendance",
-      label: "Attendance",
-      icon: "attendance",
-      pageId: "page.attendance",
-      requiredPermission: "attendance:read",
+      id: "nav.collaborate",
+      label: "Collaborate",
+      icon: "collaborate",
+      children: [
+        {
+          id: "nav.chat",
+          label: "Chat",
+          icon: "chat",
+          pageId: "page.chat",
+        },
+        {
+          id: "nav.meetings",
+          label: "Meetings",
+          icon: "meetings",
+          pageId: "page.meetings",
+        },
+      ],
     },
     {
-      id: "nav.roles-permissions",
-      label: "Roles & Permissions",
-      icon: "roles-permissions",
-      pageId: "page.roles-permissions",
-      requiredPermission: "role:manage",
+      id: "nav.personal",
+      label: "My Work",
+      icon: "personal",
+      children: [
+        {
+          id: "nav.calendar",
+          label: "Calendar",
+          icon: "calendar",
+          pageId: "page.calendar",
+        },
+        {
+          id: "nav.attendance",
+          label: "Attendance",
+          icon: "attendance",
+          pageId: "page.attendance",
+          requiredPermission: "attendance:read",
+        },
+        {
+          id: "nav.leave",
+          label: "Leave",
+          icon: "event_busy",
+          pageId: "page.leave",
+          moduleKey: "leave",
+        },
+      ],
     },
-    { id: "nav.settings", label: "Settings", icon: "settings", pageId: "page.settings" },
-    // Stripe Billing — moduleKey added so Free-vs-Pro plan entitlements can
-    // actually gate these (previously declared with no moduleKey at all,
-    // meaning entitlement filtering had zero effect on them).
-    { id: "nav.leave", label: "Leave", icon: "event_busy", pageId: "page.leave", moduleKey: "leave" },
-    { id: "nav.crm", label: "CRM", icon: "handshake", pageId: "page.crm", requiredPermission: "contact:read", moduleKey: "crm" },
-    // Notifications — universal visibility, no requiredPermission, same
-    // treatment as nav.dashboard/nav.chat/nav.settings: this is core chrome
-    // (the bell already exists ungated), not an entitlement-gated business
-    // module — no moduleKey, not added to this blueprint's own `modules`
-    // array either.
-    // Audit Logs — Company-Admin-only (audit:read is granted to role.admin
-    // alone, everywhere), same nav-gating shape as nav.crm's contact:read.
-    { id: "nav.audit-logs", label: "Audit Logs", icon: "audit-logs", pageId: "page.audit-logs", requiredPermission: "audit:read" },
+    {
+      id: "nav.administration",
+      label: "Administration",
+      icon: "workspace-admin",
+      children: [
+        {
+          id: "nav.crm",
+          label: "CRM",
+          icon: "handshake",
+          pageId: "page.crm",
+          requiredPermission: "contact:read",
+          moduleKey: "crm",
+        },
+        {
+          id: "nav.roles-permissions",
+          label: "Roles & Permissions",
+          icon: "roles-permissions",
+          pageId: "page.roles-permissions",
+          requiredPermission: "role:manage",
+        },
+        {
+          id: "nav.settings",
+          label: "Settings",
+          icon: "settings",
+          pageId: "page.settings",
+          requiredPermission: "settings:manage",
+        },
+        {
+          id: "nav.audit-logs",
+          label: "Audit Logs",
+          icon: "audit-logs",
+          pageId: "page.audit-logs",
+          requiredPermission: "audit:read",
+        },
+      ],
+    },
   ],
   dashboards: { default: "page.dashboard" },
   modules: ["suppliers", "inventory-items", "purchase-orders", "work-orders", "leave", "crm"],
@@ -3270,6 +3708,9 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       id: "page.analytics",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "analytics:read",
       children: [
         { id: "analytics-heading", type: "Heading", version: 1, props: { text: "Analytics & Insights" } },
         {
@@ -3380,6 +3821,9 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       id: "page.settings",
       type: "Page",
       version: 1,
+      // Mirrors this page's nav item exactly (ARCHITECTURE.md §6.9) — without
+      // it the page stays directly fetchable by a role that cannot see the link.
+      requiredPermission: "settings:manage",
       children: [
         {
           id: "workspace-settings",
