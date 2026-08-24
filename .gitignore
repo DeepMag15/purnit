@@ -4,6 +4,9 @@ build/
 .next/
 .env
 .env.local
+# Any backup of a real .env is still a real secret file.
+.env.bak
+.env.*.bak
 *.log
 *.tsbuildinfo
 .turbo/

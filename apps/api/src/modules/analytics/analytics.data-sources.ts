@@ -58,9 +58,18 @@ export function createAnalyticsDashboardDataSource(metricRegistry: MetricRegistr
     // Every field optional — an empty-object call behaves identically to
     // Phase A, backward-compatible.
     paramsSchema: FiltersParamsSchema,
-    // No requiredPermission — ungated aggregator, same shape as
-    // calendar.list; each metric enforces its own visibility below (widget-
-    // level pruning is genuinely new territory here — see permission-gate.ts).
+    // Role-Based Workspaces, Stage A — this WAS an ungated aggregator (same
+    // shape as calendar.list), relying entirely on each metric enforcing its
+    // own visibility below. That is still true and still the real protection
+    // for the numbers themselves, but it left the endpoint itself reachable:
+    // live verification found a Healthcare Receptionist — who has no Analytics
+    // nav item and 404s on `page.analytics` — getting a 200 from
+    // `POST /api/data/analytics.dashboard`.
+    //
+    // Hiding the module in navigation is presentation; this is the gate. With
+    // `analytics:read` now a real permission, the surface is gated at the API
+    // exactly as it is in the sidebar, so the two cannot disagree.
+    requiredPermission: "analytics:read",
     async resolve(params, ctx, tx) {
       const filters: AnalyticsFilters = params;
       const widgets: Record<string, unknown>[] = [];
