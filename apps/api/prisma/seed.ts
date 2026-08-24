@@ -6,6 +6,7 @@ loadEnv({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { DEFAULT_DASHBOARD_WIDGET_KEYS, autoLayout } from "../src/modules/analytics/dashboard-defaults";
 import { BlueprintDefinitionSchema } from "@purnit/manifest-schema";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "../src/auth/materialize-roles";
 
@@ -237,6 +238,18 @@ const IT_BLUEPRINT_V1 = {
         "+task:delete:department-subtree",
         "+department:manage:department-subtree",
         "+meeting:create:department-subtree",
+        // Role-Based Workspaces, Stage B — the Executive tier's whole purpose
+        // is comparing departments against each other, which is exactly what
+        // this permission unlocks. Until now only Company Admin held it, so
+        // an Executive's seeded dashboard listed a leaderboard they could not
+        // actually see: 3 of their top 4 widgets rendered nothing.
+        //
+        // This is also what makes Executive genuinely distinct from
+        // Department Head. The two have identical resource:action pairs and
+        // therefore identical navigation by construction — their real
+        // difference is reach (department vs department-subtree), and this is
+        // the widget that shows it.
+        "+analytics:departmentPerformance:tenant",
         "+meeting:read:department-subtree",
         "+announcement:create:department-subtree",
         "+document:create:department-subtree",
@@ -274,6 +287,18 @@ const IT_BLUEPRINT_V1 = {
         "+department:manage:tenant",
         "+announcement:create:tenant",
         "+calendarEvent:create:tenant",
+        // Role-Based Workspaces, Stage B — workforce analytics is HR's actual
+        // job, and both of these were already listed in HR Manager's seeded
+        // dashboard without the permission to render them (3 of their top 4
+        // widgets showed nothing).
+        //
+        // These two grants are what make HR Manager a genuinely different
+        // workspace from Department Head and Executive rather than a third
+        // copy: same navigation by construction, but a people-shaped
+        // dashboard — productivity and attendance across the organization
+        // instead of project delivery.
+        "+analytics:productivity:tenant",
+        "+analytics:departmentPerformance:tenant",
         // attendance:read/update:tenant — Attendance (Core Workspace Phase
         // 3): HR Manager is the natural tenant-wide attendance authority,
         // same bonus-grant channel as its other HR-flavored tenant grants
@@ -3904,6 +3929,48 @@ function assertDefaultDashboardUngated(blueprint: { dashboards: { default: strin
   }
 }
 
+
+/**
+ * Role-Based Workspaces, Stage B — re-sync each tenant's ROLE-level dashboard
+ * defaults to the current blueprint, the same way roles themselves are
+ * re-synced above.
+ *
+ * ⚠️ Only touches rows with a `roleId` — the role-wide template. Rows with a
+ * `userId` are somebody's personally customised layout and are never
+ * overwritten; that distinction is the whole reason both columns exist.
+ *
+ * Without this, a changed default would only ever reach brand-new tenants,
+ * so every existing workspace would keep a dashboard built from the old
+ * (and, before this stage, partly broken) widget list.
+ */
+async function resyncDashboardDefaults(
+  prisma: PrismaClient,
+  tenantId: string,
+  industry: string,
+  roleIds: Map<string, { id: string }>,
+): Promise<number> {
+  let synced = 0;
+  for (const entry of DEFAULT_DASHBOARD_WIDGET_KEYS) {
+    if (entry.industry && entry.industry !== industry) continue;
+    const role = roleIds.get(entry.blueprintRoleId);
+    if (!role) continue;
+    const widgets = autoLayout(entry.keys);
+    const existing = await prisma.dashboardLayout.findFirst({
+      where: { tenantId, roleId: role.id, dashboardKey: "analytics" },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.dashboardLayout.update({ where: { id: existing.id }, data: { widgets } });
+    } else {
+      await prisma.dashboardLayout.create({
+        data: { tenantId, roleId: role.id, dashboardKey: "analytics", widgets },
+      });
+    }
+    synced++;
+  }
+  return synced;
+}
+
 async function main() {
   // Validated against the same shared contract the Configuration Engine
   // compiles against — a malformed fixture fails here, at seed time, not
@@ -4199,6 +4266,7 @@ async function main() {
   for (const tenantId of tenantIds) {
     const roleIds = await materializeBlueprintRoles(prisma, tenantId, IT_BLUEPRINT_V1.roles);
     await materializeDepartmentTypeLabels(prisma, tenantId, IT_BLUEPRINT_V1.departmentTypes, roleIds);
+    await resyncDashboardDefaults(prisma, tenantId, IT_BLUEPRINT_V1.industry, roleIds);
     syncedTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedTenants} existing IT tenant(s) to the current blueprint`);
@@ -4213,6 +4281,7 @@ async function main() {
   for (const tenantId of healthcareTenantIds) {
     const roleIds = await materializeBlueprintRoles(prisma, tenantId, HEALTHCARE_BLUEPRINT_V1.roles);
     await materializeDepartmentTypeLabels(prisma, tenantId, HEALTHCARE_BLUEPRINT_V1.departmentTypes, roleIds);
+    await resyncDashboardDefaults(prisma, tenantId, HEALTHCARE_BLUEPRINT_V1.industry, roleIds);
     syncedHealthcareTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedHealthcareTenants} existing Healthcare tenant(s) to the current blueprint`);
@@ -4225,6 +4294,7 @@ async function main() {
   for (const tenantId of educationTenantIds) {
     const roleIds = await materializeBlueprintRoles(prisma, tenantId, EDUCATION_BLUEPRINT_V1.roles);
     await materializeDepartmentTypeLabels(prisma, tenantId, EDUCATION_BLUEPRINT_V1.departmentTypes, roleIds);
+    await resyncDashboardDefaults(prisma, tenantId, EDUCATION_BLUEPRINT_V1.industry, roleIds);
     syncedEducationTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedEducationTenants} existing Education tenant(s) to the current blueprint`);
@@ -4237,6 +4307,7 @@ async function main() {
   for (const tenantId of financeTenantIds) {
     const roleIds = await materializeBlueprintRoles(prisma, tenantId, FINANCE_BLUEPRINT_V1.roles);
     await materializeDepartmentTypeLabels(prisma, tenantId, FINANCE_BLUEPRINT_V1.departmentTypes, roleIds);
+    await resyncDashboardDefaults(prisma, tenantId, FINANCE_BLUEPRINT_V1.industry, roleIds);
     syncedFinanceTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedFinanceTenants} existing Finance tenant(s) to the current blueprint`);
@@ -4249,6 +4320,7 @@ async function main() {
   for (const tenantId of manufacturingTenantIds) {
     const roleIds = await materializeBlueprintRoles(prisma, tenantId, MANUFACTURING_BLUEPRINT_V1.roles);
     await materializeDepartmentTypeLabels(prisma, tenantId, MANUFACTURING_BLUEPRINT_V1.departmentTypes, roleIds);
+    await resyncDashboardDefaults(prisma, tenantId, MANUFACTURING_BLUEPRINT_V1.industry, roleIds);
     syncedManufacturingTenants++;
   }
   console.log(`Re-synced roles + department-type labels for ${syncedManufacturingTenants} existing Manufacturing tenant(s) to the current blueprint`);
