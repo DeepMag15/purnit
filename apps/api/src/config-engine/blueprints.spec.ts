@@ -109,6 +109,58 @@ describe.each(BLUEPRINTS)("%s blueprint", (_name, bp) => {
   });
 });
 
+describe("scope-driven data bindings (Stage C)", () => {
+  /** Every `bind` in a page tree, with the page it belongs to. */
+  function bindings(bp: BlueprintFixture): { pageId: string; nodeId?: string; source: string; params: Record<string, unknown> }[] {
+    const out: { pageId: string; nodeId?: string; source: string; params: Record<string, unknown> }[] = [];
+    const walk = (node: Record<string, unknown>, pageId: string) => {
+      const bind = node.bind as { source?: string; params?: Record<string, unknown> } | undefined;
+      if (bind?.source) out.push({ pageId, nodeId: node.id as string, source: bind.source, params: bind.params ?? {} });
+      for (const child of (node.children as Record<string, unknown>[]) ?? []) walk(child, pageId);
+    };
+    for (const [pageId, page] of Object.entries(bp.pages)) walk(page as unknown as Record<string, unknown>, pageId);
+    return out;
+  }
+
+  /**
+   * A module's own page must not pin the caller's identity into its query.
+   *
+   * `tasksWhere` already derives the right rows from the actor's scope — "own"
+   * self-filters, "team"/"department" widen to the group. Binding
+   * `assigneeId: { ref: "user.id" }` on `page.tasks` overrode that and pinned
+   * the page to "assigned to me" for every role, so a Lead, Manager,
+   * Department Head or Company Admin could not see their team's tasks there
+   * at all. Removing it changed nothing for junior roles and restored the
+   * page for everyone above them.
+   */
+  it.each(BLUEPRINTS)("%s: page.tasks does not override scope with a self filter", (_name, bp) => {
+    const taskPage = bindings(bp).filter((b) => b.pageId === "page.tasks" && b.source === "tasks.list");
+    for (const b of taskPage) {
+      expect({ page: b.pageId, params: Object.keys(b.params) }).toEqual({ page: "page.tasks", params: [] });
+    }
+  });
+
+  it.each(BLUEPRINTS)("%s: no module page pins user.id into its list query", (_name, bp) => {
+    const offenders = bindings(bp)
+      // The dashboard is exempt by design: its TaskList and "My Open Tasks"
+      // KpiCard genuinely mean "mine", and sit beside org-level widgets.
+      .filter((b) => b.pageId !== "page.dashboard")
+      .filter((b) => JSON.stringify(b.params).includes('"user.id"'))
+      .map((b) => `${b.pageId}/${b.nodeId} -> ${b.source}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("the dashboard still scopes its personal task widgets to the signed-in user", () => {
+    // The other half of the rule: removing the self-filter from module pages
+    // must not have stripped it from the widgets that are supposed to be
+    // personal.
+    const personal = bindings(FIXTURES.IT!)
+      .filter((b) => b.pageId === "page.dashboard" && b.source.startsWith("tasks."))
+      .filter((b) => JSON.stringify(b.params).includes('"user.id"'));
+    expect(personal.length).toBeGreaterThan(0);
+  });
+});
+
 describe("role differentiation", () => {
   /**
    * The audit found 11 of 25 roles had a navigation twin — Doctor, Nurse and

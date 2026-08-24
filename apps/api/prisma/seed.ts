@@ -964,7 +964,12 @@ const IT_BLUEPRINT_V1 = {
           id: "task-list",
           type: "TaskList",
           version: 1,
-          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+          // Role-Based Workspaces, Stage C — deliberately NO assigneeId here.
+          // `tasksWhere` derives the right rows from the caller's own scope:
+          // "own" self-filters, "team"/"department" widen to the group. Pinning
+          // assigneeId meant a Lead or Manager could never see their team's
+          // tasks on this page.
+          bind: { source: "tasks.list", params: {}, paginate: true },
           actions: [
             {
               kind: "mutation",
@@ -1907,7 +1912,12 @@ const HEALTHCARE_BLUEPRINT_V1 = {
           id: "task-list",
           type: "TaskList",
           version: 1,
-          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+          // Role-Based Workspaces, Stage C — deliberately NO assigneeId here.
+          // `tasksWhere` derives the right rows from the caller's own scope:
+          // "own" self-filters, "team"/"department" widen to the group. Pinning
+          // assigneeId meant a Lead or Manager could never see their team's
+          // tasks on this page.
+          bind: { source: "tasks.list", params: {}, paginate: true },
           actions: [
             { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
             { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
@@ -2504,7 +2514,12 @@ const EDUCATION_BLUEPRINT_V1 = {
           id: "task-list",
           type: "TaskList",
           version: 1,
-          bind: { source: "tasks.list", params: { assigneeId: { ref: "user.id" } }, paginate: true },
+          // Role-Based Workspaces, Stage C — deliberately NO assigneeId here.
+          // `tasksWhere` derives the right rows from the caller's own scope:
+          // "own" self-filters, "team"/"department" widen to the group. Pinning
+          // assigneeId meant a Lead or Manager could never see their team's
+          // tasks on this page.
+          bind: { source: "tasks.list", params: {}, paginate: true },
           actions: [
             { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
             { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
