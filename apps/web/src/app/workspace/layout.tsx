@@ -402,6 +402,15 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
                         <div className="mt-1.5 truncate text-sm font-medium text-text">{manifest.user.displayName}</div>
                         <div className="truncate text-xs text-text-muted">{manifest.user.roles.join(", ")}</div>
                       </div>
+                      {/* Role-Based Workspaces, Stage D — personal settings
+                        * live here, not in the sidebar. The sidebar's Settings
+                        * entry is now workspace administration and gated on
+                        * `settings:manage`; this is everyone's own account and
+                        * needs no permission. */}
+                      <DropdownItem onClick={() => router.push("/workspace/account")}>
+                        <Icon name="account_circle" size={15} />
+                        Account settings
+                      </DropdownItem>
                       <DropdownItem danger onClick={handleLogout}>
                         <Icon name="logout" size={15} />
                         Log out

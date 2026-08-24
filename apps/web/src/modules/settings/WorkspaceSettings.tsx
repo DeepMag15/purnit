@@ -36,11 +36,18 @@ interface SettingsCapabilities {
   canManageSso: boolean;
 }
 
-// "Workspace details," "Branding" (read-only half), and "My profile" are
-// unconditionally rendered — visible to every authenticated tenant member,
-// per the user's explicit "Settings should be visible to all, actions
-// controlled by permissions" request. Only the *edit* controls inside each
-// section are presence-gated, same mechanism as every prior composite.
+// Role-Based Workspaces, Stage D — this page is now workspace ADMINISTRATION
+// only, gated on `settings:manage`. "My profile" moved to /workspace/account,
+// reached from the avatar menu and carrying no permission gate, because it
+// acts solely on the signed-in person's own account.
+//
+// That split supersedes the earlier "Settings visible to all, actions
+// controlled by permissions" arrangement: the reason Settings was shown to
+// everyone was the personal card inside it, and once that has its own home
+// there is nothing left here a non-admin needs. Within the remaining cards,
+// edit controls are still presence-gated the same way as every other
+// composite, since a Company Admin is not the only role that may hold some of
+// these grants in a customised setup.
 //
 // Frontend Redesign Phase 04 — a dedicated route, replacing the generic
 // `/workspace/page.settings` catch-all. `actions` (the old Renderer-supplied
@@ -63,7 +70,11 @@ export function WorkspaceSettings() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MyProfileCard user={manifest.user} />
+      {/* Role-Based Workspaces, Stage D — "My profile" moved out to
+        * /workspace/account, reached from the avatar menu. This page is now
+        * workspace administration only and is gated on `settings:manage`;
+        * leaving a personal card here would have meant a non-admin losing
+        * access to their own profile when that gate was added. */}
       <WorkspaceDetailsCard tenant={manifest.tenant} editable={canManageSettings} />
       <BrandingCard branding={manifest.tenant.branding as Record<string, unknown>} editable={canManageSettings} canUploadLogo={canManageSettings} />
       <CompanyInfoCard profile={profile} editable={canManageSettings} />
@@ -455,49 +466,6 @@ function EnterpriseSsoCard() {
             </Button>
           </>
         )}
-      </CardBody>
-    </Card>
-  );
-}
-
-function MyProfileCard({ user }: { user: { displayName: string; roles: string[]; digestOptOut: boolean } & Record<string, unknown> }) {
-  const { callMutation, refetchBootstrap } = useRenderContext();
-  const toast = useToast();
-  const [saving, setSaving] = useState(false);
-
-  async function handleToggleDigest(optOut: boolean) {
-    setSaving(true);
-    try {
-      await callMutation("user.updateDigestPreference", { optOut });
-      refetchBootstrap();
-    } catch (err) {
-      toast.show(err instanceof Error ? err.message : "Couldn't update your digest preference", "danger");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader title="My profile" />
-      <CardBody className="flex flex-col gap-2 text-sm">
-        <Row label="Name" value={user.displayName} />
-        <Row
-          label="Role"
-          value={
-            <div className="flex gap-1.5">
-              {user.roles.map((r) => (
-                <Badge key={r} tone="accent">
-                  {r}
-                </Badge>
-              ))}
-            </div>
-          }
-        />
-        <Row
-          label="Daily digest emails"
-          value={<Switch checked={!user.digestOptOut} disabled={saving} onChange={(e) => handleToggleDigest(!e.target.checked)} />}
-        />
       </CardBody>
     </Card>
   );
