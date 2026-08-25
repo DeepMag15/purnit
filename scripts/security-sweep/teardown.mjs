@@ -19,9 +19,10 @@ loadEnv({ path: "../../.env", quiet: true });
 const db = new pg.Client({ connectionString: process.env.DIRECT_URL });
 await db.connect();
 
-const { rows: tenants } = await db.query(`select id, name from tenants where name like 'StageE %'`);
+const PREFIX = process.argv[2] ?? "StageE %";
+const { rows: tenants } = await db.query("select id, name from tenants where name like $1", [PREFIX]);
 if (tenants.length === 0) {
-  console.log("no StageE tenants found — nothing to tear down");
+  console.log(`no tenants matching "${PREFIX}" — nothing to tear down`);
   await db.end();
   process.exit(0);
 }

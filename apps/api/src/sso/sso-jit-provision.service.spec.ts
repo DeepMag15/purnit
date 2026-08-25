@@ -35,7 +35,9 @@ function fakeTenantPrisma(params: {
       fn({
         user: { findFirst: userFindFirst, create: userCreate, count: userCount },
         role: { findFirst: roleFindFirst },
-        roleAssignment: { create: roleAssignmentCreate },
+        // `findMany` added with the Student role: countBillableUsers checks
+        // for non-billable (student) role assignments before counting seats.
+        roleAssignment: { create: roleAssignmentCreate, findMany: jest.fn().mockResolvedValue([]) },
       }),
     ),
     _userFindFirst: userFindFirst,

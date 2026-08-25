@@ -218,6 +218,23 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "grade", action: "update", label: "Correct grades" },
     ],
   },
+  {
+    // Student Role (2026-08-25). One permission, and it gates a *surface*
+    // rather than a resource — which is why it is not `enrollment:read:own`.
+    //
+    // Every staff role already holds `enrollment:read:tenant` and
+    // `grade:read:tenant`, so gating "My Courses" or "My Progress" on those
+    // would put a student's personal pages in a Teacher's and Registrar's
+    // sidebar, where they resolve to nothing: staff have no Student record to
+    // resolve `ctx.userId` against. The distinction being gated here is
+    // "is this person a learner in this school", which no existing triple
+    // expresses.
+    //
+    // The pages it gates carry no data authority of their own — each source
+    // behind them is ownership-scoped to the caller's own Student row.
+    module: "Student portal",
+    entries: [{ resource: "studentPortal", action: "read", label: "Access the student portal (own courses, assignments, progress)" }],
+  },
   // Finance Domain, Phase A — the platform's third industry blueprint. Same
   // shape/discipline as every module above.
   {

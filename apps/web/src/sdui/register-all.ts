@@ -16,6 +16,9 @@ import { PatientsWorkspace, PatientsWorkspaceSchema } from "../modules/patients/
 import { AppointmentsWorkspace, AppointmentsWorkspaceSchema } from "../modules/appointments/AppointmentsWorkspace";
 import { StudentsWorkspace, StudentsWorkspaceSchema } from "../modules/students/StudentsWorkspace";
 import { CoursesWorkspace, CoursesWorkspaceSchema } from "../modules/courses/CoursesWorkspace";
+import { StudentCourses, StudentCoursesSchema } from "../modules/student-portal/StudentCourses";
+import { StudentAssignments, StudentAssignmentsSchema } from "../modules/student-portal/StudentAssignments";
+import { StudentProgress, StudentProgressSchema } from "../modules/student-portal/StudentProgress";
 import { ClientsWorkspace, ClientsWorkspaceSchema } from "../modules/clients/ClientsWorkspace";
 import { InvoicesWorkspace, InvoicesWorkspaceSchema } from "../modules/invoices/InvoicesWorkspace";
 import { SuppliersWorkspace, SuppliersWorkspaceSchema } from "../modules/suppliers/SuppliersWorkspace";
@@ -47,6 +50,10 @@ export function registerAllComponents(): void {
   registerPrimitive("AppointmentsWorkspace", 1, AppointmentsWorkspaceSchema, AppointmentsWorkspace);
   registerPrimitive("StudentsWorkspace", 1, StudentsWorkspaceSchema, StudentsWorkspace);
   registerPrimitive("CoursesWorkspace", 1, CoursesWorkspaceSchema, CoursesWorkspace);
+  // Student Role — the learner-facing half of the Education domain.
+  registerPrimitive("StudentCourses", 1, StudentCoursesSchema, StudentCourses);
+  registerPrimitive("StudentAssignments", 1, StudentAssignmentsSchema, StudentAssignments);
+  registerPrimitive("StudentProgress", 1, StudentProgressSchema, StudentProgress);
   registerPrimitive("ClientsWorkspace", 1, ClientsWorkspaceSchema, ClientsWorkspace);
   registerPrimitive("InvoicesWorkspace", 1, InvoicesWorkspaceSchema, InvoicesWorkspace);
   registerPrimitive("SuppliersWorkspace", 1, SuppliersWorkspaceSchema, SuppliersWorkspace);

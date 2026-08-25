@@ -2266,6 +2266,48 @@ const EDUCATION_BLUEPRINT_V1 = {
         "leave:read:own",
       ],
     },
+    {
+      // Student Role (2026-08-25) — the first learner-facing role on the
+      // platform, and the role the Stage A navigation redesign was explicitly
+      // built to absorb without a frontend rebuild.
+      //
+      // The grant list is deliberately the shortest of any role in any
+      // blueprint. A student reads their own record; they do not read "the
+      // students module". Everything personal — courses, assignments,
+      // progress — resolves through `studentPortal:read` and is
+      // ownership-scoped to their own Student row inside the resolver, so no
+      // `student:read` / `enrollment:read` / `grade:read` grant appears here
+      // at all. Granting those would hand a student the whole school's
+      // records at tenant scope, which is precisely the failure this design
+      // avoids.
+      //
+      // No `:own` scope on studentPortal — the resource has no scope ladder;
+      // it either is your portal or it is not.
+      id: "role.student",
+      label: "Student",
+      rank: 4,
+      permissions: [
+        "studentPortal:read:own",
+        // ⚠️ Deliberately NO `project:*` grant, and the reason is the same
+        // trap this fixture already documents for Teacher. Course materials
+        // live on the Course's materialsProject, but `projectsWhere` at `own`
+        // scope filters on `ownerId` and never looks at membership — and the
+        // materialsProject is owned by the Admin who ran `course.create`, so
+        // `project:read:own` refuses a student who IS a real ProjectMember.
+        // The scope above it (`team`) does check membership but also ORs in
+        // the whole department. `myCourseMaterials.list` draws the boundary
+        // from enrolment instead, so no project grant is needed at all.
+        //
+        // Their own attendance record and history, via the same
+        // userId-keyed AttendanceRecord every staff role already uses.
+        "attendance:create:own",
+        "attendance:read:own",
+        // Their own timetable. `calendarEvent:create:own` is deliberately
+        // absent — a student adding events to the school calendar is a
+        // different feature, not part of a read-first portal.
+        "meeting:read:own",
+      ],
+    },
   ],
   // No Education department taxonomy in Phase A — same disclosed MVP
   // narrowing as Healthcare's own Phase A; none of the 5 new models have a
@@ -2323,6 +2365,41 @@ const EDUCATION_BLUEPRINT_V1 = {
       ],
     },
     {
+      // Student Role (2026-08-25). The learner's half of Academics, kept as
+      // its own group rather than merged into it: "Students / Courses /
+      // Coursework" is the register a school *keeps*; "My Courses /
+      // Assignments / My Progress" is what a learner *has*. One gate for the
+      // whole group, so a student sees three items and every staff role sees
+      // none — see `studentPortal:read` in the permission catalog for why
+      // this is not `enrollment:read:own`.
+      id: "nav.my-studies",
+      label: "My Studies",
+      icon: "academics",
+      children: [
+        {
+          id: "nav.my-courses",
+          label: "My Courses",
+          icon: "school",
+          pageId: "page.my-courses",
+          requiredPermission: "studentPortal:read",
+        },
+        {
+          id: "nav.my-assignments",
+          label: "Assignments",
+          icon: "check-square",
+          pageId: "page.my-assignments",
+          requiredPermission: "studentPortal:read",
+        },
+        {
+          id: "nav.my-progress",
+          label: "My Progress",
+          icon: "insights",
+          pageId: "page.my-progress",
+          requiredPermission: "studentPortal:read",
+        },
+      ],
+    },
+    {
       id: "nav.insights",
       label: "Insights",
       icon: "insights",
@@ -2353,6 +2430,16 @@ const EDUCATION_BLUEPRINT_V1 = {
           icon: "meetings",
           pageId: "page.meetings",
         },
+        {
+          // Announcements existed platform-wide but was never surfaced in
+          // this blueprint for ANY role — a gap found while building the
+          // Student role, and fixed for everyone rather than added as a
+          // student-only special case. Universal, same as the two above.
+          id: "nav.announcements",
+          label: "Announcements",
+          icon: "announcements",
+          pageId: "page.announcements",
+        },
       ],
     },
     {
@@ -2374,10 +2461,16 @@ const EDUCATION_BLUEPRINT_V1 = {
           requiredPermission: "attendance:read",
         },
         {
+          // Gated on `leave:read` as of the Student role. Every staff role in
+          // this blueprint already holds it, so nothing changes for them —
+          // but it was previously ungated, which would have put staff *leave
+          // requests* in a student's sidebar. An ungated "universal" item is
+          // only universal until a role arrives that isn't an employee.
           id: "nav.leave",
           label: "Leave",
           icon: "event_busy",
           pageId: "page.leave",
+          requiredPermission: "leave:read",
           moduleKey: "leave",
         },
       ],
@@ -2469,6 +2562,63 @@ const EDUCATION_BLUEPRINT_V1 = {
             { kind: "mutation", mutation: "course.updateStatus", input: { ref: "row.id" }, requiredPermission: "course:update" },
             { kind: "mutation", mutation: "course.assignTeacher", input: { ref: "row.id" }, requiredPermission: "course:update" },
           ],
+        },
+      ],
+    },
+    // ---- Student Role (2026-08-25) ---------------------------------------
+    // Three pages, one gate. Each mirrors its nav item's `studentPortal:read`
+    // exactly, per §6.9 — a looser gate here would leave them fetchable by
+    // direct URL for a Teacher, which is the whole class of bug Stage E's
+    // sweep exists to catch.
+    //
+    // None of them takes a `params` binding identifying *which* student. That
+    // is deliberate and is the entire security design: the source resolves
+    // the caller's own Student row from `ctx.userId` server-side, so there is
+    // no id in the request to tamper with and no way to ask for someone
+    // else's record. The same reasoning that removed `assigneeId` from
+    // page.tasks in Stage C.
+    "page.my-courses": {
+      id: "page.my-courses",
+      type: "Page",
+      version: 1,
+      requiredPermission: "studentPortal:read",
+      children: [
+        {
+          id: "my-courses-workspace",
+          type: "StudentCourses",
+          version: 1,
+          props: { title: "My Courses" },
+          bind: { source: "myCourses.list", params: {} },
+        },
+      ],
+    },
+    "page.my-assignments": {
+      id: "page.my-assignments",
+      type: "Page",
+      version: 1,
+      requiredPermission: "studentPortal:read",
+      children: [
+        {
+          id: "my-assignments-workspace",
+          type: "StudentAssignments",
+          version: 1,
+          props: { title: "Assignments" },
+          bind: { source: "myAssignments.list", params: {} },
+        },
+      ],
+    },
+    "page.my-progress": {
+      id: "page.my-progress",
+      type: "Page",
+      version: 1,
+      requiredPermission: "studentPortal:read",
+      children: [
+        {
+          id: "my-progress-workspace",
+          type: "StudentProgress",
+          version: 1,
+          props: { title: "My Progress" },
+          bind: { source: "myProgress.get", params: {} },
         },
       ],
     },
@@ -2568,6 +2718,30 @@ const EDUCATION_BLUEPRINT_V1 = {
         },
       ],
     },
+    // Announcements — the page half of the nav item added above. Copied
+    // verbatim from the other blueprints (`pages` is a per-blueprint map),
+    // so no new frontend code. Ungated, matching page.chat/page.meetings;
+    // `announcements.list` scope-resolves what each role may actually read,
+    // and the create action carries its own gate so the button only appears
+    // for a role that holds `announcement:create`.
+    "page.announcements": {
+      id: "page.announcements",
+      type: "Page",
+      version: 1,
+      children: [
+        {
+          id: "announcements-workspace",
+          type: "AnnouncementsWorkspace",
+          version: 1,
+          actions: [
+            { kind: "mutation", mutation: "announcement.create", input: { ref: "form.newAnnouncement" }, requiredPermission: "announcement:create" },
+            // No requiredPermission — ownership-only, matching
+            // comment.delete/message.delete's precedent.
+            { kind: "mutation", mutation: "announcement.delete", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
     "page.calendar": {
       id: "page.calendar",
       type: "Page",
@@ -2661,6 +2835,10 @@ const EDUCATION_BLUEPRINT_V1 = {
       id: "page.leave",
       type: "Page",
       version: 1,
+      // Mirrors nav.leave's own gate (§6.9). Added with the Student role: the
+      // nav item became gated, and a page left ungated behind a gated nav item
+      // is exactly the direct-URL hole that rule exists to close.
+      requiredPermission: "leave:read",
       children: [{ id: "leave-heading", type: "Heading", version: 1, props: { text: "Leave" } }],
     },
     // CRM — requiredPermission mirrors nav.crm's own gate (permission-

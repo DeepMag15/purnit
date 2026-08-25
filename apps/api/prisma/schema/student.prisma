@@ -1,14 +1,27 @@
 /// Education Domain, Phase A — the platform's second non-IT industry
-/// blueprint. Student is non-login, same structural reasoning as Patient:
-/// MeetingParticipant/ProjectMember/RoleAssignment etc. only ever resolve
-/// against real User rows, and a Student has none by design (no
-/// parent/guardian portal in Phase A — see the Phase A plan's own disclosed
-/// deferrals). Deliberately NO backing "chart" Project (unlike Patient) —
+/// blueprint. Deliberately NO backing "chart" Project (unlike Patient) —
 /// Course, not Student, owns the shared-materials Project in this domain
 /// (see course.prisma's own doc comment for why).
+///
+/// **Student Role (2026-08-25) — Student is now optionally login-capable.**
+/// Phase A recorded it as non-login "by design", because
+/// MeetingParticipant/ProjectMember/RoleAssignment only ever resolve against
+/// real User rows and a Student had none. That was right while nobody signed
+/// in as a student; it became the single thing blocking a student from
+/// reaching their own courses, assignments or grades, all of which key off
+/// `studentId`.
+///
+/// `userId` is the whole seam. **Nullable** because a Registrar registering a
+/// student is still the normal case and must keep working untouched — a login
+/// may come later, or never. **Unique** because one login maps to exactly one
+/// student record. Every existing query is unaffected: nothing filters on it,
+/// and staff-facing scope resolution still runs through `studentsWhere`.
 model Student {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String    @map("tenant_id") @db.Uuid
+  /// The login this student signs in with, when they have one. See the model
+  /// comment — nullable and unique, and never used to widen staff scope.
+  userId         String?   @unique @map("user_id") @db.Uuid
   name           String
   dateOfBirth    DateTime? @map("date_of_birth")
   contactPhone   String?   @map("contact_phone")

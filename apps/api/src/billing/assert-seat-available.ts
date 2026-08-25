@@ -53,7 +53,60 @@ export function resolveSeatLimit(tenant: TenantSeatState, planMaxSeats: number |
  * Soft-deleted users don't consume a seat — consistent with every other
  * `deletedAt: null` filter in this codebase, and it means removing someone
  * genuinely frees their seat.
+ *
+ * **Students don't consume a seat either** (Student Role, 2026-08-25). Purnit
+ * sells staff seats; a 2,000-student college is not a 2,000-seat customer, and
+ * counting learners here would have made the Student role commercially
+ * unusable the moment it shipped. Identified by the blueprint role behind the
+ * assignment (`role.student`), not by a flag on User — the blueprint is
+ * already the single source of what a role *is*, and a per-user flag would be
+ * a second one to keep in sync.
  */
+export const NON_BILLABLE_BLUEPRINT_ROLES = ["role.student"];
+/**
+ * Active users who consume a paid seat.
+ *
+ * Written as an explicit exclusion set rather than a nested relation filter
+ * because `RoleAssignment` has no back-relation on `User` — and the two edge
+ * cases both matter and both go the same way (counted):
+ *
+ * - someone holding a student role **and** a staff role is staff, and pays;
+ * - someone holding **no** role at all still pays. A `NOT (every …)` filter
+ *   would have silently excluded them, since `every` is vacuously true over an
+ *   empty relation — a free seat for anyone whose role assignment failed.
+ *
+ * Sequential queries, not `Promise.all` — same shared-`tx` rule as every other
+ * multi-query path in this codebase (CONTEXT.md §9).
+ */
+export async function countBillableUsers(tx: PrismaTx, tenantId: string): Promise<number> {
+  const nonBillable = await tx.roleAssignment.findMany({
+    where: { tenantId, role: { sourceBlueprintRoleId: { in: NON_BILLABLE_BLUEPRINT_ROLES } } },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  if (nonBillable.length === 0) {
+    return tx.user.count({ where: { tenantId, deletedAt: null } });
+  }
+
+  const alsoStaff = await tx.roleAssignment.findMany({
+    where: {
+      tenantId,
+      userId: { in: nonBillable.map((a) => a.userId) },
+      NOT: { role: { sourceBlueprintRoleId: { in: NON_BILLABLE_BLUEPRINT_ROLES } } },
+    },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+
+  const staffIds = new Set(alsoStaff.map((a) => a.userId));
+  const exempt = nonBillable.map((a) => a.userId).filter((id) => !staffIds.has(id));
+  if (exempt.length === 0) {
+    return tx.user.count({ where: { tenantId, deletedAt: null } });
+  }
+
+  return tx.user.count({ where: { tenantId, deletedAt: null, id: { notIn: exempt } } });
+}
+
 export async function assertSeatAvailable(
   tx: PrismaTx,
   tenantPrisma: TenantPrismaService,
@@ -72,7 +125,7 @@ export async function assertSeatAvailable(
   const limit = resolveSeatLimit(tenant, plan?.maxSeats ?? null);
   if (limit === null) return;
 
-  const activeUsers = await tx.user.count({ where: { tenantId, deletedAt: null } });
+  const activeUsers = await countBillableUsers(tx, tenantId);
   if (activeUsers < limit) return;
 
   // The message names the number and the way out — a bare "limit reached"

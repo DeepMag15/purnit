@@ -168,6 +168,19 @@ export const DEFAULT_DASHBOARD_WIDGET_KEYS: { blueprintRoleId: string; industry?
     blueprintRoleId: "role.registrar",
     keys: ["students.totalCount", "enrollments.activeCount", "students.statusBreakdown", "courses.activeCount", "attendance.rateThisMonth"],
   },
+  // Student: the only role here whose dashboard is about themselves rather
+  // than about the school. "What's due" leads, because that is the question a
+  // student opens the app to answer — not how many courses they have.
+  //
+  // Every key is a `student.*` metric gated on `studentPortal:read`, so this
+  // layout is structurally unreachable by any staff role even if one were
+  // somehow assigned it. Deliberately no `students.totalCount` /
+  // `courses.activeCount`: school-wide totals are somebody else's job, and a
+  // student holds neither grant, so they would render as holes.
+  {
+    blueprintRoleId: "role.student",
+    keys: ["student.dueThisWeek", "student.openAssignments", "student.courseCount", "student.attendanceRate"],
+  },
   {
     blueprintRoleId: "role.admin",
     industry: "Education",

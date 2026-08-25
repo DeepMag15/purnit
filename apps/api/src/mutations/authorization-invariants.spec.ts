@@ -206,6 +206,17 @@ const OWNERSHIP_SCOPED_DATA_SOURCES: Record<string, string> = {
   // Gated per row rather than per source — a static triple would be weaker.
   "analytics.trend": "checks each METRIC's own requiredPermission, then its scope",
 
+  // Student portal. The PAGES are gated on `studentPortal:read`; these sources
+  // are bounded one layer deeper, by `requireOwnStudent` resolving the
+  // caller's own Student row from ctx.userId. None takes an id saying whose
+  // data to return, so there is nothing to tamper with — the same shape as
+  // `account.export`.
+  "myCourses.list": "requireOwnStudent — the caller's own enrolments, no target parameter exists",
+  "myAssignments.list": "requireOwnStudent — assignments in the caller's own courses only",
+  "myProgress.get": "requireOwnStudent — the caller's own grades and attendance",
+  "myCourseMaterials.list": "requireOwnStudent — materials for the caller's own enrolled courses only",
+  "studentPortal.capabilities": "reports whether the caller's own login is linked to a student record",
+
   // Tenant-scoped reference data, not user data.
   "leaveTypes.list": "the tenant's own leave-type list",
   "presence.list": "online/offline status for users the caller already sees",

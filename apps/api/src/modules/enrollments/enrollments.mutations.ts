@@ -36,6 +36,31 @@ export const enrollmentEnrollMutation: MutationDefinition<z.infer<typeof EnrollI
     const enrollment = await tx.enrollment.create({
       data: { tenantId: ctx.tenantId, studentId: input.studentId, courseId: input.courseId, enrolledById: ctx.userId },
     });
+
+    // Student Role (2026-08-25) — enrolling a student who has a login also
+    // gives them the course's materials.
+    //
+    // Course materials are Documents on the Course's own `materialsProject`,
+    // and `assertProjectVisible` resolves membership against real User rows.
+    // Before `Student.userId` existed a student had no User to add, which is
+    // why this step could not have existed earlier. Doing it here rather than
+    // in a student-specific document source means the whole existing
+    // documents module serves students with no new read path — and, more
+    // importantly, un-enrolling is the only thing that needs to revoke access.
+    //
+    // Silent when the student has no login yet: enrolment must not fail
+    // because the school has not issued a portal account.
+    if (student.userId) {
+      const alreadyMember = await tx.projectMember.findFirst({
+        where: { projectId: course.materialsProjectId, userId: student.userId },
+      });
+      if (!alreadyMember) {
+        await tx.projectMember.create({
+          data: { tenantId: ctx.tenantId, projectId: course.materialsProjectId, userId: student.userId },
+        });
+      }
+    }
+
     await enqueueEmbeddingJob(tx, ctx.tenantId, "enrollment", enrollment.id); // AI RAG Phase C
     return enrollment;
   },

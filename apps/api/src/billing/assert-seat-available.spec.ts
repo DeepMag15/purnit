@@ -6,8 +6,23 @@ function setup(params: {
   tenant?: Record<string, unknown> | null;
   plan?: { maxSeats: number | null } | null;
   activeUsers: number;
+  /** userIds holding a non-billable (student) role, and — separately — those
+   * among them who ALSO hold a staff role. Empty by default, which is the
+   * short-circuit every pre-Student-role test exercises. */
+  studentUserIds?: string[];
+  alsoStaffUserIds?: string[];
 }) {
-  const tx = { user: { count: jest.fn().mockResolvedValue(params.activeUsers) } } as unknown as PrismaTx;
+  const tx = {
+    user: { count: jest.fn().mockResolvedValue(params.activeUsers) },
+    roleAssignment: {
+      findMany: jest
+        .fn()
+        // First call: who holds a student role. Second: which of those are
+        // also staff. Order matches countBillableUsers.
+        .mockResolvedValueOnce((params.studentUserIds ?? []).map((userId) => ({ userId })))
+        .mockResolvedValueOnce((params.alsoStaffUserIds ?? []).map((userId) => ({ userId }))),
+    },
+  } as unknown as PrismaTx;
   const tenantPrisma = {
     root: {
       tenant: { findUnique: jest.fn().mockResolvedValue(params.tenant ?? null) },
@@ -116,5 +131,55 @@ describe("assertSeatAvailable", () => {
     });
     await assertSeatAvailable(tx, tenantPrisma, "t1");
     expect((tx.user.count as jest.Mock)).toHaveBeenCalledWith({ where: { tenantId: "t1", deletedAt: null } });
+  });
+});
+
+/**
+ * Student Role (2026-08-25) — students don't consume a paid seat.
+ *
+ * Purnit sells staff seats. Counting learners here would have made the Student
+ * role commercially unusable the moment it shipped: a 2,000-student college is
+ * not a 2,000-seat customer.
+ */
+describe("countBillableUsers", () => {
+  it("excludes students from the seat count", async () => {
+    const { tx, tenantPrisma } = setup({
+      tenant: { id: "t1", stripeSubscriptionId: "sub_1", seatsPurchased: 5, planId: "p1" },
+      activeUsers: 5, // the count AFTER exclusion, which is what user.count returns
+      studentUserIds: ["stu1", "stu2"],
+    });
+    await assertSeatAvailable(tx, tenantPrisma, "t1").catch(() => undefined);
+
+    const countArgs = (tx as unknown as { user: { count: jest.Mock } }).user.count.mock.calls[0][0];
+    expect(countArgs.where.id).toEqual({ notIn: ["stu1", "stu2"] });
+  });
+
+  it("still counts someone who holds a student role AND a staff role", async () => {
+    const { tx, tenantPrisma } = setup({
+      tenant: { id: "t1", stripeSubscriptionId: "sub_1", seatsPurchased: 5, planId: "p1" },
+      activeUsers: 3,
+      studentUserIds: ["stu1", "tutor1"],
+      alsoStaffUserIds: ["tutor1"], // a student who also teaches
+    });
+    await assertSeatAvailable(tx, tenantPrisma, "t1").catch(() => undefined);
+
+    const countArgs = (tx as unknown as { user: { count: jest.Mock } }).user.count.mock.calls[0][0];
+    // Only the pure student is exempt — a person doing staff work pays.
+    expect(countArgs.where.id).toEqual({ notIn: ["stu1"] });
+  });
+
+  it("counts every active user when the tenant has no students at all", async () => {
+    const { tx, tenantPrisma } = setup({
+      tenant: { id: "t1", stripeSubscriptionId: "sub_1", seatsPurchased: 10, planId: "p1" },
+      activeUsers: 4,
+    });
+    await assertSeatAvailable(tx, tenantPrisma, "t1");
+
+    const countArgs = (tx as unknown as { user: { count: jest.Mock } }).user.count.mock.calls[0][0];
+    // No `id` filter at all — a user with NO role assignment must still pay,
+    // which a naive `NOT (every …)` filter would have silently exempted since
+    // `every` is vacuously true over an empty relation.
+    expect(countArgs.where.id).toBeUndefined();
+    expect(countArgs.where).toEqual({ tenantId: "t1", deletedAt: null });
   });
 });

@@ -726,7 +726,13 @@ Cross-tenant leakage via RAG is the classic failure. Mitigations: `tenant_id` on
 
 ### 15.1 The authorization standard *(permanent — applies to every module, role and domain)*
 
-This is the security model Purnit is built on, not a checklist for one review. Anything added later — a module, a role, a domain, the Student role, a fifth vertical — inherits it by construction rather than by remembering to.
+This is the security model Purnit is built on, not a checklist for one review. Anything added later — a module, a role, a domain, a fifth vertical — inherits it by construction rather than by remembering to.
+
+**The Student role (2026-08-25) is the first real test of that claim, and it held.** Adding a learner-facing role to Education took a blueprint entry, one new permission, four ownership-scoped data sources and one nullable column — **no change to the pruner, the manifest compiler, the sidebar, or any existing role**. Three things it surfaced are worth carrying forward:
+
+- **A new role is where "universal" items get audited.** `nav.leave` carried no gate because every role until then was an employee. The first non-employee role would have opened its sidebar to staff leave requests. An ungated nav item is only universal until the next role arrives.
+- **Scope ladders don't always express the boundary you need.** Course materials live on a Project the *admin* owns, so `project:read:own` (which filters on `ownerId` and never checks membership) refuses an enrolled student, while `project:read:team` ORs in their whole department. Neither is "a student sees their own courses' materials" — so that source draws its boundary from enrolment and the role holds no `project:*` grant at all. Reach for a bounded source before widening a scope.
+- **A role can be non-billable.** `countBillableUsers` excludes students, because Purnit sells staff seats and counting learners would have made the role commercially unusable on day one. Identified by blueprint role, never by a flag on `User`.
 
 **The chain.** `Domain + Role + Permissions → Navigation → Pages → Data → Actions`. Each link is derived server-side from the one before it; none is ever decided by the client. A role's blueprint is the single input, which is why adding a role is a blueprint change and not a frontend change.
 
