@@ -20,3 +20,7 @@ apps/api/src/generated/
 
 # Third-party, downloaded (not authored here) — see infra/jitsi/README.md
 infra/jitsi/docker-jitsi-meet/
+
+# Live security-sweep artifacts (regenerated per run, never committed)
+scripts/security-sweep/mutation-map.json
+scripts/security-sweep/*-result.json

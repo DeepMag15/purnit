@@ -24,7 +24,6 @@ const DEDICATED_ROUTES: Record<string, string> = {
   "page.chat": "/workspace/chat",
   "page.leave": "/workspace/leave",
   "page.crm": "/workspace/crm",
-  "page.notifications": "/workspace/notifications",
   "page.audit-logs": "/workspace/audit-logs",
   "page.settings": "/workspace/settings",
   "page.roles-permissions": "/workspace/roles-permissions",

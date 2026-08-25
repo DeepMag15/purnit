@@ -5,6 +5,7 @@ import { checkRequiredPermission } from "../../mutations/mutation-registry.servi
 import type { TenantPrismaService, PrismaTx } from "../../tenancy/tenant-prisma.service";
 import type { AiProviderService } from "../../ai/provider/ai-provider.service";
 import { AI_TOOL_ALLOWLIST } from "../../ai/tool-calling/ai-tool-allowlist";
+import type { PermissionResolverService } from "../../rbac/permission-resolver.service";
 import { assertConversationOwner } from "./ai-assistant.data-sources";
 import { AiMessageRoleSchema } from "./ai-message-role";
 import { buildSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RESPONSE_TOKENS } from "./ai-assistant.mutations";
@@ -38,7 +39,7 @@ async function loadOwnedProposal(tx: PrismaTx, tenantId: string, authUserId: str
   const conversation = await tx.aiConversation.findFirst({ where: { id: proposal.conversationId, tenantId, userId: user.id } });
   if (!conversation) throw new NotFoundException(`No pending tool call "${proposalId}"`);
 
-  return proposal;
+  return { proposal, user };
 }
 
 const ConfirmInputSchema = z.object({ proposalId: z.string() });
@@ -61,15 +62,16 @@ interface ConfirmPre {
 export function createAiToolCallConfirmMutation(
   tenantPrisma: TenantPrismaService,
   mutationRegistry: MutationRegistry,
+  permissionResolver: PermissionResolverService,
 ): MutationDefinition<z.infer<typeof ConfirmInputSchema>, ConfirmPre> {
   return {
     name: "aiToolCall.confirm",
     inputSchema: ConfirmInputSchema,
     async preResolve(input, { tenantId, authUserId }) {
-      const proposal = await tenantPrisma.run(tenantId, async (tx) => {
-        const row = await loadOwnedProposal(tx, tenantId, authUserId, input.proposalId);
+      const { proposal, effective } = await tenantPrisma.run(tenantId, async (tx) => {
+        const { proposal: row, user } = await loadOwnedProposal(tx, tenantId, authUserId, input.proposalId);
         if (row.status !== "pending") throw new BadRequestException("This action was already confirmed");
-        return row;
+        return { proposal: row, effective: await permissionResolver.resolveEffectivePermissionsWithTx(tx, tenantId, user.id) };
       });
 
       const allowlisted = AI_TOOL_ALLOWLIST.some((e) => e.mutationName === proposal.mutationName);
@@ -80,6 +82,20 @@ export function createAiToolCallConfirmMutation(
       // evolve between propose and confirm for a long-idle conversation.
       const parsed = targetDef.inputSchema.safeParse(proposal.input);
       if (!parsed.success) throw new BadRequestException("This action's details are no longer valid — ask the assistant to propose it again.");
+
+      // ⚠️ The target's permission, checked BEFORE its own `preResolve` runs.
+      // `resolve()` below re-checks this authoritatively against permissions
+      // resolved in *that* transaction, and that stays the real gate — but a
+      // target's `preResolve` is external-side-effect territory (Stripe calls,
+      // provider calls), so it must not run for a caller who will then be
+      // refused. This mirrors the pre-flight MutationsController performs for
+      // exactly the same reason; without it the assistant would be a way to
+      // reach a target's external work without holding its permission.
+      //
+      // Latent rather than exploitable today — no allowlisted mutation
+      // declares a `preResolve` — and a test pins that, so this is the
+      // belt to that braces.
+      checkRequiredPermission(targetDef, effective);
 
       const targetPre = await targetDef.preResolve?.(parsed.data, { tenantId, authUserId });
       return { proposal, targetDef, validatedInput: parsed.data, targetPre };
@@ -142,7 +158,7 @@ export function createAiToolCallReplyMutation(
     inputSchema: ReplyInputSchema,
     async preResolve(input, { tenantId, authUserId }) {
       const { conversationId, history, providerOverride } = await tenantPrisma.run(tenantId, async (tx) => {
-        const proposal = await loadOwnedProposal(tx, tenantId, authUserId, input.proposalId);
+        const { proposal } = await loadOwnedProposal(tx, tenantId, authUserId, input.proposalId);
         if (proposal.status !== "executed") throw new BadRequestException("This action hasn't been confirmed yet");
 
         const priorMessages = await tx.aiMessage.findMany({

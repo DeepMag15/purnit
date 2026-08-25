@@ -51,10 +51,37 @@ export class MutationsController {
       throw err;
     }
 
-    // Originally built for Meetings' Daily.co room creation (now unused —
-    // self-hosted Jitsi, its replacement, has no equivalent step) — kept as
-    // general infrastructure. See the note on MutationDefinition.preResolve.
+    // ⚠️ `preResolve` runs outside the transaction below, and therefore
+    // *before* the `checkRequiredPermission` inside it. That ordering was
+    // harmless when this hook was unused, but 10 mutations declare one today
+    // and every one does real external work there: the billing set changes
+    // Stripe subscriptions and mints billing-portal sessions,
+    // `tenant.closeWorkspace` cancels the subscription, the AI set calls the
+    // provider. Without this pre-flight an authenticated user holding none of
+    // those permissions reaches all of it.
+    //
+    // Found by Stage E's write sweep, not by reading: an Education Teacher
+    // (22 permissions, no `billing:manage`) got `billing.cancelSubscription`
+    // as far as "No active subscription" — the guard *inside* preResolve, one
+    // line above a live `stripe.cancelSubscriptionAtPeriodEnd` call. Nothing
+    // fired only because Stripe is unconfigured in local dev; in production
+    // any signed-in user could have cancelled their company's subscription.
+    //
+    // Authorize first, in its own short transaction. This runs only for the
+    // mutations that actually declare `preResolve`, so the single-transaction
+    // consolidation (CONTEXT.md §47) still holds for the other 124. The
+    // check inside the main transaction stays as the authoritative one.
+    if (def.preResolve) {
+      await this.tenantPrisma.run(tenantId, async (tx) => {
+        const user = await this.currentUser.getWithTx(tx, tenantId, authUserId);
+        assertPasswordChanged(user);
+        const effective = await this.permissionResolver.resolveEffectivePermissionsWithTx(tx, tenantId, user.id);
+        checkRequiredPermission(def, effective);
+      });
+    }
+
     // Runs (and, on failure, rolls back) outside the DB transaction entirely.
+    // See the note on MutationDefinition.preResolve.
     const pre = await def.preResolve?.(input, { tenantId, authUserId });
     try {
       return await this.tenantPrisma.run(tenantId, async (tx) => {

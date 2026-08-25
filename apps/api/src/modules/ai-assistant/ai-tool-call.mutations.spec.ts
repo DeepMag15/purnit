@@ -5,9 +5,20 @@ import { collapsePermissions } from "../../rbac/permission-collapse";
 import type { PrismaTx, TenantPrismaService } from "../../tenancy/tenant-prisma.service";
 import type { AiProviderService } from "../../ai/provider/ai-provider.service";
 import type { MutationRegistry } from "../../mutations/mutation-registry.service";
+import type { PermissionResolverService } from "../../rbac/permission-resolver.service";
+import { AI_TOOL_ALLOWLIST } from "../../ai/tool-calling/ai-tool-allowlist";
 
 function context(userId = "u1", grants: string[] = []) {
   return { tenantId: "t1", userId, userDepartmentId: null, effective: collapsePermissions(grants) };
+}
+
+/** `aiToolCall.confirm` resolves the confirming user's permissions inside its
+ * own `preResolve` so it can check the TARGET mutation's gate before that
+ * target's `preResolve` (external-side-effect territory) ever runs. */
+function fakeResolver(grants: string[] = ["task:create:own"]) {
+  return {
+    resolveEffectivePermissionsWithTx: jest.fn().mockResolvedValue(collapsePermissions(grants)),
+  } as unknown as PermissionResolverService;
 }
 
 function fakeTenantPrisma(tx: unknown, tenant: { id: string; name: string } | null = { id: "t1", name: "Acme" }) {
@@ -28,13 +39,41 @@ describe("aiToolCall.confirm", () => {
   beforeEach(() => targetResolve.mockClear());
 
   it("requires no permission of its own — ownership-only, same treatment as every AI Assistant mutation", () => {
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry(), fakeResolver());
     expect(mutation.requiredPermission).toBeUndefined();
+  });
+
+  it("checks the target's permission BEFORE running the target's preResolve", async () => {
+    // The ordering rule this codebase now holds everywhere: nothing external
+    // and nothing irreversible happens before authorization. A target's
+    // `preResolve` is where Stripe calls and provider calls live, so the
+    // assistant must not reach it for a caller who will then be refused.
+    const targetPreResolve = jest.fn();
+    const tx = {
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "u1" }) },
+      aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "task.create", input: { title: "x" }, status: "pending" }) },
+      aiConversation: { findFirst: jest.fn().mockResolvedValue({ id: "c1" }) },
+    };
+    const gated = { ...targetDef, preResolve: targetPreResolve };
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(gated), fakeResolver([]));
+
+    await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow('Missing permission "task:create"');
+    expect(targetPreResolve).not.toHaveBeenCalled();
+  });
+
+  it("no allowlisted tool declares a preResolve — the assumption the check above backstops", () => {
+    // If this ever fails it is not a bug in the test: someone allowlisted a
+    // mutation that does external work in `preResolve`, and the guard above
+    // becomes load-bearing rather than defensive. Re-verify it live.
+    const withPreResolve = AI_TOOL_ALLOWLIST.map((e) => e.mutationName).filter((n) =>
+      ["billing.createCheckoutSession", "billing.changePlan", "billing.cancelSubscription", "billing.resumeSubscription", "billing.updateSeats", "billing.createPortalSession", "tenant.closeWorkspace", "aiMessage.send", "aiToolCall.confirm", "aiToolCall.reply"].includes(n),
+    );
+    expect(withPreResolve).toEqual([]);
   });
 
   it("preResolve throws NotFoundException for a proposal that doesn't exist", async () => {
     const tx = { user: { findFirst: jest.fn().mockResolvedValue({ id: "u1" }) }, aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue(null) } };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow(NotFoundException);
   });
 
@@ -44,7 +83,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "task.create", input: {}, status: "pending" }) },
       aiConversation: { findFirst: jest.fn().mockResolvedValue(null) }, // owned by someone else
     };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow(NotFoundException);
   });
 
@@ -54,7 +93,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "task.create", input: {}, status: "executed" }) },
       aiConversation: { findFirst: jest.fn().mockResolvedValue({ id: "c1", userId: "u1" }) },
     };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow(BadRequestException);
   });
 
@@ -64,7 +103,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "user.changeRole", input: {}, status: "pending" }) },
       aiConversation: { findFirst: jest.fn().mockResolvedValue({ id: "c1", userId: "u1" }) },
     };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow(ForbiddenException);
   });
 
@@ -74,7 +113,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "task.create", input: { title: 123 }, status: "pending" }) },
       aiConversation: { findFirst: jest.fn().mockResolvedValue({ id: "c1", userId: "u1" }) },
     };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     await expect(mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" })).rejects.toThrow(BadRequestException);
   });
 
@@ -84,7 +123,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { findFirst: jest.fn().mockResolvedValue({ id: "p1", conversationId: "c1", mutationName: "task.create", input: { title: "Buy milk" }, status: "pending" }) },
       aiConversation: { findFirst: jest.fn().mockResolvedValue({ id: "c1", userId: "u1" }) },
     };
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma(tx), fakeRegistry(), fakeResolver());
     const pre = await mutation.preResolve!({ proposalId: "p1" }, { tenantId: "t1", authUserId: "au1" });
     expect(pre.validatedInput).toEqual({ title: "Buy milk" });
     expect(pre.targetDef).toBe(targetDef);
@@ -92,7 +131,7 @@ describe("aiToolCall.confirm", () => {
 
   it("resolve throws NotFoundException when the proposal was already claimed by a concurrent confirm (updateMany count !== 1)", async () => {
     const tx = { aiToolCallProposal: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) } } as unknown as PrismaTx;
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry(), fakeResolver());
     const pre = { proposal: { id: "p1", conversationId: "c1", mutationName: "task.create", input: {} }, targetDef, validatedInput: { title: "x" }, targetPre: undefined };
     await expect(mutation.resolve({ proposalId: "p1" }, context("u1", ["task:create:tenant"]), tx, pre)).rejects.toThrow(NotFoundException);
     expect(targetResolve).not.toHaveBeenCalled();
@@ -100,7 +139,7 @@ describe("aiToolCall.confirm", () => {
 
   it("resolve throws ForbiddenException — and never executes the target — when the CONFIRMING user's current permissions lack the target's requiredPermission, even though the proposal is real and well-formed", async () => {
     const tx = { aiToolCallProposal: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } } as unknown as PrismaTx;
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry(), fakeResolver());
     const pre = { proposal: { id: "p1", conversationId: "c1", mutationName: "task.create", input: {} }, targetDef, validatedInput: { title: "x" }, targetPre: undefined };
     // A different user, or the same user whose grants have since changed —
     // either way, zero task:create grant.
@@ -114,7 +153,7 @@ describe("aiToolCall.confirm", () => {
       aiToolCallProposal: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), update: jest.fn().mockResolvedValue({}) },
       aiMessage: { create },
     } as unknown as PrismaTx;
-    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry());
+    const mutation = createAiToolCallConfirmMutation(fakeTenantPrisma({}), fakeRegistry(), fakeResolver());
     const pre = { proposal: { id: "p1", conversationId: "c1", mutationName: "task.create", input: {} }, targetDef, validatedInput: { title: "Buy milk" }, targetPre: undefined };
 
     const ctx = context("u1", ["task:create:tenant"]);

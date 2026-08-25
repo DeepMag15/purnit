@@ -25,7 +25,7 @@
 12. [Notifications](#12-notifications)
 13. [Audit Logging & Compliance](#13-audit-logging--compliance)
 14. [Deployment & Infrastructure](#14-deployment--infrastructure)
-15. [Security Threat Model](#15-security-threat-model)
+15. [Security Threat Model](#15-security-threat-model) · [15.1 The authorization standard](#151-the-authorization-standard-permanent--applies-to-every-module-role-and-domain)
 16. [Phased Roadmap](#16-phased-roadmap)
 
 ---
@@ -367,7 +367,9 @@ interface NavItem { id: string; label: string; icon?: string; pageId?: string; c
 1. **Empty-group pruning.** After recursing into a group's `children`, `pruneNavItems` now drops the group entirely if `pageId` is absent and no child survived — the "prune, not hide" invariant (§6.5) applied to groups, not just leaves. Without this, a tier with no visible children in, say, an "HR" group would see a dangling, empty disclosure header instead of the group's total absence.
 2. **Page/nav sync.** `pruneByPermissions` now filters `resolved.pages` by each page's own root `requiredPermission` *before* running the existing `pruneNode` pass (which only ever handled a page's nested `actions`/`children`, never the page node's own permission). Closes a real gap: previously, a page absent from a user's pruned nav could still be fetched whole via a direct `GET /api/workspace/pages/:pageId`, because nothing checked the page's own root gate — an information-exposure gap (mutations/data-sources independently re-check permissions at dispatch time, so this was never a write-authorization bypass), but one that contradicted this section's own stated invariant. `compilePage`'s existing `if (!result) throw NotFoundException` needed no change — a permission-gated page is now simply absent from `pruned.pages`, so the existing "never distinguish doesn't-exist from can't-see" 404 already covers it.
 
-Every page's own `requiredPermission` should mirror its nav item's exactly (enforced by convention in the blueprint fixture, not by a runtime check) — a page with a stricter gate than its nav item would be unreachable even when linked; a looser one reopens the sync gap this section closes. The one seed-time exception that must never happen: the default dashboard (`dashboards.default`) must never carry a `requiredPermission` — `apps/api/prisma/seed.ts` asserts this right after its `BlueprintDefinitionSchema.parse` call, since `compileWorkspace`'s `pruned.pages[defaultPageId]` lookup has no graceful fallback if it's ever violated.
+Every page's own `requiredPermission` should mirror its nav item's exactly (enforced in CI by `config-engine/blueprints.spec.ts`, not by a runtime check) — a page with a stricter gate than its nav item would be unreachable even when linked; a looser one reopens the sync gap this section closes. The one seed-time exception that must never happen: the default dashboard (`dashboards.default`) must never carry a `requiredPermission` — `apps/api/prisma/seed.ts` asserts this right after its `BlueprintDefinitionSchema.parse` call, since `compileWorkspace`'s `pruned.pages[defaultPageId]` lookup has no graceful fallback if it's ever violated.
+
+**A page no nav item points at is the third case, and the one the mirror rule cannot see.** The rule above constrains only pages that *have* a nav item; an orphan page has nothing to mirror, so it carries no gate at all and every role can fetch it by direct URL. `page.notifications` became exactly that the moment its sidebar entry was removed — a dead node all 25 roles could still `GET`, surfaced by the Stage E sweep rather than by the mirror test, which had no opinion about it. Orphan pages are now rejected in CI too (`leaves no page unreachable from the navigation`), alongside the mirror check. Note the converse is *not* a violation: `/workspace/account` is deliberately absent from both `pages` and `navigation`, because it is a dedicated route acting only on the caller's own account, where ownership is the authorization (§6.5).
 
 **Known Phase-1 limitation**: `applyOverrides`/`applyKeyedListPatch` (§6.3) only patches `navigation` at its top level — a tenant-config override cannot yet reach into a nested group's `children` to rename/remove/reorder an item living inside one. Not fixed here; flagged as a real, newly-relevant limitation this phase's nesting introduces, same spirit as `entitlement-filter.ts`'s own "sufficient for Phase 1" caveat on page/module filtering.
 
@@ -716,6 +718,39 @@ Cross-tenant leakage via RAG is the classic failure. Mitigations: `tenant_id` on
 | **As built —** Workspace/tenant enumeration at login | `POST /auth/verify-workspace` returns one generic rejection for every failure mode (wrong workspace, wrong email, nonexistent workspace) — never distinguishes them (§5.1) |
 | **As built —** Stale cached manifest serving outdated permissions/content | Every mutable field that feeds the compiled manifest contributes a real change-timestamp to the etag, not just an owning row's version number (§6.7) — a lesson learned from a real recurring bug, not a preventive design that was never tested |
 | **As built —** Orphaned third-party (Supabase Auth) accounts on a failed multi-step provisioning operation | Signup and invite both wrap the Postgres write in a transaction and explicitly roll back the just-created Supabase Auth user if the transaction fails — an external side effect the database's own rollback can't undo automatically |
+| **As built —** External side effects reached *before* authorization (`preResolve`) | The permission check runs before `preResolve`, not only inside the main transaction (§15.1). Found live, not by review: any signed-in user could reach `stripe.cancelSubscriptionAtPeriodEnd` and the Stripe billing-portal mint without holding `billing:manage` |
+| **As built —** The AI assistant as a privilege-escalation path | `aiToolCall.confirm` re-checks the **target** mutation's own permission against the confirming user's freshly-resolved grants — now before the target's `preResolve`, not only before its `resolve` (§15.1) |
+| **As built —** A page reachable by direct URL because no nav item gates it | Orphan pages are rejected in CI: the nav/page mirror rule only constrains pages that *have* a nav item, so a page nothing links to carries no gate at all (§6.9) |
+
+---
+
+### 15.1 The authorization standard *(permanent — applies to every module, role and domain)*
+
+This is the security model Purnit is built on, not a checklist for one review. Anything added later — a module, a role, a domain, the Student role, a fifth vertical — inherits it by construction rather than by remembering to.
+
+**The chain.** `Domain + Role + Permissions → Navigation → Pages → Data → Actions`. Each link is derived server-side from the one before it; none is ever decided by the client. A role's blueprint is the single input, which is why adding a role is a blueprint change and not a frontend change.
+
+**The five rules.**
+
+1. **Prune, not hide.** Unauthorized navigation and pages are absent from the compiled manifest bytes (§6.5). The client has no permission conditionals to get wrong, because it never receives anything it shouldn't render.
+2. **The UI is never the enforcement.** Every page, data source and mutation re-authorizes on its own at dispatch, so a direct `GET /api/workspace/pages/:id` or `POST /api/data/:source` gets the same answer the sidebar did. A withheld page 404s; the codebase deliberately never distinguishes "doesn't exist" from "you can't see it".
+3. **Nothing external or irreversible happens before authorization.** This is the rule the Stage E sweep was written to test and the one it caught being broken. `preResolve` runs outside the main transaction, so `MutationsController` authorizes such mutations *up front* in their own short transaction; `aiToolCall.confirm` likewise checks the target's gate before invoking the target's `preResolve`. Ordering, not presence, is the property — a check that runs after the Stripe call is not a check.
+4. **A permission triple is not the only valid gate, but the alternative must be declared.** 29 mutations and ~40 data sources are authorized by ownership, membership or self-scope instead, because a triple would be wrong there: gating `account.deleteSelf` would let an admin revoke someone's ability to leave; gating `notification.markRead` would gate you out of your own inbox; gating a `*.capabilities` probe on the grant it reports is circular. **These are enumerated with a stated reason in `mutations/authorization-invariants.spec.ts`, and the list is exact** — a new ungated mutation fails CI until someone writes down why, and a stale entry fails too.
+5. **Scope is data, not UI.** `own | team | department | department-subtree | tenant` is resolved inside each module's own `xWhere(ctx, …)`, so the same page returns different rows to different roles from one query. A detail source returns 404 rather than a record outside the caller's scope, which is why guessing an id gains nothing.
+
+**What holds these permanently.** These invariants are pinned by tests that fail loudly rather than by convention:
+
+| Invariant | Enforced by |
+|---|---|
+| Every nav item points at a real page; every page's gate mirrors its nav item's; no orphan pages | `config-engine/blueprints.spec.ts`, per blueprint |
+| Every blueprint permission exists in `PERMISSION_CATALOG` | `config-engine/blueprints.spec.ts` |
+| Every mutation/data source is gated **or** a declared ownership-scoped exception with a reason | `mutations/authorization-invariants.spec.ts` |
+| No typo'd permission silently becomes an ungated one | `mutations/authorization-invariants.spec.ts` |
+| Authorization precedes `preResolve` | `mutations/mutations.controller.spec.ts` |
+| The AI assistant cannot reach a target's `preResolve` without the target's permission | `modules/ai-assistant/ai-tool-call.mutations.spec.ts` |
+| Every role gets a distinct, job-appropriate dashboard of real, visible metrics | `modules/analytics/dashboard-defaults.spec.ts` |
+
+The live counterpart — 25 roles × 5 domains, real users, real HTTP — is the Stage E sweep, recorded in `CHANGELOG.md`. The tests above are what keep its result true after it stops running.
 
 ---
 

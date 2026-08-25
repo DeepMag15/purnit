@@ -1471,19 +1471,9 @@ const IT_BLUEPRINT_V1 = {
       requiredPermission: "contact:read",
       children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
     },
-    // Notifications — trivial placeholder, same reasoning as page.leave/
-    // page.crm above: the permission-pruner's nav/page sync needs a real
-    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
-    // navigation before this tree ever actually renders.
-    "page.notifications": {
-      id: "page.notifications",
-      type: "Page",
-      version: 1,
-      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
-    },
     // Audit Logs — trivial placeholder, same reasoning as page.leave/
-    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
-    // navigation before this tree ever actually renders.
+    // page.crm above: DEDICATED_ROUTES intercepts navigation before
+    // this tree ever actually renders.
     "page.audit-logs": {
       id: "page.audit-logs",
       type: "Page",
@@ -2093,19 +2083,9 @@ const HEALTHCARE_BLUEPRINT_V1 = {
       requiredPermission: "contact:read",
       children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
     },
-    // Notifications — trivial placeholder, same reasoning as page.leave/
-    // page.crm above: the permission-pruner's nav/page sync needs a real
-    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
-    // navigation before this tree ever actually renders.
-    "page.notifications": {
-      id: "page.notifications",
-      type: "Page",
-      version: 1,
-      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
-    },
     // Audit Logs — trivial placeholder, same reasoning as page.leave/
-    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
-    // navigation before this tree ever actually renders.
+    // page.crm above: DEDICATED_ROUTES intercepts navigation before
+    // this tree ever actually renders.
     "page.audit-logs": {
       id: "page.audit-logs",
       type: "Page",
@@ -2694,19 +2674,9 @@ const EDUCATION_BLUEPRINT_V1 = {
       requiredPermission: "contact:read",
       children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
     },
-    // Notifications — trivial placeholder, same reasoning as page.leave/
-    // page.crm above: the permission-pruner's nav/page sync needs a real
-    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
-    // navigation before this tree ever actually renders.
-    "page.notifications": {
-      id: "page.notifications",
-      type: "Page",
-      version: 1,
-      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
-    },
     // Audit Logs — trivial placeholder, same reasoning as page.leave/
-    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
-    // navigation before this tree ever actually renders.
+    // page.crm above: DEDICATED_ROUTES intercepts navigation before
+    // this tree ever actually renders.
     "page.audit-logs": {
       id: "page.audit-logs",
       type: "Page",
@@ -3269,19 +3239,9 @@ const FINANCE_BLUEPRINT_V1 = {
       requiredPermission: "contact:read",
       children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
     },
-    // Notifications — trivial placeholder, same reasoning as page.leave/
-    // page.crm above: the permission-pruner's nav/page sync needs a real
-    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
-    // navigation before this tree ever actually renders.
-    "page.notifications": {
-      id: "page.notifications",
-      type: "Page",
-      version: 1,
-      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
-    },
     // Audit Logs — trivial placeholder, same reasoning as page.leave/
-    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
-    // navigation before this tree ever actually renders.
+    // page.crm above: DEDICATED_ROUTES intercepts navigation before
+    // this tree ever actually renders.
     "page.audit-logs": {
       id: "page.audit-logs",
       type: "Page",
@@ -3909,19 +3869,9 @@ const MANUFACTURING_BLUEPRINT_V1 = {
       requiredPermission: "contact:read",
       children: [{ id: "crm-heading", type: "Heading", version: 1, props: { text: "CRM" } }],
     },
-    // Notifications — trivial placeholder, same reasoning as page.leave/
-    // page.crm above: the permission-pruner's nav/page sync needs a real
-    // page node keyed by this pageId, but `DEDICATED_ROUTES` intercepts
-    // navigation before this tree ever actually renders.
-    "page.notifications": {
-      id: "page.notifications",
-      type: "Page",
-      version: 1,
-      children: [{ id: "notifications-heading", type: "Heading", version: 1, props: { text: "Notifications" } }],
-    },
     // Audit Logs — trivial placeholder, same reasoning as page.leave/
-    // page.crm/page.notifications above: DEDICATED_ROUTES intercepts
-    // navigation before this tree ever actually renders.
+    // page.crm above: DEDICATED_ROUTES intercepts navigation before
+    // this tree ever actually renders.
     "page.audit-logs": {
       id: "page.audit-logs",
       type: "Page",

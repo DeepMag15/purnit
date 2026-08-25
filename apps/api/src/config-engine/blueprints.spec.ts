@@ -61,6 +61,16 @@ describe.each(BLUEPRINTS)("%s blueprint", (_name, bp) => {
     expect(dangling).toEqual([]);
   });
 
+  it("leaves no page unreachable from the navigation", () => {
+    // The converse of the check above, and the one Stage E's sweep needed:
+    // a page nothing links to is gated by nothing, so every role reaches it
+    // by direct URL. `page.notifications` sat here once its nav item was
+    // removed — a dead node all 25 roles could still fetch.
+    const linked = new Set(flattenLeaves(bp.navigation as NavItem[]).map((n) => n.pageId!));
+    const orphans = Object.keys(bp.pages ?? {}).filter((p) => !linked.has(p));
+    expect(orphans).toEqual([]);
+  });
+
   it("keeps each page's gate identical to its nav item's", () => {
     // ARCHITECTURE.md §6.9: a page gated more strictly than its nav item is
     // unreachable when linked; a looser one reopens the direct-fetch gap that

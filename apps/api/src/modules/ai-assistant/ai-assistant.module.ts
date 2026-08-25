@@ -47,7 +47,7 @@ class AiAssistantRegistrar implements OnModuleInit, OnApplicationBootstrap {
         this.mutations,
       ),
     );
-    this.mutations.register(createAiToolCallConfirmMutation(this.tenantPrisma, this.mutations));
+    this.mutations.register(createAiToolCallConfirmMutation(this.tenantPrisma, this.mutations, this.permissionResolver));
     this.mutations.register(createAiToolCallReplyMutation(this.aiProvider, this.tenantPrisma));
     this.metrics.register(aiUsageSummaryMetric);
   }
