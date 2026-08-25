@@ -33,9 +33,37 @@ export const enrollmentEnrollMutation: MutationDefinition<z.infer<typeof EnrollI
     const existing = await tx.enrollment.findFirst({ where: { studentId: input.studentId, courseId: input.courseId } });
     if (existing) throw new BadRequestException("Already has an enrollment record for this course — update its status instead");
 
-    const enrollment = await tx.enrollment.create({
-      data: { tenantId: ctx.tenantId, studentId: input.studentId, courseId: input.courseId, enrolledById: ctx.userId },
+    // Contextual Reporting (2026-08-25) — where this student submits work for
+    // this course. Owned by the STUDENT's own user when they have a login, not
+    // by the staff member enrolling them: `projectsWhere` at `own` scope
+    // filters on ownerId, so this is precisely what makes a student able to
+    // reach their own submissions without any broader project grant.
+    const submissionsProject = await tx.project.create({
+      data: {
+        tenantId: ctx.tenantId,
+        name: `Submissions: ${student.name} — ${course.name}`,
+        status: "active",
+        ownerId: student.userId ?? ctx.userId,
+      },
     });
+
+    const enrollment = await tx.enrollment.create({
+      data: {
+        tenantId: ctx.tenantId,
+        studentId: input.studentId,
+        courseId: input.courseId,
+        submissionsProjectId: submissionsProject.id,
+        enrolledById: ctx.userId,
+      },
+    });
+
+    // The teacher marks it, so they need to reach it. Membership rather than
+    // ownership: the student owns their own submissions.
+    if (course.teacherId) {
+      await tx.projectMember.create({
+        data: { tenantId: ctx.tenantId, projectId: submissionsProject.id, userId: course.teacherId },
+      });
+    }
 
     // Student Role (2026-08-25) — enrolling a student who has a login also
     // gives them the course's materials.

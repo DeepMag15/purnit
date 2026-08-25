@@ -248,6 +248,10 @@ const TENANT_OWNED_MODELS = [
   // --- deepest children first ---
   "commentMention",
   "comment",
+  // Contextual Reporting — before `document`, which it has an FK to. Ordering
+  // here is load-bearing: this list is deleted top-down, so a child listed
+  // after its parent fails the parent's delete and silently purges nothing.
+  "documentAnalysis",
   "documentActivity",
   "documentVersion",
   "document",

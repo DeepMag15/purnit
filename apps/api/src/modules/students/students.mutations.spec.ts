@@ -13,9 +13,14 @@ describe("student.register", () => {
     expect(studentRegisterMutation.requiredPermission).toBe("student:create");
   });
 
-  it("creates a plain Student row — deliberately NO backing Project, unlike patient.register", async () => {
+  /** Contextual Reporting (2026-08-25) reversed this. Phase A deliberately
+   * gave Student no backing Project — "a per-Student individual document file
+   * edges into student-record privacy". It now has one, because a Registrar's
+   * paperwork needs somewhere to live; see student.prisma's own comment for
+   * the privacy caveat that remains open. */
+  it("creates a Student row with its own files Project, so a Registrar has somewhere to file paperwork", async () => {
     const studentCreate = jest.fn().mockResolvedValue({ id: "s1" });
-    const projectCreate = jest.fn();
+    const projectCreate = jest.fn().mockResolvedValue({ id: "p1" });
     const tx = {
       student: { create: studentCreate },
       project: { create: projectCreate },
@@ -24,8 +29,13 @@ describe("student.register", () => {
 
     await studentRegisterMutation.resolve({ name: "Jane Doe" }, context(["student:create:tenant"]), tx);
 
-    expect(studentCreate.mock.calls[0]![0].data).toMatchObject({ tenantId: "t1", name: "Jane Doe", registeredById: "u1" });
-    expect(projectCreate).not.toHaveBeenCalled();
+    expect(projectCreate.mock.calls[0]![0].data).toMatchObject({ tenantId: "t1", name: "Student file: Jane Doe" });
+    expect(studentCreate.mock.calls[0]![0].data).toMatchObject({
+      tenantId: "t1",
+      name: "Jane Doe",
+      registeredById: "u1",
+      filesProjectId: "p1",
+    });
   });
 });
 

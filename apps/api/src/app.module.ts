@@ -58,6 +58,7 @@ import { PurchaseOrdersModule } from "./modules/purchase-orders/purchase-orders.
 import { WorkOrdersModule } from "./modules/work-orders/work-orders.module";
 import { DigestModule } from "./modules/digest/digest.module";
 import { AccountModule } from "./modules/account/account.module";
+import { ReportingModule } from "./reporting/reporting.module";
 import { RetentionModule } from "./retention/retention.module";
 import { MeController } from "./me/me.controller";
 
@@ -126,6 +127,9 @@ import { MeController } from "./me/me.controller";
     // Go-Live, Phase 05 — data protection: self-service account deletion,
     // workspace closure, own-data export, and the retention purge.
     AccountModule,
+    // Contextual Reporting — role- and domain-aware analysis of uploaded
+    // reports, inside the module each report already lives in.
+    ReportingModule,
     RetentionModule,
   ],
   controllers: [HealthController, MeController],

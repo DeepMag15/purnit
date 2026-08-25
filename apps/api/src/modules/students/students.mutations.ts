@@ -34,9 +34,19 @@ export const studentRegisterMutation: MutationDefinition<z.infer<typeof Register
   inputSchema: RegisterInputSchema,
   requiredPermission: "student:create",
   async resolve(input, ctx, tx) {
+    // Contextual Reporting (2026-08-25) — the student's own file, backed by a
+    // Project so Documents and Comments attach through machinery that already
+    // resolves scope. Created eagerly, exactly as course.create/patient.register
+    // create theirs: students are registered one at a time, so this is one
+    // extra row per registration, not a bulk backfill.
+    const filesProject = await tx.project.create({
+      data: { tenantId: ctx.tenantId, name: `Student file: ${input.name}`, status: "active", ownerId: ctx.userId },
+    });
+
     const student = await tx.student.create({
       data: {
         tenantId: ctx.tenantId,
+        filesProjectId: filesProject.id,
         name: input.name,
         dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : undefined,
         contactPhone: input.contactPhone,

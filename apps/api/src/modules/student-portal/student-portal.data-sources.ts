@@ -120,6 +120,9 @@ export const myCoursesListDataSource: DataSourceDefinition<z.infer<typeof EmptyP
           // `Student.userId` unlocked — so the existing documents module
           // serves them with no student-specific code.
           materialsProjectId: course.materialsProjectId,
+          // Where this student submits work for this course. Owned by them,
+          // so the ordinary document upload path works with no extra grant.
+          submissionsProjectId: e.submissionsProjectId,
         };
       });
   },

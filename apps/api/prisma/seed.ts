@@ -71,7 +71,7 @@ const IT_BLUEPRINT_V1 = {
       // (meetingsWhere's OR-condition, see meetings.data-sources.ts); an
       // Intern with no meeting:read grant still always sees meetings they
       // organize or were personally invited to.
-      permissions: ["+project:read:team", "+project:update:own", "+task:create:team", "+task:read:team", "+task:delete:own", "+meeting:read:team"],
+      permissions: ["+project:read:team", "+project:update:own", "+reportAnalysis:create:team", "+task:create:team", "+task:read:team", "+task:delete:own", "+meeting:read:team"],
     },
     {
       // Was "Senior Employee".
@@ -103,6 +103,7 @@ const IT_BLUEPRINT_V1 = {
         "+task:delete:team",
         "+meeting:create:team",
         "+document:create:team",
+        "+reportAnalysis:create:team",
         "+document:update:team",
         // leave:approve:own — Leave Management: "own" here means "requests
         // where I am literally the assigned approver" (ARCHITECTURE.md
@@ -137,6 +138,7 @@ const IT_BLUEPRINT_V1 = {
         "+task:update:department",
         "+meeting:create:department",
         "+document:create:department",
+        "+reportAnalysis:create:department",
         "+document:update:department",
         "+document:delete:team",
         // contact/deal:*:own — CRM: IT has no dedicated sales-facing role
@@ -253,6 +255,7 @@ const IT_BLUEPRINT_V1 = {
         "+meeting:read:department-subtree",
         "+announcement:create:department-subtree",
         "+document:create:department-subtree",
+        "+reportAnalysis:create:department-subtree",
         "+document:update:department-subtree",
         "+document:delete:department-subtree",
         "+calendarEvent:create:department-subtree",
@@ -341,6 +344,7 @@ const IT_BLUEPRINT_V1 = {
         "announcement:create:tenant",
         "calendarEvent:create:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
         "attendance:create:tenant",
@@ -1541,6 +1545,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "task:update:tenant",
         "task:delete:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
@@ -1606,6 +1611,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "task:read:tenant",
         "task:update:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "meeting:read:tenant",
         "calendarEvent:create:own",
@@ -1636,6 +1642,12 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Contextual Reporting — a Nurse already reads charts, so can analyse
+        // what a Doctor filed there. Deliberately no document:create: a Nurse
+        // still originates nothing, and document:update is what selects the
+        // clinical lens, so they get the care-delivery reading.
+        "reportAnalysis:create:tenant",
       ],
     },
     {
@@ -1661,6 +1673,15 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Contextual Reporting — front-desk paperwork on a patient record.
+        // ⚠️ document:create WITHOUT document:update is deliberate: the patient
+        // anchor selects its CLINICAL lens on document:update, so granting
+        // update here would hand a Receptionist a clinical reading of a chart.
+        // They upload and analyse; they get the scheduling/admin lens only.
+        "project:read:tenant",
+        "document:create:tenant",
+        "reportAnalysis:create:tenant",
       ],
     },
   ],
@@ -2130,6 +2151,7 @@ const EDUCATION_BLUEPRINT_V1 = {
         "task:update:tenant",
         "task:delete:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
@@ -2201,6 +2223,7 @@ const EDUCATION_BLUEPRINT_V1 = {
         "task:read:tenant",
         "task:update:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "meeting:read:tenant",
         "calendarEvent:create:own",
@@ -2225,6 +2248,9 @@ const EDUCATION_BLUEPRINT_V1 = {
         "assignment:read:tenant",
         "grade:read:tenant",
         "project:read:tenant",
+        // Contextual Reporting — cohort overview lens, never the
+        // teacher's per-student reading (that needs grade:create).
+        "reportAnalysis:create:tenant",
         "task:read:tenant",
         "task:update:tenant",
         "meeting:read:tenant",
@@ -2264,6 +2290,15 @@ const EDUCATION_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Contextual Reporting — the student file (Student.filesProjectId) is a
+        // Registrar's actual paperwork. Still no assignment or grade grant, so
+        // the gradebook stays structurally out of reach and the course lens
+        // they match is enrolment compliance, never class performance.
+        "project:read:tenant",
+        "document:create:tenant",
+        "document:update:tenant",
+        "reportAnalysis:create:tenant",
       ],
     },
     {
@@ -2288,6 +2323,14 @@ const EDUCATION_BLUEPRINT_V1 = {
       rank: 4,
       permissions: [
         "studentPortal:read:own",
+        // Contextual Reporting — submitting work, and checking their own
+        // before it is marked. `project:read:own` is safe here in a way it
+        // was NOT for course materials: a submissions project is created per
+        // enrolment with the student as its owner, so ownerId matching is
+        // exactly right. Course materials still come via myCourseMaterials.
+        "project:read:own",
+        "document:create:own",
+        "reportAnalysis:create:own",
         // ⚠️ Deliberately NO `project:*` grant, and the reason is the same
         // trap this fixture already documents for Teacher. Course materials
         // live on the Course's materialsProject, but `projectsWhere` at `own`
@@ -2900,6 +2943,7 @@ const FINANCE_BLUEPRINT_V1 = {
         "task:update:tenant",
         "task:delete:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
@@ -2959,6 +3003,7 @@ const FINANCE_BLUEPRINT_V1 = {
         // reconciliation work, unlike Sales Rep's confidentiality-scoped :own.
         "project:read:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "task:create:tenant",
         "task:read:tenant",
@@ -2994,6 +3039,14 @@ const FINANCE_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Contextual Reporting — client files (Client.filesProjectId already
+        // exists, so no new anchor). invoice:update selects the receivables
+        // lens; they never match the financial-position lens, which needs
+        // payment:create.
+        "project:read:tenant",
+        "document:create:tenant",
+        "reportAnalysis:create:tenant",
       ],
     },
     {
@@ -3021,6 +3074,7 @@ const FINANCE_BLUEPRINT_V1 = {
         // Project's ownerId (see client.create's own doc comment).
         "project:read:own",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "task:create:tenant",
         "task:read:tenant",
@@ -3477,6 +3531,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "task:update:tenant",
         "task:delete:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "document:delete:tenant",
         "role:manage:tenant",
@@ -3544,6 +3599,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "inventoryItem:read:tenant",
         "project:read:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "task:create:tenant",
         "task:read:tenant",
@@ -3579,6 +3635,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "inventoryItem:read:tenant",
         "project:read:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "document:update:tenant",
         "task:create:tenant",
         "task:read:tenant",
@@ -3612,6 +3669,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "inventoryItem:update:tenant",
         "project:read:tenant",
         "document:create:tenant",
+        "reportAnalysis:create:tenant",
         "task:read:tenant",
         "task:update:tenant",
         "meeting:read:tenant",

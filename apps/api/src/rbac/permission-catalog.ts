@@ -235,6 +235,22 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
     module: "Student portal",
     entries: [{ resource: "studentPortal", action: "read", label: "Access the student portal (own courses, assignments, progress)" }],
   },
+  {
+    // Contextual Reporting (2026-08-25). Deliberately one permission, and
+    // deliberately about *commissioning* an analysis rather than reading one.
+    //
+    // Reading an analysis is governed by reaching its document, exactly as the
+    // file itself is — so a Nurse can read what a Doctor ran on a chart they
+    // can already open. Running one is separate because it costs a real
+    // provider call and produces something stored, attributed and reviewed.
+    //
+    // Which *angle* a holder gets is not this permission's job: that comes
+    // from the lens registry matching their other existing grants, which is
+    // why a Teacher and a Registrar holding this get different analyses of
+    // the same file.
+    module: "Report analysis",
+    entries: [{ resource: "reportAnalysis", action: "create", label: "Run analysis on uploaded reports" }],
+  },
   // Finance Domain, Phase A — the platform's third industry blueprint. Same
   // shape/discipline as every module above.
   {

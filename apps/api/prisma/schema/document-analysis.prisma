@@ -1,0 +1,55 @@
+/// Contextual Reporting — one run of "analyse this report", attached to the
+/// Document it analysed.
+///
+/// Deliberately NOT a new documents-like store. The whole capability rides on
+/// the Documents module that already exists: upload, versioning, the
+/// `approvalStatus` review workflow, comments and text extraction were all
+/// already there, and every domain already anchors its documents to a domain
+/// entity (Project / Patient.chartProjectId / Course.materialsProjectId /
+/// Client.filesProjectId / InventoryItem.filesProjectId). The only thing
+/// missing was the step between "uploaded" and "reviewed", which is this.
+///
+/// Rows are append-only in practice — a re-analysis writes a new row rather
+/// than overwriting, because an analysis is evidence of what was said at a
+/// point in time, and a report often IS re-analysed after being replaced with
+/// a corrected version.
+model DocumentAnalysis {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id])
+  /// Which version of the document this analysed. A report replaced after
+  /// analysis leaves its old insights visibly stale rather than silently
+  /// wrong — the UI marks them "analysed v1 of 2".
+  documentVersion Int @map("document_version")
+
+  /// The lens that produced this, e.g. "course.classPerformance". Stored
+  /// rather than recomputed: the caller's permissions can change, and an
+  /// analysis must keep saying which question it actually answered.
+  lensKey String @map("lens_key")
+  /// Human label for the lens at the time it ran, so old rows stay readable
+  /// even if a lens is later renamed or retired.
+  lensLabel String @map("lens_label")
+
+  summary String
+  /// [{ label, detail, severity: "info" | "attention" | "risk" }]
+  findings Json
+  /// string[] — what the model suggests doing next. Deliberately advisory
+  /// text in v1, not executable tool calls: the AI tool-calling path already
+  /// exists (`aiToolCall.confirm`) and can be pointed at these later, but
+  /// auto-acting on an uploaded file is a much bigger trust decision.
+  suggestedActions Json @map("suggested_actions")
+
+  /// Which provider/model produced it — the same "record what actually ran"
+  /// discipline `AiMessage.usage` already follows, and the thing you need
+  /// when an insight is later disputed.
+  provider     String
+  inputTokens  Int    @map("input_tokens")
+  outputTokens Int    @map("output_tokens")
+
+  requestedById String   @map("requested_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, documentId])
+  @@map("document_analyses")
+}

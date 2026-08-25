@@ -66,8 +66,21 @@ export const studentLinkLoginMutation: MutationDefinition<z.infer<typeof LinkLog
     // would open a course and find no materials, with nothing to explain why.
     const enrolments = await tx.enrollment.findMany({
       where: { tenantId: ctx.tenantId, studentId: student.id, status: { in: ["enrolled", "completed"] } },
-      select: { courseId: true },
+      select: { courseId: true, submissionsProjectId: true },
     });
+
+    // Contextual Reporting — a submissions project created before this student
+    // had a login is owned by whoever enrolled them. Ownership is what lets a
+    // student reach their own submissions (`projectsWhere` at `own` scope
+    // filters on ownerId), so hand them over now or the student would find
+    // their own submission folder unreachable.
+    const orphanedSubmissions = enrolments.map((e) => e.submissionsProjectId).filter((id): id is string => !!id);
+    if (orphanedSubmissions.length > 0) {
+      await tx.project.updateMany({
+        where: { id: { in: orphanedSubmissions }, tenantId: ctx.tenantId },
+        data: { ownerId: input.userId },
+      });
+    }
     if (enrolments.length > 0) {
       const courses = await tx.course.findMany({
         where: { id: { in: enrolments.map((e) => e.courseId) }, tenantId: ctx.tenantId, deletedAt: null },

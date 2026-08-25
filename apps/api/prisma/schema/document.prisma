@@ -23,6 +23,7 @@ model Document {
 
   versions   DocumentVersion[]
   activities DocumentActivity[]
+  analyses   DocumentAnalysis[]
 
   @@index([tenantId])
   @@index([tenantId, projectId])

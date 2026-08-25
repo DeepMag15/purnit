@@ -201,6 +201,11 @@ const OWNERSHIP_SCOPED_DATA_SOURCES: Record<string, string> = {
   "workOrders.detail": "workOrdersWhere returns null without read access",
   "document.detail": "assertProjectVisible on the parent project",
   "documents.list": "assertProjectVisible on the parent project",
+  // Reading an analysis is governed by reaching the document it describes, so
+  // it can never be more reachable than the report itself. Deliberately looser
+  // than `reportAnalysis:create`: producing insight costs money and carries
+  // authority, reading one a colleague already ran does not.
+  "document.analyses": "assertProjectVisible on the analysed document's project",
   "calendar.list": "meetingsWhere/scope resolution per underlying source",
 
   // Gated per row rather than per source — a static triple would be weaker.
@@ -279,6 +284,10 @@ describe("authorization invariants", () => {
         "billing.createPortalSession",
         "billing.resumeSubscription",
         "billing.updateSeats",
+        // Contextual Reporting: downloads the file, extracts its text and
+        // calls the AI provider — all of it outside the transaction, all of
+        // it after the controller's pre-flight authorization.
+        "document.analyze",
         "tenant.closeWorkspace",
       ].sort(),
     );

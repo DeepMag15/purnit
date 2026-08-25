@@ -18,6 +18,7 @@ import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
 import { CommentThread } from "../comments/CommentThread";
+import { DocumentInsights } from "../reporting/DocumentInsights";
 
 interface DocumentDetailData {
   canUpdate: boolean;
@@ -45,6 +46,11 @@ interface ProjectMembers {
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  // Contextual Reporting — insights sit beside versions, activity and the
+  // approval control, because together those ARE the review workflow. A
+  // separate "Reports" area would mean uploading in one place and reasoning
+  // about it in another.
+  { id: "insights", label: "Insights" },
   { id: "versions", label: "Versions" },
   { id: "activity", label: "Activity" },
   { id: "comments", label: "Comments" },
@@ -271,6 +277,14 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
                 ))}
               </ul>
             )}
+          </CardBody>
+        </Card>
+      )}
+
+      {activeTab === "insights" && (
+        <Card>
+          <CardBody>
+            <DocumentInsights documentId={document.id} documentName={document.name} />
           </CardBody>
         </Card>
       )}

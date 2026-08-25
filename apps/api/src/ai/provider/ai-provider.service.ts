@@ -19,7 +19,9 @@ const DEFAULT_MODELS: Record<string, string> = {
   openai: "gpt-5.1",
 };
 
-function selectedProviderKey(): string {
+/** Exported for callers that need to RECORD which provider ran, not to pick
+ * one — duplicating this env-var logic elsewhere would drift. */
+export function selectedProviderKey(): string {
   return process.env.AI_COMPLETION_PROVIDER ?? "anthropic";
 }
 
