@@ -251,15 +251,26 @@ if (subUpload.b?.signedUrl) {
 
 // ---- boundaries --------------------------------------------------------------
 console.log("\nboundaries:");
-// ⚠️ An honest check, not a flattering one. An earlier version of this asserted
-// "a TA cannot read a student's submissions" and passed only because the
-// project happened to be empty — the TA actually got 200. Staff holding
-// `project:read:tenant` CAN reach every project in the tenant, submissions
-// included; `projectsWhere` has no per-project visibility below tenant scope.
-// So the real, verifiable boundary is the lens, not the file: a TA opening a
-// submission gets the teacher-less reading, never the marking view.
-const subView = await read(taTok, "document.analyses", { documentId: doc.b.id });
-check(subView.s === 200, `staff with project:read:tenant reach documents (${subView.s}) — file-level privacy is NOT claimed`);
+// ⚠️ The boundary that was BROKEN when Contextual Reporting first shipped, and
+// is now fixed. `project:read:tenant` used to return every project in the
+// workspace, so a TA, a Registrar or any staff member could read every
+// student's private submissions and every patient's clinical documents. A
+// restricted project is now reachable only by its owner, its members, or a
+// caller holding its declared accessPermission.
+const taOnSubmission = await read(taTok, "documents.list", { projectId: enrol.b.submissionsProjectId });
+check(taOnSubmission.s === 403, `a TA canNOT read a student's private submissions, despite project:read:tenant (${taOnSubmission.s})`);
+
+const registrarOnSubmission = await read(registrarTok, "documents.list", { projectId: enrol.b.submissionsProjectId });
+check(registrarOnSubmission.s === 403, `nor can a Registrar (${registrarOnSubmission.s})`);
+
+const studentOwnSubmission = await read(studentTok, "documents.list", { projectId: enrol.b.submissionsProjectId });
+check(studentOwnSubmission.s === 200, `the Student still reaches their OWN submissions (${studentOwnSubmission.s})`);
+
+const teacherOnSubmission = await read(teacherTok, "documents.list", { projectId: enrol.b.submissionsProjectId });
+check(teacherOnSubmission.s === 200, `the marking Teacher still reaches it, as a member (${teacherOnSubmission.s})`);
+
+const teacherOnStudentFile = await read(teacherTok, "documents.list", { projectId: student.b.filesProjectId });
+check(teacherOnStudentFile.s === 403, `a Teacher canNOT read registrar student-file paperwork (${teacherOnStudentFile.s})`);
 
 // Analysis on a document you cannot reach is refused, by direct API call.
 const fakeAnalyze = await call(studentTok, "document.analyze", { documentId: "00000000-0000-4000-8000-000000000001" });

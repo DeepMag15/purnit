@@ -44,6 +44,13 @@ export const enrollmentEnrollMutation: MutationDefinition<z.infer<typeof EnrollI
         name: `Submissions: ${student.name} — ${course.name}`,
         status: "active",
         ownerId: student.userId ?? ctx.userId,
+        // A student's own work. Restricted with NO accessPermission on purpose:
+        // there is no role that should read every student's submissions, so the
+        // only ways in are owning it (the student) or being named on it (the
+        // teacher who marks it). Without this, any staff member holding
+        // `project:read:tenant` — a TA, a Registrar, another teacher — could
+        // read every student's work in the school.
+        restricted: true,
       },
     });
 

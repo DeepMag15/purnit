@@ -6,6 +6,24 @@ model Project {
   status       String    @default("active")
   ownerId      String?   @map("owner_id") @db.Uuid
   departmentId String?   @map("department_id") @db.Uuid
+  /// Contextual Reporting (2026-08-25) — the document access boundary.
+  ///
+  /// `project:read:tenant` used to return every project, and every domain
+  /// entity is backed by a Project, so patient charts, student submissions and
+  /// registrar student-files were all readable by anyone holding that grant —
+  /// and Documents live on those projects, so file access inherited the same
+  /// reach. A restricted project is reachable only by its owner, its members,
+  /// or a caller holding `accessPermission`. See `projectsWhere`.
+  ///
+  /// Default false, so ordinary projects, course materials, client files and
+  /// inventory files behave exactly as they always have.
+  restricted   Boolean   @default(false)
+  /// The role-level way into a restricted project, for cases where per-row
+  /// membership is the wrong model: a Nurse must reach ANY patient chart
+  /// without being named on each one, so charts carry `patient:update` here.
+  /// Null means membership or ownership only — which is what a student's
+  /// private submissions project wants.
+  accessPermission String? @map("access_permission")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")

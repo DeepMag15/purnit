@@ -50,7 +50,19 @@ export const patientRegisterMutation: MutationDefinition<z.infer<typeof Register
     }
 
     const chartProject = await tx.project.create({
-      data: { tenantId: ctx.tenantId, name: `Chart: ${input.name}`, status: "active", ownerId: ctx.userId },
+      data: {
+        tenantId: ctx.tenantId,
+        name: `Chart: ${input.name}`,
+        status: "active",
+        ownerId: ctx.userId,
+        // Clinical documents. Restricted so `project:read:tenant` alone is not a
+        // way into every patient's chart — a Receptionist holds that grant for
+        // front-desk paperwork and must not reach clinical files.
+        // `patient:update` is the clinical floor: Doctor and Nurse hold it,
+        // Receptionist does not.
+        restricted: true,
+        accessPermission: "patient:update",
+      },
     });
 
     const patient = await tx.patient.create({

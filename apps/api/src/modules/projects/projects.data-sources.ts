@@ -26,16 +26,58 @@ import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
  * `role.member`'s permissions in `seed.ts`), so these are the *only* paths
  * by which a Member ever sees a project they didn't create, beyond
  * department match. */
+/**
+ * The gate for a **restricted** project, applied at every scope including
+ * `tenant` (Contextual Reporting, 2026-08-25).
+ *
+ * ⚠️ The hole this closes: `project:read:tenant` returned literally every
+ * project in the workspace, and every domain entity is backed by a real
+ * Project — so a patient's chart, a student's private submission and a
+ * registrar's student file were all readable by anyone holding that grant.
+ * Documents live on those projects, so `documents.list` and
+ * `document.getFileUrl` inherited the same reach. A Receptionist granted
+ * `project:read:tenant` for front-desk paperwork could read every clinical
+ * document in the hospital.
+ *
+ * A restricted project is reachable three ways, and no other:
+ *   - you **own** it (a student owns their own submissions project);
+ *   - you are a **member** (a patient's assigned doctor, a course's teacher);
+ *   - you hold the project's declared `accessPermission` — the role-level
+ *     path that lets a Nurse reach any chart without being named on each one.
+ *
+ * Unrestricted projects behave exactly as before, so ordinary IT projects,
+ * course materials, client files and inventory files are untouched.
+ */
+function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> {
+  // "resource:action:scope" -> "resource:action". Presence, not scope: holding
+  // `patient:update:own` is enough to be a clinical role.
+  const held = [...new Set(ctx.effective.toArray().map((g) => g.split(":").slice(0, 2).join(":")))];
+  return {
+    OR: [
+      { restricted: false },
+      { ownerId: ctx.userId },
+      { members: { some: { userId: ctx.userId } } },
+      ...(held.length > 0 ? [{ accessPermission: { in: held } }] : []),
+    ],
+  };
+}
+
 export async function projectsWhere(tx: PrismaTx, ctx: DataSourceContext, extra: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const scope = ctx.effective.has("project", "read");
   if (!scope) return null;
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null, ...extra };
+  // Layered with AND so it composes with whatever scope condition follows —
+  // a restricted project must be unreachable at EVERY scope, not just tenant.
+  const conditions: Record<string, unknown>[] = [restrictedProjectGate(ctx)];
+
   if (scope === "own") {
     where.ownerId = ctx.userId;
+    where.AND = conditions;
     return where;
   }
   if (scope === "tenant") {
+    where.AND = conditions;
     return where;
   }
   const scopeConditions: Record<string, unknown>[] = [
@@ -52,7 +94,10 @@ export async function projectsWhere(tx: PrismaTx, ctx: DataSourceContext, extra:
     // department / team — no teamId column on Project yet, "team" approximates to department (see rbac/scope-check.ts).
     scopeConditions.push({ departmentId: ctx.userDepartmentId });
   }
-  where.OR = scopeConditions;
+  // AND, not a merged OR: the department path must not become a way around
+  // the restriction gate.
+  conditions.push({ OR: scopeConditions });
+  where.AND = conditions;
   return where;
 }
 

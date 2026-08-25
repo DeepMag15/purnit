@@ -24,3 +24,4 @@ infra/jitsi/docker-jitsi-meet/
 # Live security-sweep artifacts (regenerated per run, never committed)
 scripts/security-sweep/mutation-map.json
 scripts/security-sweep/*-result.json
+scripts/security-sweep/browser-shots/

@@ -64,3 +64,38 @@ Stripe calls, Supabase Auth deletion, AI provider calls, or changing an
 identifier the sweep depends on. Only their **refusal** direction is exercised
 (nothing fires, since the refusal precedes `preResolve`). They are listed in
 `payloads.mjs` as `NO_EXECUTE`, counted, and reported — never silently skipped.
+
+## Browser verification
+
+Every phase of this project previously ended with "no browser-automation tool
+exists in this environment, so the visual layer still needs the user's own
+check". That was true of the tooling, not of the possibility — Playwright
+installs and drives headless Chromium from here perfectly well, and
+`browser-verify.mjs` now does.
+
+```bash
+pnpm exec playwright install chromium      # one-time, ~115 MB
+pnpm --filter @purnit/api start &          # API on :4000
+pnpm --filter @purnit/web start &          # web on :3000
+node scripts/security-sweep/browser-verify.mjs
+```
+
+It signs in as two real roles **through the real login form** — no token
+injected into storage, so a broken sign-in fails the run rather than being
+routed around — opens the same document as each, and captures full-page
+screenshots to `browser-shots/` (gitignored; they are evidence of one run, not
+fixtures).
+
+**Two traps it fell into, both worth knowing before writing another one:**
+
+1. **`getByText("Insights")` hit the sidebar nav group, not the tab.** The click
+   silently expanded the sidebar and left Overview selected, and the assertion
+   still "passed" against page text. Use `getByRole("tab", …)` and then assert
+   `aria-selected="true"` on the tab you meant.
+2. **A fixed `waitForTimeout` screenshotted skeleton loaders** and reported "no
+   lens shown" — a timing artifact presented as a product failure. Wait for the
+   content that proves the panel resolved, not for a guessed number of
+   milliseconds.
+
+The run also asserts zero console errors per role, which is cheap and catches
+hydration and render problems no API-level check can see.

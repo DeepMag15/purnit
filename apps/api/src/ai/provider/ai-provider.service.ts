@@ -103,7 +103,32 @@ export class AiProviderService {
     return instance;
   }
 
+  /**
+   * ⚠️ Provider transport failures were unmapped until now, so a quota
+   * exhaustion or an upstream outage reached the user as a bare
+   * "Internal server error" — true, useless, and indistinguishable from a bug
+   * in our own code. Found when Gemini's free-tier daily quota ran out during
+   * verification and every AI call in the product started 500ing.
+   *
+   * Mapped here rather than in each caller so the AI Assistant, the digest and
+   * report analysis all benefit — they were all equally exposed.
+   * `ServiceUnavailableException` (503) is the honest status: the request was
+   * fine, the dependency is not.
+   */
   async complete(req: CompletionRequest, providerKeyOverride?: string): Promise<CompletionResult> {
-    return this.resolve(providerKeyOverride).complete(req);
+    try {
+      return await this.resolve(providerKeyOverride).complete(req);
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      // Providers report quota differently (HTTP 429, a `code: 429` body, or
+      // the word itself), so match on all three rather than one vendor's shape.
+      if (/\b429\b|quota|rate limit|RESOURCE_EXHAUSTED/i.test(message)) {
+        throw new ServiceUnavailableException(
+          "The AI service has hit its usage limit for now. Try again later, or ask your administrator about the plan's AI quota.",
+        );
+      }
+      throw new ServiceUnavailableException("The AI service is temporarily unavailable. Try again in a moment.");
+    }
   }
 }

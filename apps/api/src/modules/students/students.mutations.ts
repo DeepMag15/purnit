@@ -40,7 +40,19 @@ export const studentRegisterMutation: MutationDefinition<z.infer<typeof Register
     // create theirs: students are registered one at a time, so this is one
     // extra row per registration, not a bulk backfill.
     const filesProject = await tx.project.create({
-      data: { tenantId: ctx.tenantId, name: `Student file: ${input.name}`, status: "active", ownerId: ctx.userId },
+      data: {
+        tenantId: ctx.tenantId,
+        name: `Student file: ${input.name}`,
+        status: "active",
+        ownerId: ctx.userId,
+        // Answers the privacy caveat this file's own comment raised: without
+        // this, every Teacher and Teaching Assistant holding `project:read:tenant`
+        // could read a student's enrolment paperwork. `student:update` is the
+        // registrar floor — Registrar and School Administrator hold it,
+        // teaching staff do not.
+        restricted: true,
+        accessPermission: "student:update",
+      },
     });
 
     const student = await tx.student.create({
