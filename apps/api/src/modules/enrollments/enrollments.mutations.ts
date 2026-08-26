@@ -42,6 +42,7 @@ export const enrollmentEnrollMutation: MutationDefinition<z.infer<typeof EnrollI
       data: {
         tenantId: ctx.tenantId,
         name: `Submissions: ${student.name} — ${course.name}`,
+        kind: "submissions",
         status: "active",
         ownerId: student.userId ?? ctx.userId,
         // A student's own work. Restricted with NO accessPermission on purpose:

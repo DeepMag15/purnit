@@ -43,7 +43,7 @@ export const clientCreateMutation: MutationDefinition<z.infer<typeof CreateInput
     const accountManagerId = input.accountManagerId ?? ctx.userId;
 
     const filesProject = await tx.project.create({
-      data: { tenantId: ctx.tenantId, name: `Files: ${input.name}`, status: "active", ownerId: accountManagerId },
+      data: { tenantId: ctx.tenantId, name: `Files: ${input.name}`, status: "active", ownerId: accountManagerId, kind: "clientFiles" },
     });
 
     const client = await tx.client.create({

@@ -33,7 +33,7 @@ export const inventoryItemCreateMutation: MutationDefinition<z.infer<typeof Crea
     if (existingSku) throw new BadRequestException(`SKU "${input.sku}" is already in use`);
 
     const filesProject = await tx.project.create({
-      data: { tenantId: ctx.tenantId, name: `Files: ${input.name}`, status: "active", ownerId: ctx.userId },
+      data: { tenantId: ctx.tenantId, name: `Files: ${input.name}`, status: "active", ownerId: ctx.userId, kind: "itemFiles" },
     });
 
     const item = await tx.inventoryItem.create({

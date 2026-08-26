@@ -41,7 +41,7 @@ export const courseCreateMutation: MutationDefinition<z.infer<typeof CreateInput
     }
 
     const materialsProject = await tx.project.create({
-      data: { tenantId: ctx.tenantId, name: `Materials: ${input.name}`, status: "active", ownerId: ctx.userId },
+      data: { tenantId: ctx.tenantId, name: `Materials: ${input.name}`, status: "active", ownerId: ctx.userId, kind: "materials" },
     });
 
     const course = await tx.course.create({

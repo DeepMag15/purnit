@@ -1630,6 +1630,49 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 - Live: Education 30/30, Healthcare 11/11, browser 13/13. Throwaway workspaces torn down across all three — 273 rows, 0 orphans, back to the 9-tenant baseline.
 - **`playwright` added as a root devDependency**, with `playwright install chromium` a documented one-time step.
 - **Still not claimed**: the boundary is per-project, not per-document — a project you can reach exposes all of its documents. That is the right granularity for these anchors (a chart, a submission, a student file are each one logical folder), but it is a real limit worth knowing before someone assumes per-file ACLs exist.
+
+#### Session 5 continued — 2026-08-26 — Module review 1 of N: **Projects**
+
+**The first of a systematic module-by-module review.** Findings first, then implementation, then live verification — the module is not "done" until the workflow it belongs to actually works in every domain that has it.
+
+##### What Projects is, and what was right
+- **IT**: a real project-management module — nav, board/table/list, owner, members, department, status, with Tasks and Documents hanging off it. Unchanged.
+- **The other four**: `Project` is **invisible plumbing** — one project backs each `Patient` / `Course` / `Client` / `InventoryItem` / `Enrollment` / `Student`, so Documents, Comments and Tasks attach through machinery that already resolves scope. That is a good design and stays.
+- **The page boundary was already correct**: `page.projects` returns **404** in all four non-IT domains, verified live.
+
+##### ⚠️ The finding: the page boundary was right, the data source was not
+- **`projects.list` returned the plumbing as user-facing Projects.** Verified live, one throwaway workspace per domain: Healthcare returned `"Chart: J. Chen"` and `"Chart: R. Patel"`; Education `"Student file: Ada Lovelace"` and `"Materials: Algebra II"`; Finance `"Files: Northwind Ltd"`. Those prefixed names were internal labels never meant to be seen.
+- **Three surfaces consumed it**, so the leak was not theoretical: `TaskList`'s **"Choose a project"** dropdown (a Nurse creating a Care Task picked from *"Chart: J. Chen"*), `AnalyticsFilterBar`'s project filter, and the `projects.statusBreakdown` drill-down.
+- **`project.detail` had the same reach** — `/workspace/projects/<chartProjectId>` rendered a patient chart through the IT project UI.
+- **Not a data leak**, and worth being precise: permissions were correct throughout (Stage E and the boundary fix settled that), and a Nurse seeing "Chart: J. Chen" can already see that patient. This was a **correctness and vocabulary** failure — the internal model surfacing as user-facing language in four of five domains.
+
+##### Two dead-end grants, both real
+- **Finance and Manufacturing granted `task:read`/`task:create` but had no Tasks nav item at all** — the module was unreachable and the grants were dead.
+- **Every non-IT admin held `project:create:tenant` with no UI.** A direct call would have created an orphan Project belonging to no entity.
+
+##### What changed
+- **`Project.kind`** (`"project"` by default, else the anchor it backs) + migration **with backfill**, so existing workspaces are classified too rather than the fix applying only to new data.
+- **`REAL_PROJECT` applied to the project-SHAPED sources only** — `projects.list`, `project.detail`, `projects.count`, `projects.statusBreakdown`. ⚠️ Deliberately **not** inside `projectsWhere`: that function also governs document access, so filtering there would have cut Healthcare off from patient charts and Education from course materials — turning a vocabulary fix into an outage.
+- **Tasks now hang off the domain entity a person recognises.** The blueprint names it (`targetLabel` / `targetSource` / `targetProjectField`), so Healthcare says **Patient**, Education **Course**, Finance and Manufacturing **Client** / **Item**. IT is untouched, and a blueprint that says nothing keeps today's behaviour. Configuration, not per-domain code.
+- **Tasks surfaced in Finance and Manufacturing** as "Follow-ups" — month-end/reconciliation and work-order follow-ups. Nav + page only, no new code.
+- **`project.create` removed from the four non-IT admins.** Backing projects are created directly by the domain mutations, so nothing depended on the grant.
+- **The list view now shows which patient/course/client a task belongs to** — it never did, which was fine when every task sat in a Project you had just picked and useless on a Care Tasks list.
+
+##### ⚠️ Two things this would have broken, caught before shipping
+- **`DocumentDetail` built its @-mention list from `project.detail`** — which, for a document on a chart or a course's materials, would now 404 and silently empty the list.
+- **`TaskList` took assignee options from the project's members**, the same way.
+- Both now use a new **`project.members`** source, scope-checked exactly as `documents.list` is (reaching a project's people is as permitted as reaching its files) and deliberately **without** the `REAL_PROJECT` filter, since a backing project's members are the entire point. Its visibility check is inlined rather than importing `assertProjectVisible`, because `documents.data-sources` already imports from `projects` and the reverse would be a cycle.
+
+##### Verification
+- **Live, 31 checks, 0 failures** across Healthcare, Education, Finance and IT: the domain list supplies the backing `projectId`; the entity shows **its own name**, not a plumbing label; `task.create` attaches to it; the task appears in `tasks.list`; `page.tasks` is reachable; **`documents.list` still works on the backing project**; `project.members` resolves where `project.detail` now 404s; and `projects.list` shows **0 rows** of plumbing. IT verified unchanged end to end.
+- The audit that first exposed the leak now returns **0 rows** in all four domains and IT's real project in IT.
+- **The invariants guard fired again**, refusing `project.members` until it was declared with a stated reason.
+- **1573 backend** + 117 frontend tests green; lint, typecheck and build clean. Throwaway workspaces torn down — 269 rows, 0 orphans.
+- **Two of my own test bugs**, both worth naming because each looked like a product failure: a 7-character password against an 8-character minimum, and (earlier) a probe payload that made Manufacturing report 0 backing projects when the real cause was my `inventoryItem.create` arguments.
+
+##### Still open on this module
+- **`AnalyticsFilterBar`'s project filter** is fixed by the same change (it reads `projects.list`), but in a domain with no real projects it now shows an empty filter rather than a wrong one. Whether that filter should exist at all outside IT is an **Analytics** question, deliberately left for that module's own review rather than guessed at here.
+- Manufacturing's Tasks target is **InventoryItem**, which is the only backing anchor that domain has. Work orders are arguably the better target, but `WorkOrder` has no backing project — a real question for the **Work Orders** review, not a silent addition here.
 #### Next up
 - **The Frontend Redesign initiative (Phases 01-06) is complete — no further phase is currently scheduled.** The 3 mobile-layout fixes and the panel/toast motion fixes from Phase 06 still need the user's own browser check to confirm the visual/interaction feel, since no browser-automation tool exists in this environment. Future frontend work (if any) awaits the user's own explicit direction.
 - **The 4-initiative backlog — Stripe Billing → SSO/SAML → Feature Flags → AI Assistant Phases C-F — is fully shipped, with no follow-on phases remaining.**

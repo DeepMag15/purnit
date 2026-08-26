@@ -27,28 +27,43 @@ import { Avatar } from "../../ui/Avatar";
 // `title` is optional, same pattern ProjectBoard already established — most
 // existing usage (page.tasks) renders with none, PageHeader falls back to
 // "Tasks".
-export const TaskListSchema = z.object({ title: z.string().optional() });
+/**
+ * Module review, Projects (2026-08-26) — what a task attaches to, per domain.
+ *
+ * A Task needs a `projectId`, and four of five domains have no Projects
+ * module: a Project backs each Patient / Course / Client / InventoryItem. This
+ * picker used to be fed by `projects.list`, so a Nurse creating a Care Task
+ * chose from a dropdown reading "Chart: J. Chen" — internal plumbing names,
+ * never meant to be seen (verified live in all four domains).
+ *
+ * The blueprint now names the real thing instead: Healthcare says Patient,
+ * Education says Course. Defaults to Projects, so IT is untouched and any
+ * blueprint that says nothing keeps today's behaviour.
+ */
+export const TaskListSchema = z.object({
+  title: z.string().optional(),
+  /** What a task hangs off in this domain, e.g. "Patient". */
+  targetLabel: z.string().optional(),
+  /** List source for the options, e.g. "patients.list". */
+  targetSource: z.string().optional(),
+  /** Field on each row holding the backing projectId, e.g. "chartProjectId". */
+  targetProjectField: z.string().optional(),
+  /** Field to show, e.g. "name". */
+  targetNameField: z.string().optional(),
+});
 type Props = z.infer<typeof TaskListSchema>;
 
 interface TaskRow {
   id: string;
   title: string;
   status: string;
+  /** Already supplied by `tasks.list`; used instead of deriving the name from
+   * a project's member list, which only worked when that list was loaded. */
+  assigneeName?: string | null;
   priority: string;
   projectId: string;
   assigneeId: string | null;
   dueDate: string | null;
-}
-
-interface MemberOption {
-  id: string;
-  displayName: string;
-}
-
-interface ProjectOption {
-  id: string;
-  name: string;
-  members: MemberOption[];
 }
 
 // Free-text `status` column, no DB-level enum (see tasks.prisma) — this is
@@ -93,7 +108,7 @@ const VIEWS: ViewOption[] = [
  * detail page is where you change it" consistency Projects already
  * established. Board-view dragging is the one exception, same as Projects.
  */
-export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
+export function TaskList({ title, bind, actions, targetLabel, targetSource, targetProjectField, targetNameField }: Props & CommonRenderProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data, loading, error, refetch } = useDataBinding(bind);
@@ -111,20 +126,38 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
   const { pending: creating, error: createError, run: runCreate, clearError } = useAsyncAction();
   const { fieldErrors, validate, clearFieldError } = useFormValidation<{ title: string; projectId: string }>({
     title: required("Task title is required"),
-    projectId: required("Choose a project"),
+    projectId: required("Choose one"),
   });
 
   // A task needs a project to belong to — fetched directly (not via `bind`)
   // since it's this composite's own UI need, not the node's bound data.
-  const { data: projectsData } = useDataSourceQuery<ProjectOption[]>("projects.list", {}, { enabled: canCreate });
-  const projects = Array.isArray(projectsData) ? projectsData : [];
+  const source = targetSource ?? "projects.list";
+  const projectField = targetProjectField ?? "id";
+  const nameField = targetNameField ?? "name";
+  const label = targetLabel ?? "Project";
+
+  const { data: targetData } = useDataSourceQuery<Record<string, unknown>[]>(source, {}, { enabled: canCreate });
+  const targets = (Array.isArray(targetData) ? targetData : [])
+    .map((row) => ({ projectId: String(row[projectField] ?? ""), name: String(row[nameField] ?? "Untitled") }))
+    // A domain row whose backing project is missing (an older record created
+    // before that anchor existed) would otherwise offer an option that fails
+    // on submit.
+    .filter((t) => !!t.projectId);
 
   useEffect(() => {
-    if (Array.isArray(projectsData)) setSelectedProjectId((current) => current || projectsData[0]?.id || "");
-  }, [projectsData]);
+    setSelectedProjectId((current) => current || targets[0]?.projectId || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the option set itself changes.
+  }, [targetData]);
 
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
-  const assigneeOptions = selectedProject?.members ?? [];
+  // Assignees come from the chosen target's own project members. Fetched via
+  // `project.members` rather than `project.detail`, which now returns real
+  // projects only — on a chart or a course's materials it would 404.
+  const { data: memberData } = useDataSourceQuery<{ id: string; displayName: string }[]>(
+    "project.members",
+    { projectId: selectedProjectId },
+    { enabled: canCreate && !!selectedProjectId },
+  );
+  const assigneeOptions = Array.isArray(memberData) ? memberData : [];
 
   useEffect(() => {
     setSelectedAssigneeId((current) => (assigneeOptions.some((m) => m.id === current) ? current : ""));
@@ -194,15 +227,15 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Task">
         <div className="flex flex-col gap-3">
           <Select
-            label="Project"
+            label={label}
             value={selectedProjectId}
             onChange={(e) => setSelectedProjectId(e.target.value)}
             error={fieldErrors.projectId}
           >
-            {projects.length === 0 && <option value="">No projects yet</option>}
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
+            {targets.length === 0 && <option value="">No {label.toLowerCase()}s yet</option>}
+            {targets.map((t) => (
+              <option key={t.projectId} value={t.projectId}>
+                {t.name}
               </option>
             ))}
           </Select>
@@ -291,8 +324,11 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
       {!loading && !error && rows.length > 0 && view === "list" && (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
           {rows.map((task) => {
-            const taskProject = projects.find((p) => p.id === task.projectId);
-            const assignee = taskProject?.members.find((m) => m.id === task.assigneeId);
+            const taskProject = targets.find((t) => t.projectId === task.projectId);
+            // `tasks.list` already carries the assignee's name; deriving it from
+            // a project's member list only ever worked when that list happened
+            // to be loaded, and does not work at all for a domain target.
+            const assignee = task.assigneeName ? { displayName: task.assigneeName } : undefined;
             return (
               <li
                 key={task.id}
@@ -300,7 +336,10 @@ export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
                 className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="min-w-0 truncate text-sm font-medium text-text">{task.title}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="min-w-0 truncate text-sm font-medium text-text">{task.title}</span>
+                    {taskProject && <span className="min-w-0 truncate text-xs text-text-muted">{taskProject.name}</span>}
+                  </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>
                     {task.dueDate && (

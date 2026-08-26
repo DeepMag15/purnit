@@ -24,6 +24,27 @@ model Project {
   /// Null means membership or ownership only — which is what a student's
   /// private submissions project wants.
   accessPermission String? @map("access_permission")
+  /// Module review, Projects (2026-08-26) — is this a project a person made, or
+  /// plumbing behind a domain entity?
+  ///
+  /// Four of five domains have no Projects module at all: a Project backs each
+  /// Patient / Course / Client / InventoryItem / Enrollment / Student so that
+  /// Documents, Comments and Tasks attach through machinery that already
+  /// resolves scope. That is a good design and stays. What was wrong is that
+  /// `projects.list` returned those rows as user-facing Projects, so a Nurse
+  /// creating a Care Task picked from a dropdown reading "Chart: J. Chen" —
+  /// internal plumbing names, never meant to be seen (verified live, all four
+  /// domains).
+  ///
+  /// "project" = a real one. Anything else names the entity behind it
+  /// ("chart", "materials", "clientFiles", "itemFiles", "submissions",
+  /// "studentFile") and is excluded from every project-shaped surface.
+  ///
+  /// ⚠️ Deliberately NOT filtered inside `projectsWhere`: that function also
+  /// governs document access, and filtering there would cut every domain off
+  /// from its own files. The exclusion belongs to the project-shaped sources
+  /// only — `projects.list`, `project.detail` and the project metrics.
+  kind         String    @default("project")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")

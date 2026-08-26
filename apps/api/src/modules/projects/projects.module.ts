@@ -3,7 +3,7 @@ import { DataSourceRegistry } from "../../data-sources/data-source-registry.serv
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
-import { projectDetailDataSource, projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource } from "./projects.data-sources";
+import { projectDetailDataSource, projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource, projectMembersDataSource } from "./projects.data-sources";
 import { projectAddMemberMutation, projectCreateMutation, projectDeleteMutation, projectRemoveMemberMutation, projectUpdateMutation } from "./projects.mutations";
 import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric } from "./projects.metrics";
 import { projectRagHandler } from "./projects.rag";
@@ -29,6 +29,7 @@ class ProjectsRegistrar implements OnModuleInit {
     this.dataSources.register(projectsCountDataSource);
     this.dataSources.register(projectsStatusBreakdownDataSource);
     this.dataSources.register(projectDetailDataSource);
+    this.dataSources.register(projectMembersDataSource);
     this.mutations.register(projectCreateMutation);
     this.mutations.register(projectUpdateMutation);
     this.mutations.register(projectDeleteMutation);

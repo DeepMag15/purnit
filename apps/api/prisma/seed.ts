@@ -1536,8 +1536,7 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "appointment:create:tenant",
         "appointment:read:tenant",
         "appointment:update:tenant",
-        "project:create:tenant",
-        "project:read:tenant",
+                "project:read:tenant",
         "project:update:tenant",
         "project:delete:tenant",
         "task:create:tenant",
@@ -1923,6 +1922,10 @@ const HEALTHCARE_BLUEPRINT_V1 = {
           id: "task-list",
           type: "TaskList",
           version: 1,
+          // Module review, Projects — a task hangs off the domain entity a
+          // person actually recognises, not the Project backing it. Without
+          // this the picker read "Chart: J. Chen".
+          props: { targetLabel: "Patient", targetSource: "patients.list", targetProjectField: "chartProjectId", targetNameField: "name" },
           // Role-Based Workspaces, Stage C — deliberately NO assigneeId here.
           // `tasksWhere` derives the right rows from the caller's own scope:
           // "own" self-filters, "team"/"department" widen to the group. Pinning
@@ -2142,8 +2145,7 @@ const EDUCATION_BLUEPRINT_V1 = {
         "grade:create:tenant",
         "grade:read:tenant",
         "grade:update:tenant",
-        "project:create:tenant",
-        "project:read:tenant",
+                "project:read:tenant",
         "project:update:tenant",
         "project:delete:tenant",
         "task:create:tenant",
@@ -2687,6 +2689,10 @@ const EDUCATION_BLUEPRINT_V1 = {
           id: "task-list",
           type: "TaskList",
           version: 1,
+          // Module review, Projects — a task hangs off the domain entity a
+          // person actually recognises, not the Project backing it. Without
+          // this the picker read "Materials: Algebra II".
+          props: { targetLabel: "Course", targetSource: "courses.list", targetProjectField: "materialsProjectId", targetNameField: "name" },
           // Role-Based Workspaces, Stage C — deliberately NO assigneeId here.
           // `tasksWhere` derives the right rows from the caller's own scope:
           // "own" self-filters, "team"/"department" widen to the group. Pinning
@@ -2934,8 +2940,7 @@ const FINANCE_BLUEPRINT_V1 = {
         "invoice:update:tenant",
         "payment:create:tenant",
         "payment:read:tenant",
-        "project:create:tenant",
-        "project:read:tenant",
+                "project:read:tenant",
         "project:update:tenant",
         "project:delete:tenant",
         "task:create:tenant",
@@ -3145,6 +3150,17 @@ const FINANCE_BLUEPRINT_V1 = {
           pageId: "page.invoices",
           requiredPermission: "invoice:read",
           moduleKey: "invoices",
+        },
+        {
+          // Module review, Projects — this blueprint already granted task:read
+          // and task:create, but surfaced no Tasks item, so the module was
+          // unreachable and those grants were dead.
+          id: "nav.tasks",
+          label: "Follow-ups",
+          icon: "check-square",
+          pageId: "page.tasks",
+          requiredPermission: "task:read",
+          moduleKey: "tasks",
         },
         {
           id: "nav.crm",
@@ -3365,6 +3381,31 @@ const FINANCE_BLUEPRINT_V1 = {
         },
       ],
     },
+        "page.tasks": {
+      id: "page.tasks",
+      type: "Page",
+      version: 1,
+      requiredPermission: "task:read",
+      children: [
+        {
+          id: "task-list",
+          type: "TaskList",
+          version: 1,
+          // No assigneeId binding — `tasksWhere` derives the right rows from
+          // the caller's own scope (Stage C). The target props name the domain
+          // entity a task hangs off, so the picker never shows the backing
+          // project's internal name.
+          props: { targetLabel: "Client", targetSource: "clients.list", targetProjectField: "filesProjectId", targetNameField: "name" },
+          bind: { source: "tasks.list", params: {}, paginate: true },
+          actions: [
+            { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
+            { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "task.reassign", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "comment.create", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
     "page.calendar": {
       id: "page.calendar",
       type: "Page",
@@ -3522,8 +3563,7 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "workOrder:read:tenant",
         "workOrder:update:tenant",
         "workOrder:complete:tenant",
-        "project:create:tenant",
-        "project:read:tenant",
+                "project:read:tenant",
         "project:update:tenant",
         "project:delete:tenant",
         "task:create:tenant",
@@ -3741,6 +3781,17 @@ const MANUFACTURING_BLUEPRINT_V1 = {
           pageId: "page.suppliers",
           requiredPermission: "supplier:read",
           moduleKey: "suppliers",
+        },
+        {
+          // Module review, Projects — this blueprint already granted task:read
+          // and task:create, but surfaced no Tasks item, so the module was
+          // unreachable and those grants were dead.
+          id: "nav.tasks",
+          label: "Follow-ups",
+          icon: "check-square",
+          pageId: "page.tasks",
+          requiredPermission: "task:read",
+          moduleKey: "tasks",
         },
       ],
     },
@@ -3995,6 +4046,31 @@ const MANUFACTURING_BLUEPRINT_V1 = {
             { kind: "mutation", mutation: "meeting.addParticipant", input: { ref: "form.addParticipant" } },
             { kind: "mutation", mutation: "meeting.removeParticipant", input: { ref: "row.userId" } },
             { kind: "mutation", mutation: "meeting.getJoinInfo", input: { ref: "row.id" } },
+          ],
+        },
+      ],
+    },
+        "page.tasks": {
+      id: "page.tasks",
+      type: "Page",
+      version: 1,
+      requiredPermission: "task:read",
+      children: [
+        {
+          id: "task-list",
+          type: "TaskList",
+          version: 1,
+          // No assigneeId binding — `tasksWhere` derives the right rows from
+          // the caller's own scope (Stage C). The target props name the domain
+          // entity a task hangs off, so the picker never shows the backing
+          // project's internal name.
+          props: { targetLabel: "Item", targetSource: "inventoryItems.list", targetProjectField: "filesProjectId", targetNameField: "name" },
+          bind: { source: "tasks.list", params: {}, paginate: true },
+          actions: [
+            { kind: "mutation", mutation: "task.create", input: { ref: "form.newTask" }, requiredPermission: "task:create" },
+            { kind: "mutation", mutation: "task.updateStatus", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "task.reassign", input: { ref: "row.id" }, requiredPermission: "task:update" },
+            { kind: "mutation", mutation: "comment.create", input: { ref: "row.id" } },
           ],
         },
       ],

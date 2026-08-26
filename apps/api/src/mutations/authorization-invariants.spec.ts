@@ -193,6 +193,10 @@ const OWNERSHIP_SCOPED_DATA_SOURCES: Record<string, string> = {
   "contact.detail": "contactsWhere returns null without read access",
   "task.detail": "tasksWhere returns null without read access",
   "project.detail": "projectsWhere returns null without read access",
+  // Reaching a project's people is exactly as permitted as reaching its
+  // documents — the same question documents.list asks, and the reason this
+  // exists at all is that project.detail now excludes backing projects.
+  "project.members": "projectsWhere on the project itself; 404 without access",
   "students.detail": "studentsWhere returns null without read access",
   "invoices.detail": "invoicesWhere returns null without read access",
   "inventoryItems.detail": "inventoryItemsWhere returns null without read access",

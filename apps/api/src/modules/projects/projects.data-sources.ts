@@ -4,28 +4,6 @@ import type { DataSourceContext, DataSourceDefinition } from "../../data-sources
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 
-/** Applies the granted `project:read` scope to a where-clause. Returns
- * `null` only when there's no read grant at all — department/team scope no
- * longer bails out to `null` just because the user has no department (see
- * below), since "has a task assigned to me in this project" and "I'm a
- * project member" are their own, independent ways to be in scope.
- *
- * ⚠️ "Has a task assigned to me here" and "I'm a member of this project"
- * are always a floor under department/team scope, not something only
- * department match can satisfy — same fix, same reasoning, as
- * `tasksWhere`/`isRowInScope`. Real, user-reported bug: a Member assigned
- * tasks within a project couldn't see that project at all unless it also
- * happened to match their department — which for a Member with no
- * department set (or a project created with no department, as
- * `project.create` does by default) meant the project was *never* visible,
- * even though they had real, permitted work inside it. Fixed by OR-ing "I
- * have an assigned task in this project" and "I'm a member of this
- * project" (`ProjectMember`, the direct Admin-assigns-Members-to-a-project
- * mechanism) alongside the existing department condition. Members have no
- * `project:read:own` grant (they can never own/create a project — see
- * `role.member`'s permissions in `seed.ts`), so these are the *only* paths
- * by which a Member ever sees a project they didn't create, beyond
- * department match. */
 /**
  * The gate for a **restricted** project, applied at every scope including
  * `tenant` (Contextual Reporting, 2026-08-25).
@@ -62,6 +40,40 @@ function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> 
   };
 }
 
+/**
+ * Module review, Projects (2026-08-26) — the filter that separates a real
+ * project from plumbing.
+ *
+ * ⚠️ Applied by the project-SHAPED sources only (list, detail, count,
+ * statusBreakdown), never inside `projectsWhere`. That function also governs
+ * document access, so filtering there would cut Healthcare off from patient
+ * charts, Education from course materials and Finance from client files —
+ * turning a vocabulary fix into an outage.
+ */
+export const REAL_PROJECT = { kind: "project" } as const;
+
+/** Applies the granted `project:read` scope to a where-clause. Returns
+ * `null` only when there's no read grant at all — department/team scope no
+ * longer bails out to `null` just because the user has no department (see
+ * below), since "has a task assigned to me in this project" and "I'm a
+ * project member" are their own, independent ways to be in scope.
+ *
+ * ⚠️ "Has a task assigned to me here" and "I'm a member of this project"
+ * are always a floor under department/team scope, not something only
+ * department match can satisfy — same fix, same reasoning, as
+ * `tasksWhere`/`isRowInScope`. Real, user-reported bug: a Member assigned
+ * tasks within a project couldn't see that project at all unless it also
+ * happened to match their department — which for a Member with no
+ * department set (or a project created with no department, as
+ * `project.create` does by default) meant the project was *never* visible,
+ * even though they had real, permitted work inside it. Fixed by OR-ing "I
+ * have an assigned task in this project" and "I'm a member of this
+ * project" (`ProjectMember`, the direct Admin-assigns-Members-to-a-project
+ * mechanism) alongside the existing department condition. Members have no
+ * `project:read:own` grant (they can never own/create a project — see
+ * `role.member`'s permissions in `seed.ts`), so these are the *only* paths
+ * by which a Member ever sees a project they didn't create, beyond
+ * department match. */
 export async function projectsWhere(tx: PrismaTx, ctx: DataSourceContext, extra: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const scope = ctx.effective.has("project", "read");
   if (!scope) return null;
@@ -139,7 +151,7 @@ export const projectsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
   paramsSchema: ListParamsSchema,
   requiredPermission: "project:read",
   async resolve(params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, params.status ? { status: params.status } : {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, ...(params.status ? { status: params.status } : {}) });
     if (!where) return [];
     // Phase 1: capped result set, no real cursor pagination yet — `bind.paginate`
     // is honored by the frontend requesting this source, not by pagination
@@ -175,7 +187,9 @@ export const projectDetailDataSource: DataSourceDefinition<z.infer<typeof Detail
   name: "project.detail",
   paramsSchema: DetailParamsSchema,
   async resolve(params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, { id: params.id });
+    // A backing project is not a project to this route: /workspace/projects/<id>
+    // rendered a patient chart through the IT project UI before this.
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, id: params.id });
     if (!where) throw new NotFoundException(`No project "${params.id}"`);
     const project = await tx.project.findFirst({ where });
     if (!project) throw new NotFoundException(`No project "${params.id}"`);
@@ -225,7 +239,7 @@ export const projectsCountDataSource: DataSourceDefinition<z.infer<typeof CountP
   paramsSchema: CountParamsSchema,
   requiredPermission: "project:read",
   async resolve(params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, params.status ? { status: params.status } : {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, ...(params.status ? { status: params.status } : {}) });
     if (!where) return 0;
     return tx.project.count({ where });
   },
@@ -241,9 +255,51 @@ export const projectsStatusBreakdownDataSource: DataSourceDefinition<z.infer<typ
   paramsSchema: StatusBreakdownParamsSchema,
   requiredPermission: "project:read",
   async resolve(_params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT });
     if (!where) return [];
     const groups = await tx.project.groupBy({ by: ["status"], where, _count: { _all: true } });
     return groups.map((g) => ({ status: g.status, count: g._count._all }));
+  },
+};
+
+const MembersParamsSchema = z.object({ projectId: z.string() });
+
+/**
+ * Just the people on a project — for @-mention candidates and assignee
+ * pickers.
+ *
+ * Exists because `project.detail` now returns real projects only (module
+ * review, Projects), and two surfaces legitimately need members for a
+ * *backing* project: `DocumentDetail` builds its @-mention list from the
+ * document's project, and `TaskList` offers assignees from the target's
+ * members. Both would have silently degraded to an empty list on a patient
+ * chart or a course's materials.
+ *
+ * Scope-checked with `assertProjectVisible` rather than `projectsWhere` +
+ * `REAL_PROJECT`: reaching a project's people is exactly as permitted as
+ * reaching its documents, which is the same question `documents.list` asks.
+ * No `requiredPermission` for the same reason — reaching the project IS the
+ * gate. Returns names only; nothing here is sensitive beyond membership
+ * itself, which the caller can already see.
+ */
+export const projectMembersDataSource: DataSourceDefinition<z.infer<typeof MembersParamsSchema>> = {
+  name: "project.members",
+  paramsSchema: MembersParamsSchema,
+  async resolve(params, ctx, tx) {
+    // The same check `assertProjectVisible` performs, inlined rather than
+    // imported: `documents.data-sources` already imports `projectsWhere` from
+    // this file, so importing back would be a cycle. Deliberately WITHOUT
+    // `REAL_PROJECT` — a backing project's members are the whole point here.
+    const where = await projectsWhere(tx, ctx, { id: params.projectId });
+    const visible = where ? await tx.project.findFirst({ where }) : null;
+    if (!visible) throw new NotFoundException(`No project "${params.projectId}"`);
+
+    const memberships = await tx.projectMember.findMany({ where: { projectId: params.projectId }, select: { userId: true } });
+    if (memberships.length === 0) return [];
+    const users = await tx.user.findMany({
+      where: { id: { in: memberships.map((m) => m.userId) }, tenantId: ctx.tenantId, deletedAt: null },
+      select: { id: true, displayName: true },
+    });
+    return users;
   },
 };

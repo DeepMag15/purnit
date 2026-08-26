@@ -43,6 +43,7 @@ export const studentRegisterMutation: MutationDefinition<z.infer<typeof Register
       data: {
         tenantId: ctx.tenantId,
         name: `Student file: ${input.name}`,
+        kind: "studentFile",
         status: "active",
         ownerId: ctx.userId,
         // Answers the privacy caveat this file's own comment raised: without

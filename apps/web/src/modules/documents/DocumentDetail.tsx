@@ -40,10 +40,6 @@ interface DocumentDetailData {
   activities: { id: string; type: string; detail: string | null; actorId: string; actorName: string; createdAt: string }[];
 }
 
-interface ProjectMembers {
-  members: { id: string; displayName: string }[];
-}
-
 const TABS = [
   { id: "overview", label: "Overview" },
   // Contextual Reporting — insights sit beside versions, activity and the
@@ -102,12 +98,16 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState("overview");
 
-  const { data: projectData } = useDataSourceQuery<ProjectMembers>(
-    "project.detail",
-    { id: data?.document.projectId ?? "" },
+  // `project.members`, not `project.detail`: detail now returns real projects
+  // only (module review, Projects), and a document usually hangs off a BACKING
+  // project — a patient chart, a course's materials, a student's submission.
+  // Asking detail for those would 404 and silently empty the @-mention list.
+  const { data: memberData } = useDataSourceQuery<{ id: string; displayName: string }[]>(
+    "project.members",
+    { projectId: data?.document.projectId ?? "" },
     { enabled: !!data?.document.projectId },
   );
-  const mentionCandidates = projectData?.members ?? [];
+  const mentionCandidates = Array.isArray(memberData) ? memberData : [];
 
   async function handleOpen(mode: "view" | "download") {
     try {

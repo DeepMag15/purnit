@@ -53,6 +53,7 @@ export const patientRegisterMutation: MutationDefinition<z.infer<typeof Register
       data: {
         tenantId: ctx.tenantId,
         name: `Chart: ${input.name}`,
+        kind: "chart",
         status: "active",
         ownerId: ctx.userId,
         // Clinical documents. Restricted so `project:read:tenant` alone is not a
