@@ -14,6 +14,8 @@ import { Select } from "../../ui/Select";
 import { Dropdown } from "../../ui/Dropdown";
 import { Icon } from "../../ui/Icon";
 import { Skeleton } from "../../ui/Skeleton";
+import { Button } from "../../ui/Button";
+import { Textarea } from "../../ui/Textarea";
 import { Alert } from "../../ui/Alert";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
@@ -31,23 +33,42 @@ interface TaskDetailData {
   assigneeId: string | null;
   assigneeName: string | null;
   canUpdate: boolean;
+  // Projects ecosystem review — the two halves of the review step. Separate
+  // flags because they are separate authorities: submitting is ownership
+  // (assignee only), deciding is task:review and never the assignee.
+  canSubmit: boolean;
+  canReview: boolean;
+  isAssignee: boolean;
+  submittedAt: string | null;
+  submittedByName: string | null;
+  reviewedAt: string | null;
+  reviewedByName: string | null;
+  reviewNote: string | null;
 }
 
-interface ProjectMembers {
-  members: { id: string; displayName: string }[];
-}
+type ProjectMembers = { id: string; displayName: string }[];
 
 const TABS = [
   { id: "details", label: "Details" },
   { id: "comments", label: "Comments" },
 ];
 
-const STATUSES = ["todo", "in_progress", "done"];
+/** What a person may set directly. "in_review" is deliberately absent: it is
+ * reached by submitting and left by a review decision, never by picking it
+ * from a menu — the API refuses it either way, and offering it here would
+ * promise something the server will not honour. */
+const STATUSES = [
+  { value: "todo", label: "To do" },
+  { value: "in_progress", label: "In progress" },
+  { value: "done", label: "Done" },
+];
 const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" | "info" | "accent"> = {
   todo: "neutral",
   in_progress: "info",
+  in_review: "warning",
   done: "success",
 };
+const STATUS_LABEL: Record<string, string> = { todo: "To do", in_progress: "In progress", in_review: "In review", done: "Done" };
 
 /** Frontend Structural Redesign, Phase 0/1 — mounted by
  * /workspace/tasks/[taskId] (see that route's own comment for why this
@@ -64,14 +85,17 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   const [activeTab, setActiveTab] = useState("details");
 
   // Only fetched when the actor can actually reassign — the reassign picker
-  // needs the task's own project's member list, reusing Phase 0's own
-  // project.detail data source rather than inventing a new fetch.
+  // needs the task's own project's member list. `project.members`, not
+  // `project.detail`: a reviewer can legitimately hold task:review on work
+  // sitting in a project they are not themselves a member of, and asking for
+  // the whole project 404s for them. The narrower source answers exactly the
+  // question the picker asks, and returns [] when there is nothing to offer.
   const { data: projectData } = useDataSourceQuery<ProjectMembers>(
-    "project.detail",
-    { id: data?.projectId ?? "" },
+    "project.members",
+    { projectId: data?.projectId ?? "" },
     { enabled: !!data?.canUpdate && !!data?.projectId },
   );
-  const reassignOptions = projectData?.members ?? [];
+  const reassignOptions = projectData ?? [];
 
   async function handleStatusChange(status: string) {
     try {
@@ -109,13 +133,13 @@ export function TaskDetail({ taskId }: { taskId: string }) {
       backHref="/workspace/tasks"
       backLabel="Tasks"
       title={data.title}
-      status={!data.canUpdate ? { label: data.status, tone: STATUS_TONE[data.status] ?? "neutral" } : undefined}
+      status={!data.canUpdate ? { label: STATUS_LABEL[data.status] ?? data.status, tone: STATUS_TONE[data.status] ?? "neutral" } : undefined}
       actions={
-        data.canUpdate && (
+        data.canUpdate && data.status !== "in_review" && (
           <Select value={data.status} onChange={(e) => handleStatusChange(e.target.value)} className="h-8 text-xs">
             {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+              <option key={s.value} value={s.value}>
+                {s.label}
               </option>
             ))}
           </Select>
@@ -192,6 +216,8 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         </Card>
       }
     >
+      <ReviewPanel data={data} onDone={refetch} />
+
       {activeTab === "details" && (
         <Card>
           <CardHeader title="Description" />
@@ -208,5 +234,103 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         />
       )}
     </DetailPageShell>
+  );
+}
+
+/**
+ * Projects ecosystem review — submit → review → approval, in the UI.
+ *
+ * Renders nothing at all for a task nobody is reviewing, which is most of
+ * them: review is optional, and a panel on every task would make routine work
+ * feel like paperwork.
+ *
+ * Which controls appear is decided by the server (`canSubmit` / `canReview`),
+ * never by comparing ids here — the same prune-not-hide rule the rest of the
+ * product follows.
+ */
+function ReviewPanel({ data, onDone }: { data: TaskDetailData; onDone: () => void }) {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const inReview = data.status === "in_review";
+  if (!data.canSubmit && !data.canReview && !inReview && !data.reviewedAt) return null;
+
+  async function run(mutation: string, input: Record<string, unknown>, done: string) {
+    setBusy(true);
+    try {
+      await callMutation(mutation, input);
+      setNote("");
+      toast.show(done, "success");
+      onDone();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "That didn't work", "danger");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardBody className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={inReview ? "warning" : data.status === "done" ? "success" : "neutral"}>
+            {inReview ? "Waiting on review" : data.reviewedAt ? "Reviewed" : "Not submitted"}
+          </Badge>
+          {data.submittedByName && data.submittedAt && (
+            <span className="text-xs text-text-muted">
+              Submitted by {data.submittedByName} on {new Date(data.submittedAt).toLocaleDateString()}
+            </span>
+          )}
+          {data.reviewedByName && data.reviewedAt && (
+            <span className="text-xs text-text-muted">
+              · Reviewed by {data.reviewedByName} on {new Date(data.reviewedAt).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+
+        {data.reviewNote && (
+          <p className="rounded-md bg-surface-subtle px-3 py-2 text-sm leading-relaxed text-text-muted">{data.reviewNote}</p>
+        )}
+
+        {(data.canSubmit || data.canReview) && (
+          <div className="flex flex-col gap-2 border-t border-border pt-3">
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={data.canReview ? "Add a note for whoever did the work (optional)" : "Anything the reviewer should know (optional)"}
+              rows={2}
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              {data.canSubmit && (
+                <Button size="sm" disabled={busy} onClick={() => run("task.submitForReview", { id: data.id, note: note || undefined }, "Sent for review")}>
+                  Submit for review
+                </Button>
+              )}
+              {data.canReview && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => run("task.review", { id: data.id, decision: "request_changes", note: note || undefined }, "Changes requested")}
+                  >
+                    Request changes
+                  </Button>
+                  <Button size="sm" disabled={busy} onClick={() => run("task.review", { id: data.id, decision: "approve", note: note || undefined }, "Approved")}>
+                    Approve
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {inReview && !data.canReview && data.isAssignee && (
+          <p className="text-xs text-text-muted">Someone else has to review this before it can be marked done.</p>
+        )}
+      </CardBody>
+    </Card>
   );
 }

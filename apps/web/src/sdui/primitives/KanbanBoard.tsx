@@ -17,6 +17,15 @@ export const KanbanBoardSchema = z.object({
   groupKey: z.string().default("status"),
   labelKey: z.string().default("title"),
   columns: z.array(z.string()).min(1),
+  /* Columns that render but accept no drops, and whose cards cannot be
+   * dragged out. Projects ecosystem review — Tasks' own "in_review" is the
+   * first: work waiting on a review has to be VISIBLE on the board, but the
+   * server refuses to move a task into or out of review by the ordinary
+   * status route, because that is the one route its assignee already holds.
+   * Offering a drag that always fails would be a lie about what the control
+   * does; a review is a decision made on the task, not a drag gesture.
+   * Default empty, so the other nine boards are untouched. */
+  lockedColumns: z.array(z.string()).optional(),
   updateMutation: z.string(),
   updateValueKey: z.string().default("status"),
 });
@@ -74,8 +83,8 @@ function KanbanCard({ row, labelKey, draggable }: { row: Row; labelKey: string; 
   );
 }
 
-function KanbanColumn({ id, tone, cards, labelKey, draggable }: { id: string; tone: StatusTone; cards: Row[]; labelKey: string; draggable: boolean }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+function KanbanColumn({ id, tone, cards, labelKey, draggable, locked }: { id: string; tone: StatusTone; cards: Row[]; labelKey: string; draggable: boolean; locked: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: locked });
 
   return (
     <div
@@ -89,7 +98,7 @@ function KanbanColumn({ id, tone, cards, labelKey, draggable }: { id: string; to
       </div>
       <div className="flex flex-col gap-2">
         {cards.map((row) => (
-          <KanbanCard key={row.id} row={row} labelKey={labelKey} draggable={draggable} />
+          <KanbanCard key={row.id} row={row} labelKey={labelKey} draggable={draggable && !locked} />
         ))}
       </div>
     </div>
@@ -119,7 +128,7 @@ function KanbanColumn({ id, tone, cards, labelKey, draggable }: { id: string; to
  * sits directly on the page background with no boxed container at all.
  * `title` stays in the schema (harmless, unused) rather than being a
  * breaking prop removal. */
-export function KanbanBoard({ groupKey, labelKey, columns, updateMutation, updateValueKey, bind, actions }: Props & CommonRenderProps) {
+export function KanbanBoard({ groupKey, labelKey, columns, lockedColumns, updateMutation, updateValueKey, bind, actions }: Props & CommonRenderProps) {
   const { data, loading, error, refetch, queryKey } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
   const queryClient = useQueryClient();
@@ -167,6 +176,7 @@ export function KanbanBoard({ groupKey, labelKey, columns, updateMutation, updat
             cards={rows.filter((r) => r[groupKey] === col)}
             labelKey={labelKey}
             draggable={canDrag}
+            locked={(lockedColumns ?? []).includes(col)}
           />
         ))}
       </div>

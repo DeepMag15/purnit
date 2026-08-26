@@ -68,7 +68,7 @@ describe("document.create", () => {
     );
 
     expect((tx as unknown as { document: { create: jest.Mock } }).document.create).toHaveBeenCalledWith({
-      data: { tenantId: "t1", projectId: "p1", name: "Spec.pdf", storagePath: "t1/p1/file.pdf", mimeType: "application/pdf", sizeBytes: 100, uploadedById: "u1" },
+      data: { tenantId: "t1", projectId: "p1", name: "Spec.pdf", storagePath: "t1/p1/file.pdf", mimeType: "application/pdf", sizeBytes: 100, uploadedById: "u1", taskId: null },
     });
     expect((tx as unknown as { documentActivity: { create: jest.Mock } }).documentActivity.create).toHaveBeenCalledWith({
       data: { tenantId: "t1", documentId: "d1", actorId: "u1", type: "uploaded", detail: undefined },
@@ -175,18 +175,35 @@ describe("document.setApprovalStatus", () => {
   it("sets the status and logs an activity", async () => {
     const tx = {
       document: {
-        findFirst: jest.fn().mockResolvedValue({ id: "d1", project: { id: "p1", ownerId: "u1", departmentId: null } }),
+        findFirst: jest.fn().mockResolvedValue({ id: "d1", uploadedById: "someone-else", project: { id: "p1", ownerId: "u1", departmentId: null } }),
         update: jest.fn().mockResolvedValue({ id: "d1", approvalStatus: "approved" }),
       },
       documentActivity: { create: jest.fn() },
     } as unknown as PrismaTx;
 
-    await documentSetApprovalStatusMutation.resolve({ id: "d1", status: "approved" }, context(["document:update:tenant"]), tx);
+    await documentSetApprovalStatusMutation.resolve({ id: "d1", status: "approved" }, context(["document:approve:tenant"]), tx);
 
     expect((tx as unknown as { document: { update: jest.Mock } }).document.update).toHaveBeenCalledWith({ where: { id: "d1" }, data: { approvalStatus: "approved" } });
     expect((tx as unknown as { documentActivity: { create: jest.Mock } }).documentActivity.create).toHaveBeenCalledWith({
       data: { tenantId: "t1", documentId: "d1", actorId: "u1", type: "approval_status_changed", detail: "approved" },
     });
+  });
+
+  /* ARCHITECTURE.md §15.1, the seventh rule — separation of duties. Holding
+   * the grant is not enough: the person who put the document there is never
+   * the person who signs it off, or "approved" records nothing but that
+   * someone approved of their own work. */
+  it("refuses the uploader their own document, even holding document:approve at tenant scope", async () => {
+    const tx = {
+      document: {
+        findFirst: jest.fn().mockResolvedValue({ id: "d1", uploadedById: "u1", project: { id: "p1", ownerId: "u1", departmentId: null } }),
+        update: jest.fn(),
+      },
+      documentActivity: { create: jest.fn() },
+    } as unknown as PrismaTx;
+
+    await expect(documentSetApprovalStatusMutation.resolve({ id: "d1", status: "approved" }, context(["document:approve:tenant"]), tx)).rejects.toThrow(ForbiddenException);
+    expect((tx as unknown as { document: { update: jest.Mock } }).document.update).not.toHaveBeenCalled();
   });
 });
 

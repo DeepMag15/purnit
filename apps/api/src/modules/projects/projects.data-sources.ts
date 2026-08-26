@@ -290,9 +290,15 @@ export const projectMembersDataSource: DataSourceDefinition<z.infer<typeof Membe
     // imported: `documents.data-sources` already imports `projectsWhere` from
     // this file, so importing back would be a cycle. Deliberately WITHOUT
     // `REAL_PROJECT` — a backing project's members are the whole point here.
+    // Empty rather than 404 when the caller cannot see the project — the same
+    // shape every other list source in this codebase uses (`projects.list`
+    // returns [] with no grant). It matters here because a reviewer can hold
+    // task:review on work sitting in a project they are not part of: throwing
+    // turned a legitimately-empty reassign picker into a console 404 on an
+    // otherwise working page.
     const where = await projectsWhere(tx, ctx, { id: params.projectId });
     const visible = where ? await tx.project.findFirst({ where }) : null;
-    if (!visible) throw new NotFoundException(`No project "${params.projectId}"`);
+    if (!visible) return [];
 
     const memberships = await tx.projectMember.findMany({ where: { projectId: params.projectId }, select: { userId: true } });
     if (memberships.length === 0) return [];

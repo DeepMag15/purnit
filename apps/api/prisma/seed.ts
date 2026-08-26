@@ -121,6 +121,11 @@ const IT_BLUEPRINT_V1 = {
         // noise they cannot act on. Opening the page only — every metric on
         // it still enforces its own permission and scope.
         "+analytics:read:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "+task:review:team",
       ],
     },
     {
@@ -155,6 +160,16 @@ const IT_BLUEPRINT_V1 = {
         "+deal:create:own",
         "+deal:read:own",
         "+deal:update:own",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "+task:review:department",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "+document:approve:department",
       ],
     },
     {
@@ -265,6 +280,11 @@ const IT_BLUEPRINT_V1 = {
         // override-visibility widening every other subtree grant here
         // already follows.
         "+leave:approve:department-subtree",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "+document:approve:department-subtree",
       ],
     },
     {
@@ -370,6 +390,16 @@ const IT_BLUEPRINT_V1 = {
         "analytics:departmentPerformance:tenant",
         "analytics:productivity:tenant",
         "analytics:aiUsage:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "document:approve:tenant",
       ],
     },
   ],
@@ -1586,6 +1616,16 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "deal:create:tenant",
         "deal:read:tenant",
         "deal:update:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "document:approve:tenant",
       ],
     },
     {
@@ -1618,6 +1658,11 @@ const HEALTHCARE_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
       ],
     },
     {
@@ -2190,6 +2235,16 @@ const EDUCATION_BLUEPRINT_V1 = {
         "deal:create:tenant",
         "deal:read:tenant",
         "deal:update:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "document:approve:tenant",
       ],
     },
     {
@@ -2233,6 +2288,11 @@ const EDUCATION_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
       ],
     },
     {
@@ -2983,6 +3043,16 @@ const FINANCE_BLUEPRINT_V1 = {
         "deal:create:tenant",
         "deal:read:tenant",
         "deal:update:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "document:approve:tenant",
       ],
     },
     {
@@ -3019,6 +3089,11 @@ const FINANCE_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
       ],
     },
     {
@@ -3610,6 +3685,16 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "deal:create:tenant",
         "deal:read:tenant",
         "deal:update:tenant",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
+      
+        // Projects ecosystem review — approval used to ride on document:update, so
+        // whoever uploaded a report could approve it. Supervisory tier only, and
+        // the mutation refuses approving your own upload regardless.
+        "document:approve:tenant",
       ],
     },
     {
@@ -3650,6 +3735,11 @@ const MANUFACTURING_BLUEPRINT_V1 = {
         "attendance:read:own",
         "leave:create:own",
         "leave:read:own",
+      
+        // Projects ecosystem review — deciding on work someone else submitted.
+        // Separate from task:update, which the assignee already holds; task.review
+        // also refuses the assignee outright, so this is authority, not access.
+        "task:review:tenant",
       ],
     },
     {

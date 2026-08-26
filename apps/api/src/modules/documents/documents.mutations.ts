@@ -73,7 +73,7 @@ async function assertCanCreateInProject(tx: PrismaTx, ctx: MutationContext, proj
  * document:update/delete scope — fetches the row plus its parent Project's
  * `{ownerId, departmentId}` in one query, exact same shape as
  * `requireTaskInScope` (tasks.mutations.ts). */
-async function requireDocumentInScope(tx: PrismaTx, ctx: MutationContext, documentId: string, action: "update" | "delete") {
+async function requireDocumentInScope(tx: PrismaTx, ctx: MutationContext, documentId: string, action: "update" | "delete" | "approve") {
   const existing = await tx.document.findFirst({
     where: { id: documentId, tenantId: ctx.tenantId, deletedAt: null },
     include: { project: { select: { id: true, ownerId: true, departmentId: true } } },
@@ -136,6 +136,9 @@ const CreateInputSchema = z.object({
   name: z.string().min(1),
   mimeType: z.string().min(1),
   sizeBytes: z.number().int().positive(),
+  /** Projects ecosystem review — evidence for a specific piece of work.
+   * Optional: most documents are not evidence for anything. */
+  taskId: z.string().optional(),
 });
 
 export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInputSchema>> = {
@@ -146,10 +149,19 @@ export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInp
     await assertCanCreateInProject(tx, ctx, input.projectId);
     assertFileAllowed(input.mimeType, input.sizeBytes);
 
+    // Evidence must belong to work on THIS project. Without the check a
+    // document could be filed against a task in a project the uploader cannot
+    // see, quietly leaking that the task exists.
+    if (input.taskId) {
+      const task = await tx.task.findFirst({ where: { id: input.taskId, tenantId: ctx.tenantId, projectId: input.projectId, deletedAt: null } });
+      if (!task) throw new NotFoundException(`No task "${input.taskId}" on this project`);
+    }
+
     const document = await tx.document.create({
       data: {
         tenantId: ctx.tenantId,
         projectId: input.projectId,
+        taskId: input.taskId ?? null,
         name: input.name,
         storagePath: input.storagePath,
         mimeType: input.mimeType,
@@ -263,12 +275,28 @@ const SetApprovalStatusInputSchema = z.object({ id: z.string(), status: z.enum([
 export const documentSetApprovalStatusMutation: MutationDefinition<z.infer<typeof SetApprovalStatusInputSchema>> = {
   name: "document.setApprovalStatus",
   inputSchema: SetApprovalStatusInputSchema,
-  // Reuses document:update rather than a dedicated document:approve triple
-  // — a deliberate lightweight choice (see the plan's flagged judgment
-  // call); revisit if dedicated approver roles are ever wanted.
-  requiredPermission: "document:update",
+  // Projects ecosystem review (2026-08-26) — its OWN permission at last.
+  //
+  // This reused `document:update` as "a deliberate lightweight choice ...
+  // revisit if dedicated approver roles are ever wanted". Revisited: the same
+  // grant that lets someone edit a document let them approve it, so the person
+  // who uploaded a report could approve their own (verified live, 201). The
+  // review step was decorative.
+  requiredPermission: "document:approve",
   async resolve(input, ctx, tx) {
-    await requireDocumentInScope(tx, ctx, input.id, "update");
+    // "approve", not "update": the row-scope question here is which documents
+    // you may APPROVE, and those are different ladders. Checking update's
+    // scope would let a narrower edit grant silently cap an approval grant
+    // someone legitimately holds at a wider one.
+    const existing = await requireDocumentInScope(tx, ctx, input.id, "approve");
+
+    // Separation of duties, enforced rather than assumed. A supervisor holds
+    // document:approve legitimately AND uploads their own files, so the
+    // permission alone cannot carry this.
+    if (existing.uploadedById === ctx.userId && input.status !== "pending") {
+      throw new ForbiddenException("You can't approve or reject a document you uploaded — someone else has to.");
+    }
+
     const updated = await tx.document.update({ where: { id: input.id }, data: { approvalStatus: input.status } });
     await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "approval_status_changed", input.status);
     return updated;

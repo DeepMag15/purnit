@@ -5,7 +5,7 @@ import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { projectDetailDataSource, projectsCountDataSource, projectsListDataSource, projectsStatusBreakdownDataSource, projectMembersDataSource } from "./projects.data-sources";
 import { projectAddMemberMutation, projectCreateMutation, projectDeleteMutation, projectRemoveMemberMutation, projectUpdateMutation } from "./projects.mutations";
-import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric } from "./projects.metrics";
+import { projectsActiveCountMetric, projectsStatusBreakdownMetric, projectsAtRiskMetric, projectsProgressMetric } from "./projects.metrics";
 import { projectRagHandler } from "./projects.rag";
 
 /** Registers the Projects module's data sources/mutations at boot. This
@@ -38,6 +38,7 @@ class ProjectsRegistrar implements OnModuleInit {
     this.metrics.register(projectsActiveCountMetric);
     this.metrics.register(projectsStatusBreakdownMetric);
     this.metrics.register(projectsAtRiskMetric);
+    this.metrics.register(projectsProgressMetric);
     this.ragSources.register(projectRagHandler); // AI RAG Phase C
   }
 }

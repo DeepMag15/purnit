@@ -8,7 +8,19 @@ import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 // "department-subtree", the only branch that touches `tx` (see
 // department-subtree.ts). A real `PrismaTx` isn't needed to exercise the
 // pure branching logic this spec covers.
-const tx = {} as PrismaTx;
+/** `tasksWhere` resolves the caller's teammates at department/team scope —
+ * Task has no `assignee` relation, so the department's people are looked up
+ * rather than filtered on a join. Empty by default; the tests that care supply
+ * their own. */
+const tx = { user: { findMany: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
+
+/** A tx whose department has these people in it. */
+function txWithTeammates(ids: string[]) {
+  return { user: { findMany: jest.fn().mockResolvedValue(ids.map((id) => ({ id }))) } } as unknown as PrismaTx;
+}
+
+/** The two floors every non-own, non-tenant scope now carries, in order. */
+const MEMBER_FLOOR = { project: { members: { some: { userId: "u1" } } } };
 
 function context(grants: string[], userDepartmentId: string | null = null): DataSourceContext {
   return {
@@ -36,7 +48,7 @@ describe("tasksWhere", () => {
     expect(await tasksWhere(tx, context(["task:read:department"], "d1"), {})).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
     });
   });
 
@@ -50,7 +62,7 @@ describe("tasksWhere", () => {
     expect(await tasksWhere(tx, context(["task:read:team"], null), {})).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR],
     });
   });
 
@@ -59,7 +71,7 @@ describe("tasksWhere", () => {
     expect(where).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
       assigneeId: "teammate-1",
     });
   });
@@ -116,8 +128,32 @@ describe("tasksWhere", () => {
       tenantId: "t1",
       deletedAt: null,
       project: { departmentId: "d9" },
-      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
     });
+  });
+
+  /**
+   * ⚠️ A scope widening, pinned deliberately.
+   *
+   * Every condition above reads `project.departmentId`, which
+   * `project.create` leaves null by default — so a Lead could not SEE, and
+   * therefore could not review, their own team member's submitted work.
+   * Verified live before the fix.
+   */
+  it("includes tasks assigned to people in the caller's own department", async () => {
+    const where = await tasksWhere(txWithTeammates(["worker1", "worker2"]), context(["task:read:team"], "d1"), {});
+    expect(where!.OR).toContainEqual({ assigneeId: { in: ["worker1", "worker2"] } });
+  });
+
+  it("adds no assignee condition when the caller's department is empty", async () => {
+    const where = await tasksWhere(txWithTeammates([]), context(["task:read:team"], "d1"), {});
+    expect((where!.OR as Record<string, unknown>[]).some((c) => "assigneeId" in c && typeof c.assigneeId === "object")).toBe(false);
+  });
+
+  it("does not widen tenant scope, which already sees everything", async () => {
+    const teamTx = txWithTeammates(["worker1"]);
+    await tasksWhere(teamTx, context(["task:read:tenant"]), {});
+    expect((teamTx as unknown as { user: { findMany: jest.Mock } }).user.findMany).not.toHaveBeenCalled();
   });
 
   it("a projectId filter is honored as a direct passthrough regardless of scope", async () => {

@@ -5,7 +5,7 @@ import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { taskDetailDataSource, tasksCountDataSource, tasksListDataSource } from "./tasks.data-sources";
 import { taskRagHandler } from "./tasks.rag";
-import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation, taskUpdateDueDateMutation } from "./tasks.mutations";
+import { taskCreateMutation, taskReassignMutation, taskUpdateStatusMutation, taskUpdateDueDateMutation, taskSubmitForReviewMutation, taskReviewMutation } from "./tasks.mutations";
 import {
   tasksOpenCountMetric,
   tasksOverdueCountMetric,
@@ -38,6 +38,8 @@ class TasksRegistrar implements OnModuleInit {
     this.mutations.register(taskUpdateStatusMutation);
     this.mutations.register(taskReassignMutation);
     this.mutations.register(taskUpdateDueDateMutation);
+    this.mutations.register(taskSubmitForReviewMutation);
+    this.mutations.register(taskReviewMutation);
     this.ragSources.register(taskRagHandler); // AI RAG Phase C
     this.metrics.register(tasksOpenCountMetric);
     this.metrics.register(tasksOverdueCountMetric);

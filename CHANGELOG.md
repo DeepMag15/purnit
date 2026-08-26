@@ -1673,6 +1673,62 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ##### Still open on this module
 - **`AnalyticsFilterBar`'s project filter** is fixed by the same change (it reads `projects.list`), but in a domain with no real projects it now shows an empty filter rather than a wrong one. Whether that filter should exist at all outside IT is an **Analytics** question, deliberately left for that module's own review rather than guessed at here.
 - Manufacturing's Tasks target is **InventoryItem**, which is the only backing anchor that domain has. Work orders are arguably the better target, but `WorkOrder` has no backing project — a real question for the **Work Orders** review, not a silent addition here.
+#### Session 5 continued — 2026-08-26 — Module review 1 of N: **Projects**, part 2 — the delivery workflow
+
+**Scope:** the second half of the Projects ecosystem review — the workflow the user approved: *Project → Work/Task → Assignment → user works → progress updates → optional files/evidence/report → **Submit → Review/Approval** → project progress.* Part 1 (above) fixed what a Project **is**; this fixes what happens to the work inside one.
+
+##### ⚠️ The finding: there was no review step, and no way to build one
+
+A person was assigned work, did it, and **marked it done themselves**. Nothing in the product distinguished "I think this is finished" from "someone accountable agrees it is." The role chain the user described — Employee → Lead/Manager → Project Manager → Executive — existed in the permission model and nowhere in the delivery flow. Three specific gaps:
+
+- **No submit step.** `task.updateStatus` went straight to `done`, and `task:update` is exactly the grant an assignee holds.
+- **No evidence linkage.** Documents attached to a *project*, never to the piece of work they were evidence for, so a reviewer had no way to see what they were reviewing.
+- **`document.setApprovalStatus` was ungated and self-serve** — the uploader could approve their own document of record.
+
+##### What changed
+
+- **`task.submitForReview`** — deliberately **ungated**: submitting your own work is ownership, not a privilege, and every role that can be assigned work can submit it. Assignee-only, enforced server-side.
+- **`task.review`** — gated on the new **`task:review`** permission and **refuses the assignee and the submitter** even when they hold the grant. Approve → `done`; request changes → back to `in_progress` with a note. The two halves are separate authorities because they answer to different people.
+- **`in_review` joins `TASK_STATUSES` but not `SETTABLE_STATUSES`** — it is reached by submitting and left by a decision, never by picking it from a menu. `task.updateStatus` explicitly refuses to move a task *out* of review, since `task:update` is precisely what the one person the step exists to check already has.
+- **`requireTaskInScope` is now parameterised by action** (`update` vs `review`) and gained **two floors**: project membership, and the assignee's own department. Without them a Lead could not review a team member's work on a department-less project — the check was right in principle and wrong for the most ordinary case.
+- **`document.create` accepts an optional `taskId`** (same-project check enforced), so evidence attaches to the work rather than sitting loose on the project. `documents.list` filters by it.
+- **`document.setApprovalStatus` now requires `document:approve`** and refuses `uploadedById === ctx.userId`. Its row-scope check was still asking `document:update`'s ladder — caught while writing the test that backs the new §15.1 invariant, and a real inconsistency: a narrower edit grant would have silently capped an approval grant someone legitimately held at a wider scope. Task review and document approval are deliberately **different** authorities: a reviewer signs off the *work*, a supervisor approves the *document of record*.
+- **`projects.progress`** — a new breakdown metric derived from task completion, which is what "project progress" actually means. Projects with no tasks are omitted rather than reported as 0%.
+- Migration **`20260826140000_task_review_and_evidence`**, with backfill.
+
+##### The UI
+
+`TaskDetail` gains a **review panel** that renders **nothing at all** for a task nobody is reviewing — which is most of them. Review is optional; a panel on every task would make routine work feel like paperwork. Which controls appear is decided by the server (`canSubmit` / `canReview`), never by comparing ids in the browser — the same prune-not-hide rule as everywhere else. The status `Select` hides itself while a task is in review rather than offering a change the API will refuse.
+
+##### ⚠️ What the browser caught that the API suite could not
+
+- **Submitted work vanished from the board.** `STATUSES` in `TaskList` drives the Kanban's `columns`; `in_review` was not in it, so the cards filtered out of all four columns and disappeared — the worst possible moment to lose sight of a piece of work. Fixed with a new **`lockedColumns`** prop on `KanbanBoard`: the column renders and counts, but accepts no drops and its cards carry no drag handle, because a review is a decision, not a drag gesture. Optional, default empty, so the other nine boards are untouched. The primitive's own tone sequence (`queued → progress → review → done`) turns out to have been written for exactly this four-column shape.
+- **A real 404 on the reviewer's page.** `TaskDetail` built its reassign picker from `project.detail`, which now returns real projects only — and a reviewer can legitimately hold `task:review` on work sitting in a project they are not a member of. Switched to `project.members`, which now returns `[]` rather than throwing when the caller cannot see the project, matching every other list source.
+- Status slugs rendered raw (`todo`, and `in_review` would have shown as "In_review"). Now labelled.
+
+##### Verification
+
+- **Live workflow, 57 checks, 0 failures, across all five domains** — IT, Healthcare, Education, Finance, Manufacturing — each with its own worker/reviewer role pair (Practitioner→Lead, Nurse→Doctor, Teaching Assistant→Teacher, Billing Clerk→Accountant, Warehouse Staff→Production Planner). Every domain confirms: only the assignee submits; the reviewer cannot submit; the assignee cannot review their own work **even holding the grant**; a submitted task cannot be walked out of review by the status route; requesting changes returns it to the worker; the uploader cannot approve their own document.
+- **Browser, 18 checks, 0 failures**, two real logins driving the real UI: the assignee is offered *Submit for review* and not *Approve*; after submitting, the panel says it is waiting and tells them someone else has to finish it; the Lead is offered *Approve* and *Request changes* and not *Submit for review*; the board shows **Todo 0 · In progress 0 · In review 1 · Done 0** with the card parked in review and no drag handle; the task ends `done`. No console errors on either page.
+- **1595 backend** + 117 frontend tests green; typecheck and lint clean (0 errors). Throwaway workspaces torn down, 0 orphaned rows, back to the 9-tenant baseline.
+
+##### A doc claim that wasn't true yet
+
+Writing the new §15.1 invariant row ("an approval step's decider is never its own subject") meant claiming `documents.mutations.spec.ts` enforced it. It didn't — its one approval test passed the self-approval check **by accident**, because the stubbed document carried no `uploadedById` at all. The invariant table is only worth having if every row is real, so the test was written rather than the claim softened; it immediately exposed the scope-ladder inconsistency above.
+
+##### Three of my own mistakes, named because each looked like a product failure
+
+- **A "no console errors" check failed for two runs against a fix that was already correct** — the web server was running `next start` (a production build), so the source change had never been compiled. The lesson is the same one this project keeps relearning: verify the thing under test is actually the thing running.
+- The board check pointed at `/workspace/tasks`, which is not a route — manifest pages live at `/workspace/page.tasks`. A test-harness bug that reported as a missing feature.
+- `requireTaskInScope` checked `task:update` for reviews, so a legitimate reviewer got "Not allowed to update this task."
+
+##### Still open on this module
+
+- **Meetings and CalendarEvents have no `projectId`.** A project's meetings cannot be listed with the project. Real, deliberately not fixed here — it is a schema change belonging to the **Calendar/Meetings** review, not a silent addition to Tasks.
+- **Nurse, Teaching Assistant and Practitioner hold no `document:create`** by blueprint design, so in those domains evidence has to come from someone more senior. Recorded rather than quietly granted — whether those roles *should* upload is a domain question, not a workflow one.
+- Manufacturing's task target remains **InventoryItem**, carried over from part 1 and still a **Work Orders** question.
+
+
 #### Next up
 - **The Frontend Redesign initiative (Phases 01-06) is complete — no further phase is currently scheduled.** The 3 mobile-layout fixes and the panel/toast motion fixes from Phase 06 still need the user's own browser check to confirm the visual/interaction feel, since no browser-automation tool exists in this environment. Future frontend work (if any) awaits the user's own explicit direction.
 - **The 4-initiative backlog — Stripe Billing → SSO/SAML → Feature Flags → AI Assistant Phases C-F — is fully shipped, with no follow-on phases remaining.**

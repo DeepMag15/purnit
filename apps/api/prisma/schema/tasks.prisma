@@ -5,13 +5,32 @@ model Task {
   project     Project   @relation(fields: [projectId], references: [id])
   title       String
   description String?
+  /// todo | in_progress | in_review | done — enforced server-side as of the
+  /// Projects ecosystem review. Previously free text, so `in_review` was
+  /// accepted and understood by nothing.
+  ///
+  /// `in_review` is a one-way door: `task.updateStatus` refuses to move a
+  /// task out of it, so once work is submitted only a reviewer decides. Review
+  /// itself stays OPTIONAL — a task may still go straight to `done`, which is
+  /// what keeps routine work usable.
   status      String    @default("todo")
+  /// Who submitted this for review, and when. Null until it is submitted, and
+  /// deliberately kept after review so "who sent this" survives the decision.
+  submittedById String? @map("submitted_by_id") @db.Uuid
+  submittedAt   DateTime? @map("submitted_at")
+  /// Who decided. Never the same person as `submittedById` — enforced in
+  /// `task.review`, not merely expected.
+  reviewedById  String? @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime? @map("reviewed_at")
+  reviewNote    String?   @map("review_note")
   assigneeId  String?   @map("assignee_id") @db.Uuid
   priority    String    @default("medium")
   dueDate     DateTime? @map("due_date")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
+
+  documents Document[]
 
   @@index([tenantId, projectId])
   @@index([tenantId, assigneeId])

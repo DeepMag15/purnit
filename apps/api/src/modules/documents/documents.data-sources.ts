@@ -26,7 +26,14 @@ async function withUploaderNames(tx: PrismaTx, documents: { uploadedById: string
   return new Map(uploaders.map((u) => [u.id, u.displayName]));
 }
 
-const ListParamsSchema = z.object({ projectId: z.string(), search: z.string().optional() });
+const ListParamsSchema = z.object({
+  projectId: z.string(),
+  search: z.string().optional(),
+  /** Projects ecosystem review — narrow to the evidence for one task, so a
+   * reviewer sees what that work produced rather than every file on the
+   * project. Omitted means everything, exactly as before. */
+  taskId: z.string().optional(),
+});
 
 // No requiredPermission — see assertProjectVisible's doc comment.
 export const documentsListDataSource: DataSourceDefinition<z.infer<typeof ListParamsSchema>> = {
@@ -40,6 +47,7 @@ export const documentsListDataSource: DataSourceDefinition<z.infer<typeof ListPa
         tenantId: ctx.tenantId,
         projectId: params.projectId,
         deletedAt: null,
+        ...(params.taskId ? { taskId: params.taskId } : {}),
         ...(params.search ? { name: { contains: params.search, mode: "insensitive" as const } } : {}),
       },
       orderBy: { createdAt: "desc" },

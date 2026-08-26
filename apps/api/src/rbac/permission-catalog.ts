@@ -53,6 +53,12 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "task", action: "create", label: "Create tasks" },
       { resource: "task", action: "read", label: "View tasks" },
       { resource: "task", action: "update", label: "Edit tasks" },
+      // Projects ecosystem review — deciding on work someone else submitted.
+      // Separate from task:update on purpose: an assignee edits their own task
+      // all day, and must not be the person who approves it. `task.review`
+      // refuses the assignee outright, so this grant is about authority, not
+      // about being able to touch the row.
+      { resource: "task", action: "review", label: "Review submitted work (approve / request changes)" },
     ],
   },
   {
@@ -100,6 +106,11 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogModule[] = [
       { resource: "document", action: "create", label: "Create documents" },
       { resource: "document", action: "update", label: "Edit documents" },
       { resource: "document", action: "delete", label: "Delete documents" },
+      // Projects ecosystem review — approval was gated on document:update, the
+      // same grant as editing, so whoever uploaded a report could approve it
+      // and the review step was decorative (verified live). Sits at the
+      // supervisory tier, alongside document:delete.
+      { resource: "document", action: "approve", label: "Approve or reject documents" },
     ],
   },
   {

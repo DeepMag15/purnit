@@ -122,6 +122,11 @@ const OWNERSHIP_SCOPED_MUTATIONS: Record<string, string> = {
   "comment.delete": "author-only",
   "meeting.cancel": "organizer-only",
   "leave.cancel": "the requester's own leave request",
+  // Submitting is an act of ownership, not authority: only the task's own
+  // assignee may submit it. A permission triple cannot express that — every
+  // scope wide enough to let a Lead submit for someone would also let them
+  // submit their own work as though it had been reviewed.
+  "task.submitForReview": "assignee-only; task.review holds the authority half",
 
   // Conversation/meeting membership, checked inside resolve().
   "conversation.createChannel": "creation; the caller becomes the owner",

@@ -72,8 +72,14 @@ interface TaskRow {
 // Phase 1) — unlike Project.status (free-form, no fixed set), Task.status
 // already has one, so the Board view always shows all three columns rather
 // than deriving them from whatever's currently present in the data.
-const STATUSES = ["todo", "in_progress", "done"];
-const STATUS_TONE: Record<string, "neutral" | "info" | "success"> = { todo: "neutral", in_progress: "info", done: "success" };
+// Projects ecosystem review — "in_review" joins the vocabulary. Without a
+// column for it, work a person submitted disappeared off the board entirely,
+// which is the worst possible moment to lose sight of it. It is locked
+// (see KanbanBoard's `lockedColumns`): visible, countable, not draggable.
+const STATUSES = ["todo", "in_progress", "in_review", "done"];
+const LOCKED_STATUSES = ["in_review"];
+const STATUS_TONE: Record<string, "neutral" | "info" | "warning" | "success"> = { todo: "neutral", in_progress: "info", in_review: "warning", done: "success" };
+const STATUS_LABEL: Record<string, string> = { todo: "To do", in_progress: "In progress", in_review: "In review", done: "Done" };
 // Same free-text-vocabulary treatment as STATUS_TONE — Task.priority has no
 // DB-level enum either (see tasks.prisma).
 const PRIORITY_TONE: Record<string, "danger" | "warning" | "neutral"> = { high: "danger", medium: "warning", low: "neutral" };
@@ -299,6 +305,7 @@ export function TaskList({ title, bind, actions, targetLabel, targetSource, targ
           groupKey="status"
           labelKey="title"
           columns={STATUSES}
+          lockedColumns={LOCKED_STATUSES}
           updateMutation="task.updateStatus"
           updateValueKey="status"
           bind={bind}
@@ -350,7 +357,7 @@ export function TaskList({ title, bind, actions, targetLabel, targetSource, targ
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <Badge tone={STATUS_TONE[task.status] ?? "neutral"}>{task.status}</Badge>
+                  <Badge tone={STATUS_TONE[task.status] ?? "neutral"}>{STATUS_LABEL[task.status] ?? task.status}</Badge>
                   {assignee && <Avatar name={assignee.displayName} size="sm" />}
                 </div>
               </li>
