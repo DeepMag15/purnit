@@ -16,8 +16,8 @@ A config-driven, multi-tenant workspace platform: a NestJS API compiles a per-us
 Prerequisites: [Volta](https://volta.sh) (recommended — auto-switches to this repo's pinned Node/pnpm the moment you `cd` in; [nvm](https://github.com/nvm-sh/nvm) also works, via `nvm use`) and [Docker Desktop](https://www.docker.com/products/docker-desktop/). Nothing else gets installed globally — see [Environment isolation](docs/DEVELOPMENT.md#environment-isolation) for exactly what stays inside this repo.
 
 ```bash
-git clone https://github.com/DeepMag15/ppurnit.git
-cd ppurnit
+git clone https://github.com/DeepMag15/Ppurnit.git
+cd Ppurnit
 pnpm install
 pnpm run setup      # brings up local Supabase (Postgres/Auth/Storage) via Docker, applies migrations, seeds, creates Storage buckets
 pnpm dev:api         # http://localhost:4000
