@@ -1729,7 +1729,7 @@ Writing the new §15.1 invariant row ("an approval step's decider is never its o
 - Manufacturing's task target remains **InventoryItem**, carried over from part 1 and still a **Work Orders** question.
 
 
-### Session 5 (cont.) — 2026-08-26 — Module review 2 of N: **Documents**
+#### Session 5 continued — 2026-08-26 — Module review 2 of N: **Documents**
 
 **Scope:** the second module of the systematic review, and the first one whose findings were mostly *security*. Same process as Projects: findings first, then implementation, then live verification — backend **and** browser — before anything is called done.
 
@@ -1799,6 +1799,50 @@ The browser pass drives the whole Education flow with two real logins: Student h
 ##### Infrastructure note
 
 Signup and invite go through Supabase Auth, which intermittently loses a race with a 10s connect timeout from this machine — twice reporting a *different* domain as failed on two consecutive runs of the same probe. Added `signup-retry.mjs` (`signupWithRetry`/`inviteWithRetry`): retries **only** 5xx and thrown network errors, returns any 4xx immediately, so a real refusal still fails on the first try. A verification script that reports a network blip as a product finding trains you to discount its own red output.
+
+
+#### Session 5 continued — 2026-08-26 — Documentation sync made a permanent requirement
+
+**The user made doc-sync a standing rule: after every major change, update all three documents immediately — not batched at the end of a module — and verify all three against the implementation before starting the next one.**
+
+##### Why it needed to be a rule
+
+Both module reviews so far shipped doc claims that had quietly become false while still being trusted. Each was true when written:
+
+- `student.register`: *"deliberately NO backing Project"* — untrue once Contextual Reporting added one.
+- `myAssignments.list`: *"this platform has no student submission model"* — untrue once the Documents review added one.
+- ARCHITECTURE.md §15.1 rule 4: *"29 mutations and ~40 data sources"* — actually **33 and 55**.
+
+Documentation written from memory at the end of a module is written from the *plan*, not from what shipped.
+
+##### ⚠️ The audit that prompted it: four ARCHITECTURE gaps in work already called "complete"
+
+Asked to check the Documents module against all three files before moving on, the honest answer was that only one of the three was fully in order. CHANGELOG and CONTEXT were complete; **ARCHITECTURE was not**, and the gaps were exactly the kind the rule is meant to prevent:
+
+1. **The `tasksWhere` restricted gate was recorded only in the Documents row**, not in the **Tasks** row it actually changed. A security change to a module, invisible to anyone reading that module's own entry.
+2. **The entire Education submission path was absent** — zero occurrences of `assignment.submit` or `submissions_project_id` anywhere in the file. Worse, the Education row still asserted the *opposite* of what had shipped: "a per-Student individual document file edges into privacy territory better deferred" — the very deferral the module reversed.
+3. **§8.2's `tasks` row was missing `assignment_id`** and its partial unique index, a real design decision (a double-submit race would otherwise leave a teacher two tasks) recorded nowhere in the data model.
+4. **Rule 4's counts had drifted** — off by one before this module, off by four after it.
+
+Also found and fixed while verifying: the Documents CHANGELOG entry used `### Session 5 (cont.)` where every sibling uses `#### Session 5 continued`, so it rendered as a *higher-level* section than its siblings; and a **pre-existing** unescaped `|` in the Tasks row (`(\`update\` | \`review\`)`, written during the Projects review) was splitting that table cell into a phantom column.
+
+##### What changed
+
+- **`ARCHITECTURE.md` §1.1 — "Documentation discipline"**, plus an eighth architectural principle: *the documentation is part of the change, not a report about it.* Deliberately a **subsection of §1** rather than a new §17, so CONTEXT's "16 sections" claim stays true and the table of contents stays valid. It states the three obligations, each written because it had already been missed once: update every place a fact lives (not just the nearest one); correct claims your change has falsified; and treat counts as claims, re-derived rather than carried forward.
+- **A root `CLAUDE.md`** — the reminder that loads every session: the doc rule, the module-review process (findings → approval → implement → verify backend *and* browser → docs → commit), the standing "never assume a module works the same way across all five domains", the verification lessons (the browser catches what the API cannot; verify the thing under test is the thing running; a probe failure is usually the probe), and the local environment notes (Volta paths, servers needing their own console, the flaky Supabase auth).
+- **The four ARCHITECTURE gaps closed**, the CHANGELOG heading corrected, the stray pipe escaped, and CONTEXT's document map updated to list `CLAUDE.md`.
+- **`scripts/verify-docs.mjs`** — because a rule nobody can check is a preference. **30 checks, all derived from source**: counts re-derived from the spec that owns them, claimed mutations looked up in the files that export them, schema facts read from the migration, plus generic checks for table integrity, heading levels and ARCHITECTURE's own section count. Split into generic checks that every future module inherits and per-module checks that pin what a specific review established.
+
+##### Verification
+
+`node scripts/verify-docs.mjs` — **30/30**. All three documents now agree with the implementation, with no stale counts and no contradictions.
+
+##### Intentionally deferred (unchanged by this entry)
+
+- **`users.list` 403 for most working roles** — `CommentThread`'s @-mentions need `user:manage`. Pre-existing; belongs to the **Comments** review.
+- **Nurse / Teaching Assistant / Practitioner hold no `document:create`** — a domain question, now asserted explicitly by the cross-domain probe rather than assumed.
+- **Healthcare cannot exercise the restricted-*write* boundary** — its only role lacking the chart gate also lacks the write grants. Defense in depth, not a gap; the boundary is proven in Education instead.
+- **Meetings/CalendarEvents have no `projectId`** (Calendar review); **Analytics' project filter outside IT** (Analytics review); **Manufacturing's task target is InventoryItem** (Work Orders review).
 
 
 #### Next up
