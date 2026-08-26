@@ -31,10 +31,37 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
+/**
+ * ⚠️ CONTEXT.md and CHANGELOG.md are **not tracked in git** — they are
+ * internal working documents kept locally (see README). So this script has to
+ * run in two situations that look identical to it:
+ *
+ *   - on a working machine, where both files exist and every check applies;
+ *   - in a fresh clone or CI, where they legitimately do not exist.
+ *
+ * Missing is therefore SKIPPED, never a failure. A stale check that fires on
+ * a clean checkout would train you to ignore this script's output, which is
+ * the exact failure mode it exists to prevent. Absence is reported plainly so
+ * nobody mistakes a skipped run for a passing one.
+ */
+const readOptional = (p) => {
+  try {
+    return read(p);
+  } catch {
+    return null;
+  }
+};
+
 const A = read("ARCHITECTURE.md");
-const C = read("CHANGELOG.md");
-const X = read("CONTEXT.md");
 const CL = read("CLAUDE.md");
+const C = readOptional("CHANGELOG.md");
+const X = readOptional("CONTEXT.md");
+
+const skipped = [];
+const skip = (label) => {
+  skipped.push(label);
+  console.log(`skip  ${label}`);
+};
 
 let fail = 0;
 const check = (ok, label) => {
@@ -61,7 +88,8 @@ check(A.includes(`${nMut} mutations and ${nSrc} data sources`), `§15.1 rule 4 s
 
 // --- generic: ARCHITECTURE's own section count, claimed in CONTEXT §66 ---
 const sections = (A.match(/^## \d+\. /gm) || []).length;
-check(X.includes(`Full technical design (${sections} sections)`), `CONTEXT's document map states the real section count (${sections})`);
+if (X) check(X.includes(`Full technical design (${sections} sections)`), `CONTEXT's document map states the real section count (${sections})`);
+else skip("CONTEXT's document-map section count (CONTEXT.md not present — untracked working doc)");
 
 // --- generic: every module-table row is still a well-formed row ----------
 const L = A.split("\n");
@@ -74,8 +102,10 @@ for (let i = start + 2; i < L.length && L[i].startsWith("|"); i++) {
 check(badRows.length === 0, `every §9.1 module-table row is well formed${badRows.length ? " — bad: " + badRows.join(", ") : ""}`);
 
 // --- generic: CHANGELOG entries sit at a consistent heading level --------
-const odd = (C.match(/^### Session \d+ \(cont/gm) || []).length;
-check(odd === 0, "no CHANGELOG entry uses a mismatched '### … (cont.)' heading");
+if (C) {
+  const odd = (C.match(/^### Session \d+ \(cont/gm) || []).length;
+  check(odd === 0, "no CHANGELOG entry uses a mismatched '### … (cont.)' heading");
+} else skip("CHANGELOG heading levels (CHANGELOG.md not present — untracked working doc)");
 
 // --- generic: the documentation rule itself is present in both places ----
 check(/### 1\.1 Documentation discipline/.test(A), "ARCHITECTURE §1.1 (documentation discipline) exists");
@@ -110,9 +140,14 @@ check(/ADD COLUMN "assignment_id"/.test(mig), "the migration adds tasks.assignme
 check(/CREATE UNIQUE INDEX/.test(mig) && /WHERE "assignment_id" IS NOT NULL/.test(mig), "it is a partial unique index");
 check(A.includes("assignment_id") && A.includes("partial unique index"), "§8.2 records the column and the index");
 
-for (const t of ["assertProjectReachable", "requestApproval", "assignment.submit"]) {
-  check(X.includes(t), `CONTEXT mentions ${t}`);
-}
+if (X) {
+  for (const t of ["assertProjectReachable", "requestApproval", "assignment.submit"]) {
+    check(X.includes(t), `CONTEXT mentions ${t}`);
+  }
+} else skip("CONTEXT's record of the Documents module (CONTEXT.md not present — untracked working doc)");
 
-console.log(`\n${fail === 0 ? "all checks passed" : `${fail} CHECK(S) FAILED`}`);
+console.log(
+  `\n${fail === 0 ? "all checks passed" : `${fail} CHECK(S) FAILED`}` +
+    (skipped.length ? `  (${skipped.length} skipped — see above)` : ""),
+);
 process.exit(fail ? 1 : 0);

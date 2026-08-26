@@ -55,6 +55,8 @@
 | `CHANGELOG.md` | What was changed, fixed, added or removed, with the reasoning and the verification result. |
 | `CONTEXT.md` | Current project state: what is complete, what was decided, what is deferred, and what the next module needs to know. |
 
+⚠️ **`CONTEXT.md` and `CHANGELOG.md` are deliberately not tracked in git** (see §14.2) — they are this project's internal working memory, not published artifacts. Untracked does **not** mean unmaintained: the rule above applies to all three files exactly as written, and `scripts/verify-docs.mjs` still checks them whenever they are present.
+
 **Why this is a rule and not a preference.** These files are the only durable memory this project has; every session starts by reading `CONTEXT.md`. A doc written from memory at the end of a module is written from the *plan*, not from what shipped — and the gap between those two is exactly where the expensive mistakes live. Both module reviews so far turned up doc claims that had quietly become false: `student.register`'s "deliberately NO backing Project" and `myAssignments.list`'s "this platform has no student submission model" were each true when written and load-bearing when stale.
 
 **What "immediately" means in practice.** When a change lands — a mutation added or split, a gate moved, a schema column, a UI capability, a design decision taken or refused — its doc update lands with it, in the same working session. Not batched, not deferred to a final pass.
@@ -722,6 +724,23 @@ Cross-tenant leakage via RAG is the classic failure. Mitigations: `tenant_id` on
 | Secrets | Host-managed env vars; no secrets in repo |
 | Observability | Structured logging, error tracking (e.g. Sentry), audit logs |
 | Migrations | Prisma migrate, run in CI before deploy |
+
+### 14.1 CI, and two ways it broke *(repository cleanup, 2026-08-26)*
+
+`.github/workflows/ci.yml` runs one job, `typecheck-and-build`, on every push to `main`/`develop` and every pull request: **install → lint → typecheck → test → build**, on `ubuntu-latest` with `pnpm install --frozen-lockfile` and no `.env`. All five steps are hard gates; none is advisory.
+
+Two independent defects had it red, both invisible on the developer's own machine and both found by reproducing CI faithfully — a clean checkout of exactly what git publishes, with no `.env` and no pre-existing build output:
+
+1. ⚠️ **A platform-specific binary was a direct dependency.** `@supabase/cli-windows-x64` was listed in the root `devDependencies`, and it declares `"os": ["win32"]`. A *direct, non-optional* dependency whose `os` does not match makes pnpm refuse the install outright on Linux, so CI died at its first step. It was also redundant: the `supabase` package already declares **all eight** platform binaries as `optionalDependencies`, which is precisely the mechanism for this — each platform resolves its own and skips the rest. Removed; `supabase` keeps working everywhere.
+2. ⚠️ **A workspace package's types did not exist yet when they were needed.** `@purnit/manifest-schema` publishes `"types": "./dist/index.d.ts"`, `dist/` is gitignored, and CI **typechecks before it builds** — so `apps/web` failed with `TS2307: Cannot find module '@purnit/manifest-schema'`. It passed locally only because a stale `dist/` from an earlier build was lying around. Fixed by giving the package `postinstall: tsc -p tsconfig.json` (plus its own `typescript` devDependency, without which `tsc` is not resolvable in that package's install context) — the same precedent as `apps/api`'s existing `postinstall: prisma generate`: **an artifact a sibling package needs is produced at install time, not left to whichever script happens to run first.**
+
+The general lesson, and the reason the fix is in `package.json` rather than in the workflow: **a build-order dependency that only a clean machine can see is a real defect, not a CI configuration problem.** Reordering the workflow steps would have hidden it from CI while leaving every fresh clone broken.
+
+### 14.2 What the repository publishes *(repository cleanup, 2026-08-26)*
+
+`CONTEXT.md` and `CHANGELOG.md` are **internal working documents and are not tracked in git** — kept locally, listed in `.gitignore`. ARCHITECTURE.md is the published technical design and carries the same as-built rationale in its own module rows. ⚠️ **A known, accepted consequence:** this file and many source comments cite "CONTEXT.md §NN" as design rationale, and those references point at a file a cloner will not have. `README.md` says so explicitly rather than leaving the links to fail silently, and `scripts/verify-docs.mjs` treats both files as optional — missing is *skipped and reported*, never a failure, because a check that fires on a clean checkout trains you to ignore the tool.
+
+Also untracked: `.claude/settings.json` (personal, machine-specific tool state) and `apps/api/.jwt-stage4`. The latter was a real credential — an **expired end-user access token** (`role: authenticated`, issued and expired 2026-07-14), committed in `964fa94`. A scan of **all 2 700 blobs in the repository's history** against nine secret-value shapes found it to be the *only* one; `.env` has never been committed at any point. It needed no rotation (expired, never a service key), but `.gitignore` now carries `.jwt-*` so the class cannot recur. The separate, still-open exposure recorded in `docs/CREDENTIAL_ROTATION.md` was via a session transcript, not git, and remains unrotated.
 
 ---
 

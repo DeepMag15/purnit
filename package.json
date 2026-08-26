@@ -1,5 +1,5 @@
 {
-  "name": "purnit",
+  "name": "ppurnit",
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@11.13.0",
@@ -25,7 +25,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@next/eslint-plugin-next": "^16.2.12",
-    "@supabase/cli-windows-x64": "^2.111.0",
     "@supabase/supabase-js": "^2.110.3",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",

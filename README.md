@@ -16,8 +16,8 @@ A config-driven, multi-tenant workspace platform: a NestJS API compiles a per-us
 Prerequisites: [Volta](https://volta.sh) (recommended — auto-switches to this repo's pinned Node/pnpm the moment you `cd` in; [nvm](https://github.com/nvm-sh/nvm) also works, via `nvm use`) and [Docker Desktop](https://www.docker.com/products/docker-desktop/). Nothing else gets installed globally — see [Environment isolation](docs/DEVELOPMENT.md#environment-isolation) for exactly what stays inside this repo.
 
 ```bash
-git clone https://github.com/DeepMag15/purnit.git
-cd purnit
+git clone https://github.com/DeepMag15/ppurnit.git
+cd ppurnit
 pnpm install
 pnpm run setup      # brings up local Supabase (Postgres/Auth/Storage) via Docker, applies migrations, seeds, creates Storage buckets
 pnpm dev:api         # http://localhost:4000
@@ -31,10 +31,11 @@ That's the whole setup — no cloud account, no manually-copied secrets, nothing
 | File | What it is |
 |---|---|
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Full local development environment guide |
-| [CONTEXT.md](CONTEXT.md) | Always-current project state — read this first for "what's built and why" |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical design |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full technical design — the architecture, the security model (§15.1) and every module's as-built record |
 | [ORG_HIERARCHY.md](ORG_HIERARCHY.md) | The 7-tier authority model + department taxonomy |
-| [CHANGELOG.md](CHANGELOG.md) | Chronological record of changes and decisions |
+| [CLAUDE.md](CLAUDE.md) | Working rules — the documentation-sync requirement, the module-review process, verification practice |
+
+`CONTEXT.md` and `CHANGELOG.md` are internal working documents (current project state and the chronological decision log). They are kept locally and deliberately not published, so **source comments and ARCHITECTURE.md that cite "CONTEXT.md §NN" refer to a file you will not find in this repository** — ARCHITECTURE.md carries the same design rationale in its own module rows.
 
 ## Project layout
 
