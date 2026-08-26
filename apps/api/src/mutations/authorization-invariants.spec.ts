@@ -128,6 +128,17 @@ const OWNERSHIP_SCOPED_MUTATIONS: Record<string, string> = {
   // submit their own work as though it had been reviewed.
   "task.submitForReview": "assignee-only; task.review holds the authority half",
 
+  // The document half of the same split. Asking someone to check your own
+  // work is ownership; document:approve is the authority half and refuses the
+  // uploader outright.
+  "document.requestApproval": "uploader-only; document.setApprovalStatus holds the authority half",
+
+  // Education. Handing in your own work is ownership: the caller must BE the
+  // enrolled student, which no scope can express — any scope wide enough to
+  // let a student submit would let them submit for a classmate.
+  "assignment.submit": "enrolled-student-only; the teacher reviews via task.review",
+  "assignment.submissionTarget": "enrolled-student-only; returns the caller's own submissions project id",
+
   // Conversation/meeting membership, checked inside resolve().
   "conversation.createChannel": "creation; the caller becomes the owner",
   "conversation.createDm": "creation between the caller and one other user",

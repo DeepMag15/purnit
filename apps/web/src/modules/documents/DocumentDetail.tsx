@@ -23,6 +23,8 @@ import { DocumentInsights } from "../reporting/DocumentInsights";
 interface DocumentDetailData {
   canUpdate: boolean;
   canDelete: boolean;
+  canRequestApproval: boolean;
+  canApprove: boolean;
   document: {
     id: string;
     projectId: string;
@@ -31,6 +33,8 @@ interface DocumentDetailData {
     sizeBytes: number;
     version: number;
     approvalStatus: string | null;
+    taskId: string | null;
+    taskTitle: string | null;
     uploadedById: string;
     uploadedByName: string;
     createdAt: string;
@@ -120,7 +124,7 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
 
   async function handleApprovalChange(status: string) {
     try {
-      await callMutation("document.setApprovalStatus", { id: documentId, status });
+      await callMutation(status === "pending" ? "document.requestApproval" : "document.setApprovalStatus", status === "pending" ? { id: documentId } : { id: documentId, status });
       refetch();
     } catch (err) {
       toast.show(err instanceof Error ? err.message : "Couldn't update approval status", "danger");
@@ -151,7 +155,7 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
   if (error) return <Alert tone="danger">Couldn&apos;t load document: {error}</Alert>;
   if (!data) return null;
 
-  const { document, versions, activities, canUpdate, canDelete } = data;
+  const { document, versions, activities, canDelete, canRequestApproval, canApprove } = data;
 
   return (
     <DetailPageShell
@@ -205,7 +209,13 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
               <span className="text-text-muted">Updated</span>
               <span className="text-text">{formatRelativeTime(document.updatedAt)}</span>
             </div>
-            {canUpdate && (
+            {/* Documents module review — two controls, two authorities.
+                This was one block gated on `canUpdate`, which is neither of
+                them: a Doctor holding document:update saw an approve/reject
+                control that 403'd, and a dedicated approver saw nothing at
+                all. The server decides both flags now (ARCHITECTURE.md
+                §15.1, the seventh rule). */}
+            {((document.approvalStatus === null && canRequestApproval) || (document.approvalStatus !== null && canApprove)) && (
               <div className="flex items-center justify-between gap-2">
                 <span className="text-text-muted">Approval</span>
                 {document.approvalStatus === null ? (
@@ -219,6 +229,12 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
                     <option value="rejected">Rejected</option>
                   </Select>
                 )}
+              </div>
+            )}
+            {document.taskTitle && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-text-muted">Evidence for</span>
+                <span className="truncate text-text">{document.taskTitle}</span>
               </div>
             )}
             {aiAvailable && (

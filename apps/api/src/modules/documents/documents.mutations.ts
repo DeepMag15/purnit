@@ -7,6 +7,7 @@ import type { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 import { assertProjectVisible } from "./documents.data-sources";
+import { assertProjectReachable } from "../projects/projects.data-sources";
 import { enqueueDocumentEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 // Defense-in-depth alongside the "documents" bucket's own server-side
@@ -53,6 +54,12 @@ function buildDocumentStoragePath(tenantId: string, projectId: string, fileName:
  * `task.create`'s existing precedent, which accepts any `projectId` with no
  * scope validation at all — see the plan's documented reasoning. */
 async function assertCanCreateInProject(tx: PrismaTx, ctx: MutationContext, projectId: string) {
+  // Documents module review — reachability BEFORE scope, always. A restricted
+  // project is not writable by someone who cannot open it, whatever their
+  // document:create scope says. This throws 404, so the check also refuses to
+  // confirm the project exists.
+  await assertProjectReachable(tx, ctx, projectId);
+
   const project = await tx.project.findFirst({ where: { id: projectId, tenantId: ctx.tenantId, deletedAt: null } });
   if (!project) throw new NotFoundException(`No project "${projectId}"`);
 
@@ -60,13 +67,27 @@ async function assertCanCreateInProject(tx: PrismaTx, ctx: MutationContext, proj
   if (!scope) throw new ForbiddenException('Missing permission "document:create"');
   const departmentSubtreeIds =
     scope === "department-subtree" && ctx.userDepartmentId ? await getDepartmentSubtreeIds(tx, ctx.tenantId, ctx.userDepartmentId) : undefined;
-  const inScope = isRowInScope(
-    scope,
-    { ownerId: project.ownerId, departmentId: project.departmentId },
-    { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
-  );
+  const inScope =
+    isRowInScope(
+      scope,
+      { ownerId: project.ownerId, departmentId: project.departmentId },
+      { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
+    ) || (await isProjectMember(tx, ctx, projectId));
   if (!inScope) throw new ForbiddenException("Not allowed to upload documents to this project");
   return project;
+}
+
+/** Documents module review — the membership floor.
+ *
+ * Being named on a project is itself a grant to work on it. Without this a
+ * Lead added as a real member of a project owned by someone else, with no
+ * department in common, was refused their own project's uploads (verified
+ * live, 403) — the same gap `requireTaskInScope` had before the Projects
+ * review put a membership floor under it. Checked only after the scope test
+ * fails, so it costs a query only in the case it exists to rescue. */
+async function isProjectMember(tx: PrismaTx, ctx: MutationContext, projectId: string): Promise<boolean> {
+  const membership = await tx.projectMember.findFirst({ where: { projectId, userId: ctx.userId }, select: { id: true } });
+  return !!membership;
 }
 
 /** Validates an *existing* Document row is within the actor's
@@ -80,16 +101,21 @@ async function requireDocumentInScope(tx: PrismaTx, ctx: MutationContext, docume
   });
   if (!existing) throw new NotFoundException(`No document "${documentId}"`);
 
+  // Documents module review — reachability BEFORE scope, same rule as
+  // creation. Rename, replace, approve and delete all land here.
+  await assertProjectReachable(tx, ctx, existing.projectId);
+
   const scope = ctx.effective.has("document", action);
   const departmentSubtreeIds =
     scope === "department-subtree" && ctx.userDepartmentId ? await getDepartmentSubtreeIds(tx, ctx.tenantId, ctx.userDepartmentId) : undefined;
   const inScope =
     scope &&
-    isRowInScope(
+    (isRowInScope(
       scope,
       { ownerId: existing.project.ownerId, departmentId: existing.project.departmentId },
       { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
-    );
+    ) ||
+      (await isProjectMember(tx, ctx, existing.projectId)));
   if (!inScope) throw new ForbiddenException(`Not allowed to ${action} this document`);
 
   return existing;
@@ -270,7 +296,61 @@ export const documentFinalizeReplaceMutation: MutationDefinition<z.infer<typeof 
 
 // --- Approval status ---
 
-const SetApprovalStatusInputSchema = z.object({ id: z.string(), status: z.enum(["pending", "approved", "rejected"]) });
+/**
+ * Documents module review — requesting an approval is not deciding one.
+ *
+ * ⚠️ What this fixes. `document.setApprovalStatus` gained
+ * `requiredPermission: "document:approve"` in the Projects review, which was
+ * right for approving and wrong for the "Request approval" button sharing the
+ * same mutation: the uploader — the one person that button exists for — got
+ * `403 Missing permission "document:approve"` (verified live). The inner
+ * uploader-refusal carved out `pending` correctly; the outer permission gate
+ * could not, because a gate cannot see which value is being set.
+ *
+ * Split exactly the way Tasks was split (`task.submitForReview` /
+ * `task.review`), for the same reason: the two halves answer to different
+ * people, so they are two mutations, not one with a branch.
+ */
+const RequestApprovalInputSchema = z.object({ id: z.string() });
+
+/** Ungated ON PURPOSE — declared in `authorization-invariants.spec.ts`.
+ * Asking someone to check your own work is ownership, not a privilege, and
+ * every role that can upload a document can ask for it to be approved. The
+ * uploader-only check below is the real authorization. */
+export const documentRequestApprovalMutation: MutationDefinition<z.infer<typeof RequestApprovalInputSchema>> = {
+  name: "document.requestApproval",
+  inputSchema: RequestApprovalInputSchema,
+  async resolve(input, ctx, tx) {
+    const existing = await requireDocumentRow(tx, ctx, input.id);
+    // Reachability still applies — "my own document" never means a document
+    // sitting in a project I cannot open.
+    await assertProjectReachable(tx, ctx, existing.projectId);
+
+    if (existing.uploadedById !== ctx.userId) {
+      throw new ForbiddenException("Only the person who uploaded a document can ask for it to be approved.");
+    }
+    if (existing.approvalStatus === "approved") {
+      throw new BadRequestException("This document has already been approved.");
+    }
+
+    const updated = await tx.document.update({ where: { id: input.id }, data: { approvalStatus: "pending" } });
+    await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "approval_requested");
+    return updated;
+  },
+};
+
+/** The document row plus nothing else — the ownership-scoped mutations need
+ * the row without asking a scope question that does not apply to them. */
+async function requireDocumentRow(tx: PrismaTx, ctx: MutationContext, documentId: string) {
+  const existing = await tx.document.findFirst({ where: { id: documentId, tenantId: ctx.tenantId, deletedAt: null } });
+  if (!existing) throw new NotFoundException(`No document "${documentId}"`);
+  return existing;
+}
+
+// "pending" is gone from this enum — it is `document.requestApproval`'s job
+// now, and leaving it here would keep a route to it behind the approver's own
+// permission.
+const SetApprovalStatusInputSchema = z.object({ id: z.string(), status: z.enum(["approved", "rejected"]) });
 
 export const documentSetApprovalStatusMutation: MutationDefinition<z.infer<typeof SetApprovalStatusInputSchema>> = {
   name: "document.setApprovalStatus",
@@ -293,7 +373,7 @@ export const documentSetApprovalStatusMutation: MutationDefinition<z.infer<typeo
     // Separation of duties, enforced rather than assumed. A supervisor holds
     // document:approve legitimately AND uploads their own files, so the
     // permission alone cannot carry this.
-    if (existing.uploadedById === ctx.userId && input.status !== "pending") {
+    if (existing.uploadedById === ctx.userId) {
       throw new ForbiddenException("You can't approve or reject a document you uploaded — someone else has to.");
     }
 

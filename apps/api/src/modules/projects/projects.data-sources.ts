@@ -26,7 +26,7 @@ import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
  * Unrestricted projects behave exactly as before, so ordinary IT projects,
  * course materials, client files and inventory files are untouched.
  */
-function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> {
+export function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> {
   // "resource:action:scope" -> "resource:action". Presence, not scope: holding
   // `patient:update:own` is enough to be a clinical role.
   const held = [...new Set(ctx.effective.toArray().map((g) => g.split(":").slice(0, 2).join(":")))];
@@ -38,6 +38,42 @@ function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> 
       ...(held.length > 0 ? [{ accessPermission: { in: held } }] : []),
     ],
   };
+}
+
+/**
+ * Documents module review (2026-08-26) — the same rule, asked about ONE
+ * project, so a WRITE can be held to it.
+ *
+ * ⚠️ The hole this closes. `restrictedProjectGate` above is reached only
+ * through `projectsWhere`, and only reads go that way. Every document write
+ * — create, rename, replace, approve, delete — scope-checked the project's
+ * own `{ownerId, departmentId}` directly and never consulted `restricted`
+ * at all. Verified live before the fix: a teacher who is refused 403 on
+ * listing, downloading and opening a student's submission could still rename
+ * it (201), mint a replace-upload URL over its contents (201) and plant new
+ * files in the folder (201); a School Administrator could delete it. Replace
+ * was the worst of the three, because re-uploading re-runs the embedding job,
+ * so the RAG index over a restricted document was rewritable by someone with
+ * no read access to it.
+ *
+ * Deliberately the gate object itself rather than a re-implementation of the
+ * same three conditions — a predicate written out by hand beside a filter is
+ * two definitions of one rule, and they drift.
+ *
+ * Deliberately NOT `projectsWhere`, which would have been the tighter-looking
+ * choice: that function needs `project:read`, and a Student holds no
+ * `project:*` grant at all by design — routing writes through it would have
+ * locked students out of their own submissions while fixing the leak.
+ */
+export async function assertProjectReachable(tx: PrismaTx, ctx: DataSourceContext, projectId: string): Promise<void> {
+  const reachable = await tx.project.findFirst({
+    where: { id: projectId, tenantId: ctx.tenantId, deletedAt: null, AND: [restrictedProjectGate(ctx)] },
+    select: { id: true },
+  });
+  // 404, not 403 — a restricted project must not confirm its own existence to
+  // someone outside it. Same one-answer-for-both-cases rule as every detail
+  // source (ARCHITECTURE.md §15.1, rule 2).
+  if (!reachable) throw new NotFoundException(`No project "${projectId}"`);
 }
 
 /**

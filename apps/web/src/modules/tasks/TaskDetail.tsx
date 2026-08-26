@@ -70,10 +70,60 @@ const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" |
 };
 const STATUS_LABEL: Record<string, string> = { todo: "To do", in_progress: "In progress", in_review: "In review", done: "Done" };
 
+/**
+ * Documents module review — the evidence a reviewer is supposed to be looking at.
+ *
+ * ⚠️ What this fixes. The Projects review added `Document.taskId` so evidence
+ * attaches to the WORK rather than sitting loose on the project, and made
+ * `documents.list` filterable by it — the stated reason being "so a reviewer
+ * can see what they are reviewing". The Documents review then made that link
+ * readable (`taskId`/`taskTitle` on every row). Both halves existed and
+ * nothing ever rendered them: verified in the browser, a Teacher opening a
+ * student's submission got the review panel, the note box and Approve /
+ * Request changes — and no way to see the handed-in file. They had to guess,
+ * or go hunting through the project.
+ *
+ * Read-only on purpose. Uploading belongs to the person doing the work, on
+ * the project's own panel; this is the reviewer's window onto it.
+ */
+function TaskEvidence({ projectId, taskId }: { projectId: string; taskId: string }) {
+  const { data, isLoading } = useDataSourceQuery<
+    { id: string; name: string; sizeBytes: number; uploadedByName: string; createdAt: string }[]
+  >("documents.list", { projectId, taskId });
+
+  // Renders nothing when there is none — most tasks carry no evidence, and an
+  // empty card on every one of them is noise.
+  if (isLoading || !data || data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader title={`Evidence (${data.length})`} />
+      <CardBody className="flex flex-col gap-1.5">
+        {data.map((d) => (
+          <Link
+            key={d.id}
+            href={`/workspace/documents/${d.id}`}
+            className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-subtle"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Icon name="description" size={14} />
+              <span className="truncate text-text">{d.name}</span>
+            </span>
+            <span className="shrink-0 text-xs text-text-muted">{d.uploadedByName}</span>
+          </Link>
+        ))}
+      </CardBody>
+    </Card>
+  );
+}
+
 /** Frontend Structural Redesign, Phase 0/1 — mounted by
  * /workspace/tasks/[taskId] (see that route's own comment for why this
  * isn't an SDUI blueprint page). Deliberately simpler than ProjectDetail —
- * a Task has no members/documents of its own, just Comments. Phase 1 adds
+ * a Task has no members of its own, and its documents are the evidence filed
+ * against it (see `TaskEvidence` above, added by the Documents review — the
+ * original "no documents of its own" was written before `Document.taskId`
+ * existed). Phase 1 adds
  * real edit capability (status change, reassign), gated on the existing
  * `canUpdate` flag — both moved here from TaskList's own now-removed
  * per-row controls, consistent with ProjectDetail's own Phase 0 member-
@@ -226,6 +276,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           </CardBody>
         </Card>
       )}
+      {activeTab === "details" && <TaskEvidence projectId={data.projectId} taskId={taskId} />}
       {activeTab === "comments" && (
         <CommentThread
           entityType="task"

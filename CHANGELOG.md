@@ -1729,6 +1729,78 @@ Writing the new §15.1 invariant row ("an approval step's decider is never its o
 - Manufacturing's task target remains **InventoryItem**, carried over from part 1 and still a **Work Orders** question.
 
 
+### Session 5 (cont.) — 2026-08-26 — Module review 2 of N: **Documents**
+
+**Scope:** the second module of the systematic review, and the first one whose findings were mostly *security*. Same process as Projects: findings first, then implementation, then live verification — backend **and** browser — before anything is called done.
+
+**The one-line version: `Project.restricted` protected reads and nothing else.** Everything below follows from that, plus the discovery that the thing it was protecting — a student's submissions folder — had never been writable by anyone at all.
+
+##### ⚠️ The findings (11, all reproduced live before any fix)
+
+A probe (`scripts/security-sweep/documents-audit.mjs`) produced every claim against a running system, because the last two modules each turned up a "fix" that was already correct and a test that passed for the wrong reason.
+
+- **The restricted boundary was read-only (E4-E8).** `restrictedProjectGate` lives inside `projectsWhere`; only reads go through `projectsWhere`. Every document **write** scope-checked the project's own `{ownerId, departmentId}` and never consulted `restricted`. So a teacher refused **403** on listing, downloading and opening another teacher's student's submission could still **rename it (201)**, **mint a replace-upload URL over its contents (201)** and **plant new files in the folder (201)**; a School Administrator could **delete it**. Replace was the worst of the three: re-uploading re-runs the embedding job, so the **RAG index over a restricted document was rewritable by someone with no read access to it**.
+- **A project member was refused their own project's uploads (D1).** A Lead named on a project owned by someone else, no department in common — 403. The same gap `requireTaskInScope` had before the Projects review put a membership floor under it.
+- **The uploader could not ask for approval (A1).** `document.setApprovalStatus` gained `requiredPermission: "document:approve"` in the Projects review — right for approving, wrong for the "Request approval" button sharing the mutation. The one person that button exists for got `403 Missing permission "document:approve"`. The inner uploader-refusal carved out `pending` correctly; the outer gate could not, because a gate cannot see which value is being set.
+- **The UI could not tell who may approve (A4/A5).** Both controls were gated on `canUpdate`, which is neither authority: a Doctor holding `document:update` saw an approve control that 403'd, and someone holding only `document:approve` saw no control at all. `taskId` had been *filterable* since the Projects review but was never *returned*, so nothing could show which work produced a file.
+- **A hidden project and a missing one were distinguishable (V1).** `assertProjectVisible` 404'd a non-existent project and 403'd one the caller could not see, so guessing ids told you which was which. Documents was the last module drawing that distinction — see §15.1, rule 2.
+
+##### ⚠️ Two more found *during* verification, not before it
+
+- **`tasksWhere` had never heard of `restricted` either.** Found by the new submission probe, not by the audit. A submission is a Task whose title names the student ("Quadratics essay — Ana Diaz"), so another teacher — refused 404 on the file — still saw the task in `tasks.list`, and `task.detail` merges `{id}` onto the same clause, exposing the marking teacher's `reviewNote`. The bytes were never reachable; the leak was *who submitted what, and what their teacher said about it*. **This change introduced it** — before it, submissions projects held no tasks — which is exactly why it belonged here and not in a Tasks review.
+- **The reviewer could not see what they were reviewing.** Caught in the **browser**, invisible to 1608 passing backend tests: a Teacher opening a student's submission got the review panel, the note box, and Approve / Request changes — and no way to see the handed-in file. `Document.taskId` existed, `documents.list` could filter by it, this review had just made it readable — and nothing rendered it.
+
+##### The Education gap this closed
+
+`Enrollment.submissionsProjectId` has existed since Contextual Reporting (2026-08-25), and the restricted-projects fix was built specifically to protect it. **Nothing could reach it.** There was no submission path in the Student portal at all, and `myAssignments.list` said so outright in its own doc comment — "this platform has no student submission model". Every enrolment created an empty restricted project that nothing ever wrote to.
+
+⚠️ **Deliberately not a new workflow.** A submission is an ordinary **Task** — assigned to the student, in their own submissions project, carrying the work as evidence via `Document.taskId` — moved through the same `task.submitForReview`/`task.review` pair every other domain uses. The teacher needs no new queue: they are already a member of the submissions project, and `tasksWhere`'s membership floor puts it in their list. What *is* Education-specific is the vocabulary and who may act: the student submits against an **assignment**, not a task id they should never have to know; only on a course they are enrolled in; and the teacher of record reviews it.
+
+New `assignment.submit` and `assignment.submissionTarget`, both **ungated on purpose** and declared in `authorization-invariants.spec.ts`: handing in your own work is ownership, and no permission triple could express it — any scope wide enough to let a student submit would let them submit for a classmate. Find-or-create on `(assignment, assignee)`, enforced by a **partial unique index** rather than application code, because a double-submit race would otherwise leave two tasks and a teacher reviewing whichever they happened to open. A resubmission reuses the task so review history stays in one place, and clears the previous decision — a resubmission must not still show last week's "changes requested".
+
+##### What changed
+
+- **`assertProjectReachable`** (`projects.data-sources.ts`) — the same gate object, asked about one project, so a **write** can be held to it. Called **before** the scope test in `assertCanCreateInProject` and `requireDocumentInScope`, and it throws **404**, so it also refuses to confirm the project exists. Deliberately the gate object rather than a hand-written copy of its three conditions; deliberately **not** `projectsWhere`, which needs `project:read` — a grant a Student holds none of, so routing writes through it would have locked students out of their own submissions while fixing the leak.
+- **`tasksWhere` applies the gate at every return**, `tenant` scope included — it returns early and is exactly the grant that made the reach so wide.
+- **`document.requestApproval`** — new, ungated, uploader-only. `"pending"` is gone from `setApprovalStatus`'s enum, and its uploader-refusal no longer carves out `pending`. Split the same way Tasks was split, for the same reason: the two halves answer to different people, so they are two mutations rather than one with a branch.
+- **`canRequestApproval`/`canApprove`** on `documents.list` and `document.detail`; the UI now renders each control from the server's answer.
+- **A membership floor** on document create/update/delete, checked only after the scope test fails, so it costs a query only in the case it exists to rescue.
+- **`taskId`/`taskTitle`** returned by both document sources, and a new **`Evidence` section on `TaskDetail`** (read-only — uploading belongs to the person doing the work, on the project's own panel).
+- **`DocumentsPanel` gained a `noun` prop** (default `"document"`, so every existing caller reads exactly as before). A patient chart says **records**, a course says **materials**, a client and an inventory item say **files**. Vocabulary only — the same not-every-domain-is-IT finding the Projects review fixed one level up, where a patient chart was being rendered through the IT project UI.
+- **Two stale doc comments corrected** rather than left lying: `student.register`'s "deliberately NO backing Project" (untrue since Contextual Reporting) and `myAssignments.list`'s "this platform has no student submission model" (untrue as of this entry).
+
+##### Verification
+
+| | |
+|---|---|
+| Backend unit | **1608 / 1608** (up from 1595 — 13 new, incl. `document.requestApproval`, `submissionStatus` derivation, and the restricted gate at every `tasksWhere` scope) |
+| Frontend unit | **117 / 117** |
+| `documents-audit.mjs` | **16 / 16** — the 11 original findings, re-run |
+| `submissions-verify.mjs` | **36 / 36** — Education end to end, incl. grade/feedback and the AI boundary |
+| `documents-domains-verify.mjs` | **86 / 86** — the full lifecycle in **all five domains** with real roles |
+| `tasks-workflow-verify.mjs` | **31 / 31** — regression, no Project/Task workflow broken |
+| `project-workflow-verify.mjs` | **57 / 57** — regression, the delivery workflow in all five domains |
+| `documents-browser-verify.mjs` | **38 / 38** — real logins, real UI, 12 screenshots |
+
+The browser pass drives the whole Education flow with two real logins: Student hands in → Teacher hands back with a note → Student reads the note and resubmits → Teacher accepts → Student sees the score and feedback. Plus the approval split from both sides, and the vocabulary in three domains read off the panel's own search box.
+
+##### Three of my own mistakes, named because each first looked like a product failure
+
+- **I changed a test to match the implementation — twice, correctly, and it is still the dangerous move.** The audit's E1-E6 asserted **403**; the fix deliberately makes them **404**. Both times the change was justified against ARCHITECTURE.md §15.1's own written rule rather than against the code I had just written. A stale assertion and a real regression look identical at the moment you decide.
+- **Three "failures" in the cross-domain probe were my probe picking roles that hold no `document:create`** — Practitioner, Nurse, Teaching Assistant — which is the *already-documented* deferred item from module 1. The probe now discovers the uploader from the tenant's own grants and **asserts the design fact explicitly**, so it stays visible instead of resurfacing as a mystery 403.
+- **Four browser "failures" were the probe, not the app**: I waited on a toast instead of the card, clicked a patient's name instead of its chart toggle, submitted a review before filling the note box, and read a `placeholder` attribute with `textContent`. The screenshots are what settled each one.
+
+##### Still open on this module
+
+- **`users.list` 403 for most working roles.** `CommentThread` asks `users.list` for @-mention candidates and that source needs `user:manage`, which a Teacher, a Lead and most other roles do not hold — so every page with a comment box logs `403 Missing permission "user:manage"` for them. Pre-existing, unrelated to Documents, and it belongs to the **Comments** review. Recorded in the browser probe's own `deferred` list rather than silently filtered.
+- **Nurse, Teaching Assistant and Practitioner still hold no `document:create`** — carried forward from module 1, now asserted explicitly rather than assumed. Still a domain question.
+- **Healthcare cannot exercise the restricted-*write* boundary at all**, because the only role lacking the chart gate (Receptionist) also lacks `document:update`/`delete`. That is defense in depth working, not a gap — the boundary itself is proven in Education, where a Teacher holds `document:update:tenant` and no `student:update`. The probe now reports **which** gate refused, so the two are never confused.
+
+##### Infrastructure note
+
+Signup and invite go through Supabase Auth, which intermittently loses a race with a 10s connect timeout from this machine — twice reporting a *different* domain as failed on two consecutive runs of the same probe. Added `signup-retry.mjs` (`signupWithRetry`/`inviteWithRetry`): retries **only** 5xx and thrown network errors, returns any 4xx immediately, so a real refusal still fails on the first try. A verification script that reports a network blip as a product finding trains you to discount its own red output.
+
+
 #### Next up
 - **The Frontend Redesign initiative (Phases 01-06) is complete — no further phase is currently scheduled.** The 3 mobile-layout fixes and the panel/toast motion fixes from Phase 06 still need the user's own browser check to confirm the visual/interaction feel, since no browser-automation tool exists in this environment. Future frontend work (if any) awaits the user's own explicit direction.
 - **The 4-initiative backlog — Stripe Billing → SSO/SAML → Feature Flags → AI Assistant Phases C-F — is fully shipped, with no follow-on phases remaining.**

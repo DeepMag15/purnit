@@ -102,7 +102,7 @@ function PatientChartSection({
           Summarize Patient Notes
         </Button>
       )}
-      <DocumentsPanel projectId={patient.chartProjectId} canCreate={canCreateDocuments} canUpdate={canUpdateDocuments} canDelete={canDeleteDocuments} />
+      <DocumentsPanel projectId={patient.chartProjectId} canCreate={canCreateDocuments} canUpdate={canUpdateDocuments} canDelete={canDeleteDocuments} noun="record" />
     </div>
   );
 }

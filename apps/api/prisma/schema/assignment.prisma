@@ -19,6 +19,9 @@ model Assignment {
   deletedAt   DateTime? @map("deleted_at")
 
   grades Grade[]
+  /// One per enrolled student who has started a submission (created lazily on
+  /// first submit, not fanned out at assignment-creation time).
+  submissions Task[]
 
   @@index([tenantId, courseId])
   @@map("assignments")

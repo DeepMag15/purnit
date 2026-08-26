@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
+import { signupWithRetry } from "./signup-retry.mjs";
 loadEnv({ path: "../../.env", quiet: true });
 
 /**
@@ -66,12 +67,13 @@ const DOMAINS = {
 for (const [industry, cfg] of Object.entries(DOMAINS)) {
   console.log(`\n${industry}  (worker: ${cfg.worker} → reviewer: ${cfg.reviewer})`);
   const adminEmail = `flow-${industry.toLowerCase()}+${stamp}@example.com`;
-  const su = await fetch(`${API}/auth/signup`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: adminEmail, password: PW, companyName: `Flow ${industry} ${stamp}`, displayName: "FL Admin", industry }),
+  const tenant = await signupWithRetry(API, {
+    email: adminEmail,
+    password: PW,
+    companyName: `Flow ${industry} ${stamp}`,
+    displayName: "FL Admin",
+    industry,
   });
-  const tenant = await j(su);
   if (!tenant?.tenantId) { check(false, `${industry}: signup failed`); continue; }
   await db.query("update tenants set seats_purchased = 20 where id = $1", [tenant.tenantId]);
   const { data: aS } = await sb.auth.signInWithPassword({ email: adminEmail, password: PW });

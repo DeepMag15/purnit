@@ -35,6 +35,10 @@ interface DocumentRow {
   sizeBytes: number;
   version: number;
   approvalStatus: string | null;
+  canRequestApproval: boolean;
+  canApprove: boolean;
+  taskId: string | null;
+  taskTitle: string | null;
   uploadedById: string;
   uploadedByName: string;
   createdAt: string;
@@ -75,17 +79,35 @@ function formatRelativeTime(iso: string): string {
  * replace/approval-status/delete all stay exactly as they were — genuinely
  * fast, primary actions worth keeping inline, not moved to the detail page.
  */
+/** Documents module review — what these files are CALLED depends on what
+ * they hang off.
+ *
+ * The same panel serves an IT project, a patient's chart, a course, a client
+ * and an inventory item, and it said "Documents / Upload / Search documents…
+ * / No documents yet" to all five. A nurse does not file "documents" against
+ * a patient, they file records. Per the standing rule that a module must not
+ * be assumed to work the same way in every domain — the same finding the
+ * Projects review fixed one level up, where a patient chart was being
+ * rendered through the IT project UI.
+ *
+ * Vocabulary only: one word in, no behaviour change, and the default keeps
+ * every existing caller reading exactly as it did. */
 export function DocumentsPanel({
   projectId,
   canCreate,
   canUpdate,
   canDelete,
+  noun = "document",
+  nounPlural,
 }: {
   projectId: string;
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  noun?: string;
+  nounPlural?: string;
 }) {
+  const plural = nounPlural ?? `${noun}s`;
   const { user, tenant, callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -170,7 +192,7 @@ export function DocumentsPanel({
 
   async function handleApprovalChange(id: string, status: string) {
     try {
-      await callMutation("document.setApprovalStatus", { id, status });
+      await callMutation(status === "pending" ? "document.requestApproval" : "document.setApprovalStatus", status === "pending" ? { id } : { id, status });
       invalidate();
     } catch (err) {
       toast.show(err instanceof Error ? err.message : "Couldn't update approval status", "danger");
@@ -182,7 +204,7 @@ export function DocumentsPanel({
       await callMutation("document.delete", { id });
       invalidate();
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : "Couldn't delete document", "danger");
+      toast.show(err instanceof Error ? err.message : `Couldn't delete ${noun}`, "danger");
     }
   }
 
@@ -190,7 +212,7 @@ export function DocumentsPanel({
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface/50 p-2">
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search documents…" nodeId="documents-search" renderChild={() => null} />
+          <SearchBar value={search} onChange={setSearch} placeholder={`Search ${plural}…`} nodeId="documents-search" renderChild={() => null} />
         </div>
         {canCreate && (
           <>
@@ -204,7 +226,7 @@ export function DocumentsPanel({
       </div>
 
       {isPending && <SkeletonRows />}
-      {!isPending && documents.length === 0 && <EmptyStateView message="No documents yet." />}
+      {!isPending && documents.length === 0 && <EmptyStateView message={`No ${plural} yet.`} />}
 
       {!isPending && documents.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -283,20 +305,30 @@ export function DocumentsPanel({
                 </div>
               </div>
 
-              {canUpdate && (
+              {/* Documents module review — two controls, two authorities.
+                  This was one block gated on `canUpdate`, which is neither of
+                  them: a Doctor holding document:update saw an approve/reject
+                  control that 403'd, and a dedicated approver saw nothing at
+                  all. The server decides both flags now (ARCHITECTURE.md
+                  §15.1, the seventh rule). */}
+              {d.approvalStatus === null && d.canRequestApproval && (
                 <div className="mt-1.5">
-                  {d.approvalStatus === null ? (
-                    <button type="button" onClick={() => handleApprovalChange(d.id, "pending")} className="text-xs text-accent hover:underline">
-                      Request approval
-                    </button>
-                  ) : (
-                    <Select value={d.approvalStatus} onChange={(e) => handleApprovalChange(d.id, e.target.value)} className="h-6 py-0 text-xs">
-                      <option value="pending">Pending</option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
-                    </Select>
-                  )}
+                  <button type="button" onClick={() => handleApprovalChange(d.id, "pending")} className="text-xs text-accent hover:underline">
+                    Request approval
+                  </button>
                 </div>
+              )}
+              {d.approvalStatus !== null && d.canApprove && (
+                <div className="mt-1.5">
+                  <Select value={d.approvalStatus} onChange={(e) => handleApprovalChange(d.id, e.target.value)} className="h-6 py-0 text-xs">
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </Select>
+                </div>
+              )}
+              {d.taskTitle && (
+                <p className="mt-1.5 text-xs text-text-muted">Evidence for &ldquo;{d.taskTitle}&rdquo;</p>
               )}
             </div>
           ))}

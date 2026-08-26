@@ -132,13 +132,20 @@ export const myCoursesListDataSource: DataSourceDefinition<z.infer<typeof EmptyP
 // myAssignments.list
 // ---------------------------------------------------------------------------
 /**
- * ⚠️ "Completion" here means **graded**, because this platform has no student
- * submission model — Assignment → Grade is the whole chain, and a Grade is
- * written by a teacher. A student marking their own work as submitted would be
- * a genuinely new feature (a Submission model, an upload path, a teacher
- * queue), deliberately out of scope for the Student role rather than faked
- * with a status field nobody writes. The UI says "Graded"/"Awaiting grade"
- * rather than "Complete"/"Incomplete" so it does not claim more than it knows.
+ * A student's own assignments, each with where their work has got to.
+ *
+ * ⚠️ This comment used to say "this platform has no student submission model
+ * … deliberately out of scope for the Student role", written when that was
+ * true. It stopped being true in two halves that never met: Contextual
+ * Reporting gave every enrollment a `submissionsProjectId`, and the
+ * restricted-projects fix hardened it specifically to protect a student's
+ * private work — while the portal still had no way to put anything in it.
+ * The Documents review closed that (see `submissions.mutations.ts`).
+ *
+ * Two different states are now reported, and they are genuinely different
+ * questions: **has the student handed it in** (their own submission task) and
+ * **has the teacher graded it** (a Grade row). Work can be submitted and
+ * ungraded, graded without a submission (marked from paper), or neither.
  */
 export const myAssignmentsListDataSource: DataSourceDefinition<z.infer<typeof EmptyParamsSchema>> = {
   name: "myAssignments.list",
@@ -164,10 +171,39 @@ export const myAssignmentsListDataSource: DataSourceDefinition<z.infer<typeof Em
     });
     const gradeFor = new Map(grades.map((g) => [g.assignmentId, g]));
 
+    // The student's own submission tasks — created lazily on first submit, so
+    // most assignments have none. Sequential, same shared-tx rule as every
+    // other multi-query resolver here.
+    const submissions = ctx.userId
+      ? await tx.task.findMany({
+          where: {
+            tenantId: ctx.tenantId,
+            assigneeId: ctx.userId,
+            assignmentId: { in: assignments.map((a) => a.id) },
+            deletedAt: null,
+          },
+          include: { documents: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 1, select: { name: true, createdAt: true } } },
+        })
+      : [];
+    const submissionFor = new Map(submissions.filter((t) => t.assignmentId).map((t) => [t.assignmentId, t]));
+
     const now = new Date();
     return assignments.map((a) => {
       const grade = gradeFor.get(a.id);
       const graded = !!grade && grade.score !== null;
+      const submission = submissionFor.get(a.id);
+      // "not_submitted" | "submitted" (waiting on the teacher) |
+      // "changes_requested" (handed back) | "accepted". Derived from the task's
+      // own status rather than stored twice.
+      const submissionStatus = !submission
+        ? "not_submitted"
+        : submission.status === "in_review"
+          ? "submitted"
+          : submission.status === "done"
+            ? "accepted"
+            : submission.submittedAt
+              ? "changes_requested"
+              : "not_submitted";
       return {
         id: a.id,
         title: a.title,
@@ -179,9 +215,17 @@ export const myAssignmentsListDataSource: DataSourceDefinition<z.infer<typeof Em
         graded,
         score: graded ? grade!.score : null,
         feedback: graded ? grade!.feedback : null,
-        // Overdue only means something for work that has not been graded —
-        // a graded assignment is finished regardless of when it was due.
-        overdue: !graded && !!a.dueDate && a.dueDate < now,
+        submissionStatus,
+        submissionTaskId: submission?.id ?? null,
+        submittedAt: submission?.submittedAt ?? null,
+        submittedFileName: submission?.documents[0]?.name ?? null,
+        // The teacher's note from `task.review` — what to fix, when work came
+        // back. Shown to the student, so it must survive a resubmission clear.
+        teacherNote: submission?.reviewNote ?? null,
+        // Overdue only means something for work that is neither graded nor
+        // handed in — chasing a student for work already sitting in the
+        // teacher's queue is just wrong.
+        overdue: !graded && submissionStatus === "not_submitted" && !!a.dueDate && a.dueDate < now,
       };
     });
   },

@@ -1,6 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
 import { tasksWhere, taskDetailDataSource } from "./tasks.data-sources";
+import { restrictedProjectGate } from "../projects/projects.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -22,6 +23,22 @@ function txWithTeammates(ids: string[]) {
 /** The two floors every non-own, non-tenant scope now carries, in order. */
 const MEMBER_FLOOR = { project: { members: { some: { userId: "u1" } } } };
 
+/**
+ * Documents module review — EVERY clause now carries the restricted-project
+ * gate, at every scope including `tenant`.
+ *
+ * Built by calling the real `restrictedProjectGate` rather than copying its
+ * shape, deliberately: a hand-written duplicate beside the thing it mirrors is
+ * two definitions of one rule, and the test would keep passing while they
+ * drifted. What each expectation below asserts is "the same gate
+ * `projectsWhere` applies", not a literal.
+ *
+ * `existing` is whatever a `departmentId` filter already put on `project`.
+ */
+function gateFor(grants: string[], userDepartmentId: string | null = null, existing: Record<string, unknown> = {}) {
+  return { project: { ...existing, AND: [restrictedProjectGate(context(grants, userDepartmentId))] } };
+}
+
 function context(grants: string[], userDepartmentId: string | null = null): DataSourceContext {
   return {
     tenantId: "t1",
@@ -37,11 +54,16 @@ describe("tasksWhere", () => {
   });
 
   it("tenant scope filters only by tenantId", async () => {
-    expect(await tasksWhere(tx, context(["task:read:tenant"]), {})).toEqual({ tenantId: "t1", deletedAt: null });
+    expect(await tasksWhere(tx, context(["task:read:tenant"]), {})).toEqual({ tenantId: "t1", deletedAt: null, ...gateFor(["task:read:tenant"]) });
   });
 
   it("own scope filters by assigneeId (Task has no ownerId column)", async () => {
-    expect(await tasksWhere(tx, context(["task:read:own"]), {})).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1" });
+    expect(await tasksWhere(tx, context(["task:read:own"]), {})).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      ...gateFor(["task:read:own"]),
+    });
   });
 
   it("department/team scope includes both the owning project's departmentId AND tasks assigned to me", async () => {
@@ -49,6 +71,7 @@ describe("tasksWhere", () => {
       tenantId: "t1",
       deletedAt: null,
       OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
+      ...gateFor(["task:read:department"], "d1"),
     });
   });
 
@@ -63,6 +86,7 @@ describe("tasksWhere", () => {
       tenantId: "t1",
       deletedAt: null,
       OR: [{ assigneeId: "u1" }, MEMBER_FLOOR],
+      ...gateFor(["task:read:team"], null),
     });
   });
 
@@ -73,6 +97,7 @@ describe("tasksWhere", () => {
       deletedAt: null,
       OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
       assigneeId: "teammate-1",
+      ...gateFor(["task:read:team"], "d1"),
     });
   });
 
@@ -81,6 +106,7 @@ describe("tasksWhere", () => {
       tenantId: "t1",
       deletedAt: null,
       status: "todo",
+      ...gateFor(["task:read:tenant"]),
     });
   });
 
@@ -114,12 +140,17 @@ describe("tasksWhere", () => {
   // miss since they return before the OR-scope block runs.
   it("a departmentId filter narrows tenant scope via the owning project's departmentId", async () => {
     const where = await tasksWhere(tx, context(["task:read:tenant"]), { departmentId: "d9" });
-    expect(where).toEqual({ tenantId: "t1", deletedAt: null, project: { departmentId: "d9" } });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, ...gateFor(["task:read:tenant"], null, { departmentId: "d9" }) });
   });
 
   it("a departmentId filter is still applied under own scope, layered alongside the assigneeId floor", async () => {
     const where = await tasksWhere(tx, context(["task:read:own"]), { departmentId: "d9" });
-    expect(where).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1", project: { departmentId: "d9" } });
+    expect(where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      ...gateFor(["task:read:own"], null, { departmentId: "d9" }),
+    });
   });
 
   it("a departmentId filter is AND-ed alongside department/team scope's own OR condition, never replacing it", async () => {
@@ -127,8 +158,8 @@ describe("tasksWhere", () => {
     expect(where).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      project: { departmentId: "d9" },
       OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
+      ...gateFor(["task:read:department"], "d1", { departmentId: "d9" }),
     });
   });
 
@@ -156,9 +187,33 @@ describe("tasksWhere", () => {
     expect((teamTx as unknown as { user: { findMany: jest.Mock } }).user.findMany).not.toHaveBeenCalled();
   });
 
+  /**
+   * ⚠️ Documents module review — the leak this closes.
+   *
+   * A student's submission is a Task in their own restricted submissions
+   * project, and its title names them. `projectsWhere` has gated restricted
+   * projects since Contextual Reporting; `tasksWhere` never consulted
+   * `restricted` at all, so another teacher holding `task:read:tenant` — the
+   * widest grant, and the one that returns before the OR-scope block below —
+   * saw every student's submission in the school.
+   */
+  it("applies the restricted-project gate at every scope, tenant included", async () => {
+    for (const [grants, dept] of [
+      [["task:read:tenant"], null],
+      [["task:read:own"], null],
+      [["task:read:team"], "d1"],
+      [["task:read:department"], "d1"],
+    ] as const) {
+      const where = await tasksWhere(tx, context([...grants], dept), {});
+      const project = where!.project as Record<string, unknown>;
+      expect(project).toBeDefined();
+      expect(project.AND).toEqual([restrictedProjectGate(context([...grants], dept))]);
+    }
+  });
+
   it("a projectId filter is honored as a direct passthrough regardless of scope", async () => {
     const where = await tasksWhere(tx, context(["task:read:tenant"]), { projectId: "p1" });
-    expect(where).toEqual({ tenantId: "t1", deletedAt: null, projectId: "p1" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, projectId: "p1", ...gateFor(["task:read:tenant"]) });
   });
 });
 
@@ -178,7 +233,15 @@ describe("task.detail", () => {
     const findFirst = jest.fn().mockResolvedValue(null);
     const detailTx = { task: { findFirst } } as unknown as PrismaTx;
     await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:own"]), detailTx)).rejects.toThrow(NotFoundException);
-    expect(findFirst.mock.calls[0]![0].where).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1", id: "tk1" });
+    // Inherits the restricted-project gate through tasksWhere, which is the
+    // point of merging onto it rather than rebuilding a clause here.
+    expect(findFirst.mock.calls[0]![0].where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      id: "tk1",
+      ...gateFor(["task:read:own"]),
+    });
   });
 
   it("returns the task with resolved assignee/project names", async () => {

@@ -12,6 +12,7 @@ import {
   documentUpdateMutation,
   createDocumentCreateReplaceUploadUrlMutation,
   documentFinalizeReplaceMutation,
+  documentRequestApprovalMutation,
   documentSetApprovalStatusMutation,
   documentDeleteMutation,
   createDocumentGetFileUrlMutation,
@@ -43,6 +44,7 @@ class DocumentsRegistrar implements OnModuleInit {
     this.mutations.register(documentUpdateMutation);
     this.mutations.register(createDocumentCreateReplaceUploadUrlMutation(this.supabaseAdmin));
     this.mutations.register(documentFinalizeReplaceMutation);
+    this.mutations.register(documentRequestApprovalMutation);
     this.mutations.register(documentSetApprovalStatusMutation);
     this.mutations.register(documentDeleteMutation);
     this.mutations.register(createDocumentGetFileUrlMutation(this.supabaseAdmin));

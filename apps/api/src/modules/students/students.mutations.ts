@@ -26,9 +26,14 @@ const RegisterInputSchema = z.object({
   contactEmail: z.string().email().optional(),
 });
 
-/** Plain create — deliberately NO backing Project (unlike `patient.register`,
- * see student.prisma's own doc comment for why Course, not Student, owns the
- * shared-materials Project in this domain). */
+/** Registers a student and their own private file.
+ *
+ * ⚠️ This comment used to say the opposite — "deliberately NO backing
+ * Project" — which stopped being true when Contextual Reporting (2026-08-25)
+ * added the `filesProject` created below. Course still owns the *shared
+ * materials* project (see student.prisma), which is what that sentence was
+ * originally about; a student's own enrolment paperwork is a separate,
+ * restricted project, because the two have completely different audiences. */
 export const studentRegisterMutation: MutationDefinition<z.infer<typeof RegisterInputSchema>> = {
   name: "student.register",
   inputSchema: RegisterInputSchema,

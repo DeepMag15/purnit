@@ -1,6 +1,19 @@
 model Task {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String    @map("tenant_id") @db.Uuid
+  /// Documents module review (2026-08-26) — the Education submission link.
+  ///
+  /// A student's submission IS a task: assigned to them, sitting in their own
+  /// restricted submissions project, carrying the uploaded work as evidence
+  /// (`Document.taskId`) and reviewed through the ordinary
+  /// `task.submitForReview` / `task.review` pair. This column is what ties
+  /// that task back to the Assignment it answers, so a student sees "submitted"
+  /// against the right row and a teacher's queue names the work.
+  ///
+  /// Nullable, and null for every task outside Education — nothing else in the
+  /// platform answers an assignment.
+  assignmentId String?    @map("assignment_id") @db.Uuid
+  assignment   Assignment? @relation(fields: [assignmentId], references: [id])
   projectId   String    @map("project_id") @db.Uuid
   project     Project   @relation(fields: [projectId], references: [id])
   title       String

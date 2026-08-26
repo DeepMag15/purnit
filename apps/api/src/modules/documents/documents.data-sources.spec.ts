@@ -13,27 +13,42 @@ describe("assertProjectVisible", () => {
     await expect(assertProjectVisible(tx, context(["project:read:tenant"]), "p1")).rejects.toThrow(NotFoundException);
   });
 
-  it("throws ForbiddenException when the actor has no project:read grant covering it", async () => {
-    const tx = {
-      project: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValueOnce({ id: "p1", ownerId: null, departmentId: "other-dept" }) // existence check
-          .mockResolvedValueOnce(null), // scope-filtered lookup finds nothing
-      },
-    } as unknown as PrismaTx;
-    await expect(assertProjectVisible(tx, context(["project:read:department"], "d1"), "p1")).rejects.toThrow(ForbiddenException);
+  /**
+   * ⚠️ Documents module review — this used to expect ForbiddenException.
+   *
+   * A 403 here told anyone guessing ids that a project exists and they just
+   * cannot see it; a 404 for the missing case made the two distinguishable.
+   * Documents was the only module that drew that distinction (ARCHITECTURE.md
+   * §15.1, rule 2), and the existence of a patient's chart or a student's
+   * submissions folder is exactly what it should not confirm.
+   *
+   * It is also now ONE query rather than an existence check followed by a
+   * scope check — there is no longer a second answer to give, and the old
+   * two-value mock sequence below was what made the difference visible.
+   */
+  it("throws NotFoundException — not Forbidden — when the actor has no project:read grant covering it", async () => {
+    const tx = { project: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
+    const err = await assertProjectVisible(tx, context(["project:read:department"], "d1"), "p1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect(err).not.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("gives a hidden project and a missing one the identical answer", async () => {
+    const answer = async (found: unknown) => {
+      const tx = { project: { findFirst: jest.fn().mockResolvedValue(found) } } as unknown as PrismaTx;
+      return assertProjectVisible(tx, context(["project:read:department"], "d1"), "p1").catch((e: { status?: number; message: string }) => ({
+        status: e.status,
+        message: e.message,
+      }));
+    };
+    // Left: no such project. Right: it exists, but out of scope so the
+    // scope-filtered lookup returns nothing. Same query, same empty result.
+    expect(await answer(null)).toEqual(await answer(null));
+    expect(await answer(null)).toMatchObject({ status: 404 });
   });
 
   it("passes when the project is within the actor's department scope", async () => {
-    const tx = {
-      project: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValueOnce({ id: "p1", ownerId: null, departmentId: "d1" })
-          .mockResolvedValueOnce({ id: "p1", ownerId: null, departmentId: "d1" }),
-      },
-    } as unknown as PrismaTx;
+    const tx = { project: { findFirst: jest.fn().mockResolvedValue({ id: "p1" }) } } as unknown as PrismaTx;
     await expect(assertProjectVisible(tx, context(["project:read:department"], "d1"), "p1")).resolves.toBeUndefined();
   });
 });

@@ -1,8 +1,14 @@
 "use client";
 
 import { z } from "zod";
-import { useMemo } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDataSourceQuery } from "../../sdui/use-data-binding";
+import { useRenderContext } from "../../sdui/render-context";
+import { useToast } from "../../ui/Toast";
+import { Button } from "../../ui/Button";
+import { Icon } from "../../ui/Icon";
+import { supabase } from "../../lib/supabase-client";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
 import { PageHeader } from "../../ui/PageHeader";
 import { Card, CardBody } from "../../ui/Card";
@@ -26,7 +32,23 @@ interface MyAssignment {
   score: number | null;
   feedback: string | null;
   overdue: boolean;
+  // Documents module review — handing work in is a separate question from
+  // being graded, and a student needs both answered.
+  submissionStatus: "not_submitted" | "submitted" | "changes_requested" | "accepted";
+  submissionTaskId: string | null;
+  submittedAt: string | null;
+  submittedFileName: string | null;
+  teacherNote: string | null;
 }
+
+const DOCUMENTS_BUCKET = "documents";
+
+const SUBMISSION_COPY: Record<MyAssignment["submissionStatus"], { label: string; tone: "neutral" | "info" | "warning" | "success" }> = {
+  not_submitted: { label: "Not handed in", tone: "neutral" },
+  submitted: { label: "Handed in", tone: "info" },
+  changes_requested: { label: "Changes requested", tone: "warning" },
+  accepted: { label: "Accepted", tone: "success" },
+};
 
 /**
  * Student Role — everything assigned to this student, in the order a student
@@ -36,10 +58,15 @@ interface MyAssignment {
  * next" is the question this page exists to answer; the course list is where
  * you go when you already know which class you mean.
  *
- * ⚠️ "Graded" is the completion signal, not "submitted" — this platform has
- * no student submission model (Assignment → Grade is the whole chain, and a
- * Grade is written by a teacher). The labels say "Awaiting grade" rather than
- * "Not done" so the page never claims to know something it doesn't.
+ * Two states, deliberately kept apart: **handed in** is the student's own
+ * action, **graded** is the teacher's. Work can sit handed-in and ungraded
+ * for a week, and a page that collapsed the two would tell a student who
+ * submitted on time that they had done nothing.
+ *
+ * Handing in reuses the platform's ordinary upload: a signed URL from
+ * `document.createUploadUrl` against the student's own submissions project,
+ * then `assignment.submit`, which files the work as evidence on a task and
+ * puts it in the teacher's review queue. No student-only storage path.
  */
 export function StudentAssignments() {
   const { data, isLoading, error } = useDataSourceQuery<MyAssignment[]>("myAssignments.list", {});
@@ -103,6 +130,44 @@ export function StudentAssignments() {
 }
 
 function AssignmentRow({ assignment: a }: { assignment: MyAssignment }) {
+  const { callMutation } = useRenderContext();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const submission = SUBMISSION_COPY[a.submissionStatus];
+
+  async function handleSubmit(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setBusy(true);
+    try {
+      // Where this student's own work goes. Asked for rather than assumed —
+      // the portal must never be handed a project id it could reuse elsewhere.
+      const { projectId } = (await callMutation("assignment.submissionTarget", { assignmentId: a.id })) as { projectId: string };
+      const mimeType = file.type || "application/octet-stream";
+      const { path, token } = (await callMutation("document.createUploadUrl", {
+        projectId,
+        fileName: file.name,
+        mimeType,
+        sizeBytes: file.size,
+      })) as { path: string; token: string };
+
+      const { error } = await supabase.storage.from(DOCUMENTS_BUCKET).uploadToSignedUrl(path, token, file);
+      if (error) throw new Error(error.message);
+
+      await callMutation("assignment.submit", { assignmentId: a.id, storagePath: path, name: file.name, mimeType, sizeBytes: file.size });
+      toast.show("Handed in", "success");
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't hand that in", "danger");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <CardBody className="flex flex-col gap-2">
@@ -133,7 +198,35 @@ function AssignmentRow({ assignment: a }: { assignment: MyAssignment }) {
           </div>
         )}
 
-        {!a.graded && <p className="text-xs text-text-muted">Awaiting grade</p>}
+        {a.teacherNote && a.submissionStatus === "changes_requested" && (
+          <div className="rounded-md bg-surface-subtle px-3 py-2 text-sm text-text-muted">
+            <span className="font-medium text-text">Your teacher asked for: </span>
+            {a.teacherNote}
+          </div>
+        )}
+
+        {!a.graded && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <Badge tone={submission.tone}>{submission.label}</Badge>
+              {a.submittedFileName && (
+                <span className="truncate text-xs text-text-muted">
+                  {a.submittedFileName}
+                  {a.submittedAt ? ` · ${dueLabel(a.submittedAt)}` : ""}
+                </span>
+              )}
+            </div>
+            {a.submissionStatus !== "accepted" && (
+              <>
+                <Button size="sm" variant={a.submissionStatus === "not_submitted" ? "primary" : "secondary"} disabled={busy} onClick={() => fileInputRef.current?.click()}>
+                  <Icon name="upload_file" size={13} />
+                  {busy ? "Sending…" : a.submissionStatus === "not_submitted" ? "Hand in work" : "Hand in again"}
+                </Button>
+                <input ref={fileInputRef} type="file" onChange={handleSubmit} className="hidden" disabled={busy} />
+              </>
+            )}
+          </div>
+        )}
       </CardBody>
     </Card>
   );

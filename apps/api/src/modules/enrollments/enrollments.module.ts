@@ -5,6 +5,7 @@ import { MetricRegistry } from "../../metrics/metric-registry.service";
 import { RagSourceRegistry } from "../../ai/retrieval/rag-source-registry.service";
 import { enrollmentsListDataSource } from "./enrollments.data-sources";
 import { enrollmentEnrollMutation, enrollmentUpdateStatusMutation, enrollmentRecordFinalGradeMutation } from "./enrollments.mutations";
+import { assignmentSubmitMutation, assignmentSubmissionTargetMutation } from "./submissions.mutations";
 import { enrollmentsActiveCountMetric } from "./enrollments.metrics";
 import { enrollmentRagHandler } from "./enrollments.rag";
 
@@ -24,6 +25,8 @@ class EnrollmentsRegistrar implements OnModuleInit {
     this.mutations.register(enrollmentEnrollMutation);
     this.mutations.register(enrollmentUpdateStatusMutation);
     this.mutations.register(enrollmentRecordFinalGradeMutation);
+    this.mutations.register(assignmentSubmitMutation);
+    this.mutations.register(assignmentSubmissionTargetMutation);
     this.metrics.register(enrollmentsActiveCountMetric);
     this.ragSources.register(enrollmentRagHandler); // AI RAG Phase C
   }

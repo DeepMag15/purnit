@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { restrictedProjectGate } from "../projects/projects.data-sources";
 
 /**
  * Applies the granted `task:read` scope to a where-clause — same pattern as
@@ -39,6 +40,30 @@ export async function tasksWhere(
   const scope = ctx.effective.has("task", "read");
   if (!scope) return null;
 
+  /**
+   * Documents module review (2026-08-26) — the restricted boundary reaches
+   * the WORK, not just the files.
+   *
+   * ⚠️ The hole this closes. A student's submission is a Task in their own
+   * restricted submissions project, and its title names them
+   * ("Quadratics essay — Ana Diaz"). `projectsWhere` has gated restricted
+   * projects since Contextual Reporting and `assertProjectVisible` gates the
+   * documents on them — but `tasksWhere` never consulted `restricted` at all.
+   * Verified live: another teacher, refused 404 on listing that student's
+   * submission, still saw the task itself in `tasks.list`, and `task.detail`
+   * merges `{id}` onto this clause, so they could also read the marking
+   * teacher's `reviewNote`. The file bytes were never reachable — the leak is
+   * who submitted what, and what their teacher said about it.
+   *
+   * Applied at EVERY return below rather than in one branch: `tenant` scope
+   * returns early and is exactly the grant that made this reach so far.
+   */
+  const gate = (w: Record<string, unknown>) => {
+    const existing = w.project as Record<string, unknown> | undefined;
+    w.project = { ...(existing ?? {}), AND: [restrictedProjectGate(ctx)] };
+    return w;
+  };
+
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
   if (params.overdue) {
     where.dueDate = { lt: new Date() };
@@ -54,11 +79,11 @@ export async function tasksWhere(
 
   if (scope === "own") {
     where.assigneeId = ctx.userId;
-    return where;
+    return gate(where);
   }
   if (scope === "tenant") {
     if (params.assigneeId) where.assigneeId = params.assigneeId;
-    return where;
+    return gate(where);
   }
   const scopeConditions: Record<string, unknown>[] = [{ assigneeId: ctx.userId }];
 
@@ -98,7 +123,7 @@ export async function tasksWhere(
 
   where.OR = scopeConditions;
   if (params.assigneeId) where.assigneeId = params.assigneeId;
-  return where;
+  return gate(where);
 }
 
 const ListParamsSchema = z.object({

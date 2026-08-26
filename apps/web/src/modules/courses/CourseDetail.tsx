@@ -309,6 +309,7 @@ export function CourseDetail({ courseId }: { courseId: string }) {
           canCreate={data.canCreateDocuments}
           canUpdate={data.canUpdateDocuments}
           canDelete={data.canDeleteDocuments}
+          noun="material"
         />
       )}
 

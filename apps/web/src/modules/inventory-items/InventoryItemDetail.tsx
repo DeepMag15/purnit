@@ -200,6 +200,7 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
           canCreate={data.canCreateDocuments}
           canUpdate={data.canUpdateDocuments}
           canDelete={data.canDeleteDocuments}
+          noun="file"
         />
       )}
 

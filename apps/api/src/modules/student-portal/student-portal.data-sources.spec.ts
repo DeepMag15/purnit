@@ -26,6 +26,10 @@ function txWith(over: Record<string, unknown> = {}, student: unknown = linkedStu
     course: { findMany: jest.fn().mockResolvedValue([]) },
     assignment: { findMany: jest.fn().mockResolvedValue([]) },
     grade: { findMany: jest.fn().mockResolvedValue([]) },
+    // Documents module review — a student's own submission tasks. Empty by
+    // default: most assignments have none, since a task is created lazily on
+    // the first hand-in rather than fanned out at assignment-creation time.
+    task: { findMany: jest.fn().mockResolvedValue([]) },
     user: { findMany: jest.fn().mockResolvedValue([]) },
     attendanceRecord: { findMany: jest.fn().mockResolvedValue([]) },
     ...over,
@@ -146,6 +150,75 @@ describe("myAssignments.list", () => {
     });
     const [row] = (await myAssignmentsListDataSource.resolve({}, context(), tx)) as { graded: boolean }[];
     expect(row.graded).toBe(false);
+  });
+
+  /**
+   * Documents module review — handing work in and being graded are two
+   * different questions, and this source is the only place they meet.
+   *
+   * `submissionStatus` is derived from the submission task's own status
+   * rather than stored a second time, so these pin the derivation: a task
+   * that has been submitted and handed back sits at `in_progress` with a
+   * `submittedAt` already set, which is the only thing distinguishing it
+   * from work never handed in.
+   */
+  describe("submissionStatus", () => {
+    const assignment = { id: "a1", title: "Essay", description: null, courseId: "c1", dueDate: null, maxScore: 100 };
+    async function withTask(task: Record<string, unknown> | null) {
+      const tx = txWith({
+        enrollment: { findMany: jest.fn().mockResolvedValue([{ id: "e1", courseId: "c1", status: "enrolled" }]) },
+        course: { findMany: jest.fn().mockResolvedValue([{ id: "c1", name: "Maths" }]) },
+        assignment: { findMany: jest.fn().mockResolvedValue([assignment]) },
+        task: { findMany: jest.fn().mockResolvedValue(task ? [{ assignmentId: "a1", documents: [], ...task }] : []) },
+      });
+      const [row] = (await myAssignmentsListDataSource.resolve({}, context(), tx)) as Record<string, unknown>[];
+      return row;
+    }
+
+    it("reads not_submitted when the student has no submission task at all", async () => {
+      expect(await withTask(null)).toMatchObject({ submissionStatus: "not_submitted", submissionTaskId: null });
+    });
+
+    it("reads submitted while it sits in the teacher's queue", async () => {
+      expect(await withTask({ id: "tk1", status: "in_review", submittedAt: new Date(), reviewNote: null })).toMatchObject({
+        submissionStatus: "submitted",
+        submissionTaskId: "tk1",
+      });
+    });
+
+    it("reads changes_requested once a teacher hands it back, and carries their note", async () => {
+      expect(
+        await withTask({ id: "tk1", status: "in_progress", submittedAt: new Date(), reviewNote: "Show your working." }),
+      ).toMatchObject({ submissionStatus: "changes_requested", teacherNote: "Show your working." });
+    });
+
+    it("reads accepted once the teacher approves it", async () => {
+      expect(await withTask({ id: "tk1", status: "done", submittedAt: new Date(), reviewNote: null })).toMatchObject({
+        submissionStatus: "accepted",
+      });
+    });
+
+    it("reads not_submitted for a task that exists but was never handed in", async () => {
+      expect(await withTask({ id: "tk1", status: "todo", submittedAt: null, reviewNote: null })).toMatchObject({
+        submissionStatus: "not_submitted",
+      });
+    });
+
+    // Chasing a student for work already sitting in the teacher's queue is
+    // just wrong — overdue means neither graded nor handed in.
+    it("does not mark handed-in work overdue", async () => {
+      const past = new Date(Date.now() - 3 * DAY);
+      const tx = txWith({
+        enrollment: { findMany: jest.fn().mockResolvedValue([{ id: "e1", courseId: "c1", status: "enrolled" }]) },
+        course: { findMany: jest.fn().mockResolvedValue([{ id: "c1", name: "Maths" }]) },
+        assignment: { findMany: jest.fn().mockResolvedValue([{ ...assignment, dueDate: past }]) },
+        task: {
+          findMany: jest.fn().mockResolvedValue([{ id: "tk1", assignmentId: "a1", status: "in_review", submittedAt: past, reviewNote: null, documents: [] }]),
+        },
+      });
+      const [row] = (await myAssignmentsListDataSource.resolve({}, context(), tx)) as { overdue: boolean }[];
+      expect(row.overdue).toBe(false);
+    });
   });
 });
 

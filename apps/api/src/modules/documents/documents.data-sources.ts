@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
@@ -12,11 +12,36 @@ import { projectsWhere } from "../projects/projects.data-sources";
  * avoid a circular import (comments.mutations.ts's own new "document"
  * branch needs to check the *same* thing in the other direction). */
 export async function assertProjectVisible(tx: PrismaTx, ctx: DataSourceContext, projectId: string): Promise<void> {
-  const existing = await tx.project.findFirst({ where: { id: projectId, tenantId: ctx.tenantId, deletedAt: null } });
-  if (!existing) throw new NotFoundException(`No project "${projectId}"`);
+  // Documents module review — one answer for both cases.
+  //
+  // This used to 404 a project that does not exist and 403 one the caller
+  // cannot see, which let anyone tell the two apart by guessing ids. Every
+  // detail source in this codebase deliberately refuses that distinction
+  // (ARCHITECTURE.md §15.1, rule 2); Documents was the exception, and the
+  // existence of a patient's chart or a student's submissions folder is
+  // exactly the kind of thing it should not be leaking.
   const where = await projectsWhere(tx, ctx, { id: projectId });
-  const inScope = where ? await tx.project.findFirst({ where }) : null;
-  if (!inScope) throw new ForbiddenException("Not allowed to view this project's documents");
+  const inScope = where ? await tx.project.findFirst({ where, select: { id: true } }) : null;
+  if (!inScope) throw new NotFoundException(`No project "${projectId}"`);
+}
+
+/**
+ * Documents module review — who may do which half of an approval.
+ *
+ * Two flags, because they are two authorities (ARCHITECTURE.md §15.1, the
+ * seventh rule). Before this the UI gated its approve/reject control on
+ * `canUpdate`, which is neither: a Doctor holding document:update saw a
+ * control that 403'd, and someone holding only document:approve saw no
+ * control at all.
+ *
+ * Requesting is ownership — the person who uploaded the file is the person
+ * who says it is ready. Deciding is a grant, and never the uploader's.
+ */
+function approvalFlags(ctx: DataSourceContext, uploadedById: string) {
+  return {
+    canRequestApproval: uploadedById === ctx.userId,
+    canApprove: !!ctx.effective.has("document", "approve") && uploadedById !== ctx.userId,
+  };
 }
 
 async function withUploaderNames(tx: PrismaTx, documents: { uploadedById: string }[]) {
@@ -50,6 +75,10 @@ export const documentsListDataSource: DataSourceDefinition<z.infer<typeof ListPa
         ...(params.taskId ? { taskId: params.taskId } : {}),
         ...(params.search ? { name: { contains: params.search, mode: "insensitive" as const } } : {}),
       },
+      // Documents module review — the evidence link was writable and
+      // unreadable: `taskId` has been filterable since the Projects review but
+      // was never returned, so nothing could show which work produced a file.
+      include: { task: { select: { title: true } } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -64,8 +93,11 @@ export const documentsListDataSource: DataSourceDefinition<z.infer<typeof ListPa
       sizeBytes: d.sizeBytes,
       version: d.version,
       approvalStatus: d.approvalStatus,
+      taskId: d.taskId,
+      taskTitle: d.task?.title ?? null,
       uploadedById: d.uploadedById,
       uploadedByName: uploaderNames.get(d.uploadedById) ?? "Unknown",
+      ...approvalFlags(ctx, d.uploadedById),
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     }));
@@ -79,7 +111,10 @@ export const documentDetailDataSource: DataSourceDefinition<z.infer<typeof Detai
   name: "document.detail",
   paramsSchema: DetailParamsSchema,
   async resolve(params, ctx, tx) {
-    const document = await tx.document.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } });
+    const document = await tx.document.findFirst({
+      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+      include: { task: { select: { title: true } } },
+    });
     if (!document) throw new NotFoundException(`No document "${params.id}"`);
     await assertProjectVisible(tx, ctx, document.projectId);
 
@@ -102,6 +137,7 @@ export const documentDetailDataSource: DataSourceDefinition<z.infer<typeof Detai
     return {
       canUpdate,
       canDelete,
+      ...approvalFlags(ctx, document.uploadedById),
       document: {
         id: document.id,
         projectId: document.projectId,
@@ -110,6 +146,8 @@ export const documentDetailDataSource: DataSourceDefinition<z.infer<typeof Detai
         sizeBytes: document.sizeBytes,
         version: document.version,
         approvalStatus: document.approvalStatus,
+        taskId: document.taskId,
+        taskTitle: document.task?.title ?? null,
         uploadedById: document.uploadedById,
         uploadedByName: nameById.get(document.uploadedById) ?? "Unknown",
         createdAt: document.createdAt,

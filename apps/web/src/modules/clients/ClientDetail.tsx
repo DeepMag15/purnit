@@ -243,6 +243,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
           canCreate={data.canCreateDocuments}
           canUpdate={data.canUpdateDocuments}
           canDelete={data.canDeleteDocuments}
+          noun="file"
         />
       )}
 
