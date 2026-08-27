@@ -41,15 +41,36 @@ interface CommentRow {
  * scope for this pass (matches the roadmap's own "no rich-text editor yet"
  * scope line).
  */
+/**
+ * ⚠️ `mentionCandidates` was a PROP, and every caller filled it differently.
+ *
+ * The backend accepts any of the target project's owner + members. The six
+ * call sites passed: `project.members` (twice, correct), the assignee alone,
+ * the account manager alone, the teacher alone, and — in Manufacturing — an
+ * empty array, which meant the Mention control was never rendered at all. A
+ * teacher reviewing a submission could @-mention exactly one person.
+ *
+ * It is no longer a prop. The thread asks `comments.mentionCandidates`, which
+ * returns precisely the set `comment.create` validates against, so a caller
+ * cannot get it wrong and the picker cannot disagree with the mutation.
+ *
+ * `noun` follows the `DocumentsPanel` precedent from the Documents review: the
+ * same thread serves an IT project, a patient's chart, a course and a work
+ * order, and "Write a comment…" is not what a nurse is doing on a chart. The
+ * default keeps every existing surface reading exactly as it did.
+ */
 export function CommentThread({
   entityType,
   entityId,
-  mentionCandidates,
+  noun = "comment",
+  nounPlural,
 }: {
   entityType: "project" | "task" | "document";
   entityId: string;
-  mentionCandidates: MentionCandidate[];
+  noun?: string;
+  nounPlural?: string;
 }) {
+  const plural = nounPlural ?? `${noun}s`;
   const { user, callMutation } = useRenderContext();
   const toast = useToast();
   const [body, setBody] = useState("");
@@ -57,6 +78,9 @@ export function CommentThread({
   const [posting, setPosting] = useState(false);
 
   const { data, isPending, refetch } = useDataSourceQuery<CommentRow[]>("comments.list", { entityType, entityId });
+  // One source of truth, shared with the mutation — see the note above.
+  const { data: candidateData } = useDataSourceQuery<MentionCandidate[]>("comments.mentionCandidates", { entityType, entityId });
+  const mentionCandidates = Array.isArray(candidateData) ? candidateData : [];
   const comments = Array.isArray(data) ? data : [];
 
   function addMention(candidate: MentionCandidate) {
@@ -101,7 +125,7 @@ export function CommentThread({
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-hover/40 p-3">
       {isPending && <SkeletonRows rows={2} />}
-      {!isPending && comments.length === 0 && <p className="text-xs text-text-muted">No comments yet.</p>}
+      {!isPending && comments.length === 0 && <p className="text-xs text-text-muted">No {plural} yet.</p>}
       {!isPending && comments.length > 0 && (
         <ul className="flex flex-col gap-2">
           {comments.map((c) => (
@@ -145,7 +169,7 @@ export function CommentThread({
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Write a comment…"
+          placeholder={`Write a ${noun}…`}
           rows={2}
           className={cn(
             "flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted transition-colors duration-[var(--duration-fast)]",

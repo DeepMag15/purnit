@@ -5,6 +5,7 @@ import type { DataSourceContext } from "../../data-sources/data-source-registry.
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { resolveValidMentions } from "../comments/comments.mutations";
 import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
+import { canReachUser } from "../collaboration/collaboration-reach";
 
 export const CONVERSATION_TYPES = ["channel", "dm"] as const;
 export type ConversationType = (typeof CONVERSATION_TYPES)[number];
@@ -75,7 +76,29 @@ export const conversationCreateChannelMutation: MutationDefinition<z.infer<typeo
 
 const CreateDmInputSchema = z.object({ otherUserId: z.string() });
 
-// No requiredPermission — any tenant member may DM any other tenant member.
+/**
+ * ⚠️ This used to say "any tenant member may DM any other tenant member", and
+ * that is exactly what it did.
+ *
+ * Verified live in an Education workspace: a **Student** could open a direct
+ * message with a teacher who does not teach them (201), with **another
+ * student** (201), and with the School Administrator (201). The platform was
+ * careful about letting that same student *enumerate* people — `users.list`
+ * correctly refuses them 403 — and careless about letting them *contact*
+ * anyone they could name.
+ *
+ * The rule now enforced, as the user specified it: **a student may
+ * communicate only with the teachers and staff actually connected to their
+ * course, assignment, enrolment or review workflow — never freely with every
+ * student or staff member.** Connection is resolved from real rows in
+ * `collaboration-reach.ts`, never from a role label, and it is symmetric:
+ * staff cannot open a channel to an unconnected learner either. Staff-to-staff
+ * DMs are unchanged — nobody asked for an org-wide address-book lockdown.
+ *
+ * Still no `requiredPermission`, and still a declared ownership-scoped
+ * exception: no permission triple can express "is connected to this
+ * learner's coursework". The relationship check below IS the authorization.
+ */
 export const conversationCreateDmMutation: MutationDefinition<z.infer<typeof CreateDmInputSchema>> = {
   name: "conversation.createDm",
   inputSchema: CreateDmInputSchema,
@@ -84,6 +107,14 @@ export const conversationCreateDmMutation: MutationDefinition<z.infer<typeof Cre
 
     const otherUser = await tx.user.findFirst({ where: { id: input.otherUserId, tenantId: ctx.tenantId, deletedAt: null } });
     if (!otherUser) throw new NotFoundException(`No user "${input.otherUserId}"`);
+
+    // 404 rather than 403 — the same one-answer-for-both-cases rule the rest
+    // of the codebase uses (ARCHITECTURE.md §15.1, rule 2). A student probing
+    // ids must not be able to tell "this person exists but is off-limits"
+    // from "no such person".
+    if (!(await canReachUser(tx, ctx.tenantId, ctx.userId, input.otherUserId))) {
+      throw new NotFoundException(`No user "${input.otherUserId}"`);
+    }
 
     // Idempotent lookup: v1 DMs are always exactly 2 members, so the first
     // "dm" conversation the caller belongs to whose *other* member is

@@ -1,7 +1,7 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
 import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
-import { commentsListDataSource } from "./comments.data-sources";
+import { commentsListDataSource, commentMentionCandidatesDataSource } from "./comments.data-sources";
 import { commentCreateMutation, commentDeleteMutation } from "./comments.mutations";
 
 /** Same registrar pattern as every other module — see notifications.module.ts. */
@@ -14,6 +14,7 @@ class CommentsRegistrar implements OnModuleInit {
 
   onModuleInit() {
     this.dataSources.register(commentsListDataSource);
+    this.dataSources.register(commentMentionCandidatesDataSource);
     this.mutations.register(commentCreateMutation);
     this.mutations.register(commentDeleteMutation);
   }

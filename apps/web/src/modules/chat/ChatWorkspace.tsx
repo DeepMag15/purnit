@@ -99,7 +99,14 @@ export function ChatWorkspace() {
   // depend on that).
   const dmPresence = usePresence(conversations.flatMap((c) => (c.type === "dm" && c.otherMember ? [c.otherMember.id] : [])));
 
-  const { data: usersData } = useDataSourceQuery<UserOption[]>("users.list");
+  // ⚠️ Comments review — this was `users.list`, called with no guard at all.
+  // That source needs `user:manage`, so every non-admin logged a 403 just by
+  // opening Chat, and their "start a DM" picker was permanently empty. It also
+  // offered the whole roster to anyone who DID hold the grant, including
+  // learners. `people.directory` returns exactly who this caller may contact —
+  // the same set `conversation.createDm` now enforces — so the picker cannot
+  // offer someone the API will refuse.
+  const { data: usersData } = useDataSourceQuery<UserOption[]>("people.directory");
   const users = Array.isArray(usersData) ? usersData : [];
   const displayNameById = useMemo(() => new Map(users.map((u) => [u.id, u.displayName])), [users]);
   const dmCandidates = users.filter((u) => u.id !== user.id);

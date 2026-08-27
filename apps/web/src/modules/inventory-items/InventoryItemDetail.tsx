@@ -204,7 +204,7 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
         />
       )}
 
-      {activeTab === "discussion" && data.filesVisible && <CommentThread entityType="project" entityId={data.filesProjectId} mentionCandidates={[]} />}
+      {activeTab === "discussion" && data.filesVisible && <CommentThread entityType="project" entityId={data.filesProjectId} noun="note" />}
 
       <Dialog open={adjustOpen} onClose={() => setAdjustOpen(false)} title="Adjust Stock">
         <div className="flex flex-col gap-3">

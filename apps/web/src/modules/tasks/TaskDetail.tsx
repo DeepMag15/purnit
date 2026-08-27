@@ -281,7 +281,6 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         <CommentThread
           entityType="task"
           entityId={taskId}
-          mentionCandidates={data.assigneeId ? [{ id: data.assigneeId, displayName: data.assigneeName ?? "" }] : []}
         />
       )}
     </DetailPageShell>

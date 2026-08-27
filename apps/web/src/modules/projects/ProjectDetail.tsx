@@ -186,7 +186,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           canDelete={data.canDeleteDocuments}
         />
       )}
-      {activeTab === "comments" && <CommentThread entityType="project" entityId={projectId} mentionCandidates={data.members} />}
+      {activeTab === "comments" && <CommentThread entityType="project" entityId={projectId} />}
     </DetailPageShell>
   );
 }

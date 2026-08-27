@@ -167,6 +167,16 @@ const OWNERSHIP_SCOPED_MUTATIONS: Record<string, string> = {
  * each returns booleans about the CALLER'S OWN grants, so gating one on the
  * grant it reports would be circular. */
 const OWNERSHIP_SCOPED_DATA_SOURCES: Record<string, string> = {
+  // Comments review. Reaching the thread IS the gate — assertCommentTargetInScope
+  // enforces it — and the picker returns exactly the set comment.create accepts,
+  // so the UI cannot offer a mention the mutation will drop.
+  "comments.mentionCandidates": "reachability-scoped; the same set comment.create validates against",
+
+  // Comments review. A name and an id are not sensitive (project.members says
+  // the same); what needs protecting is REACH, and this returns precisely the
+  // set conversation.createDm will accept — a student sees only the staff
+  // connected to their courses and reviews.
+  "people.directory": "relationship-scoped; the roster this caller may actually contact",
   // Self-reporting capability probes.
   "analytics.capabilities": "reports the caller's own grants",
   "appointments.capabilities": "reports the caller's own grants",

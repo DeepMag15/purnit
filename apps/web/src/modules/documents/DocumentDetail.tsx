@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEntityDetail } from "../../sdui/use-entity-detail";
-import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
 import { DetailPageShell } from "../../ui/DetailPageShell";
 import { Tabs } from "../../ui/Tabs";
@@ -102,16 +101,13 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState("overview");
 
-  // `project.members`, not `project.detail`: detail now returns real projects
-  // only (module review, Projects), and a document usually hangs off a BACKING
-  // project — a patient chart, a course's materials, a student's submission.
-  // Asking detail for those would 404 and silently empty the @-mention list.
-  const { data: memberData } = useDataSourceQuery<{ id: string; displayName: string }[]>(
-    "project.members",
-    { projectId: data?.document.projectId ?? "" },
-    { enabled: !!data?.document.projectId },
-  );
-  const mentionCandidates = Array.isArray(memberData) ? memberData : [];
+  // ⚠️ The `project.members` query that used to live here is gone. It fed the
+  // @-mention picker, which the Comments review moved inside `CommentThread`
+  // itself — it now asks `comments.mentionCandidates`, the set
+  // `comment.create` actually accepts. `project.members` returns members
+  // WITHOUT the project's owner, so on a student's submissions project (the
+  // student owns it) it silently dropped the very person the conversation was
+  // with.
 
   async function handleOpen(mode: "view" | "download") {
     try {
@@ -325,7 +321,7 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
         </Card>
       )}
 
-      {activeTab === "comments" && <CommentThread entityType="document" entityId={documentId} mentionCandidates={mentionCandidates} />}
+      {activeTab === "comments" && <CommentThread entityType="document" entityId={documentId} />}
     </DetailPageShell>
   );
 }

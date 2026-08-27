@@ -16,6 +16,7 @@ import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
 import { useToast } from "../../ui/Toast";
 import { DocumentsPanel } from "../documents/DocumentsPanel";
+import { CommentThread } from "../comments/CommentThread";
 
 // Healthcare Domain, Phase A — the platform's first non-IT blueprint
 // composite. Mirrors TaskList.tsx's exact shape (inline create form above a
@@ -103,6 +104,15 @@ function PatientChartSection({
         </Button>
       )}
       <DocumentsPanel projectId={patient.chartProjectId} canCreate={canCreateDocuments} canUpdate={canUpdateDocuments} canDelete={canDeleteDocuments} noun="record" />
+      {/* ⚠️ Comments review — Healthcare was the ONE domain with no comment
+          surface anywhere. IT, Education, Finance and Manufacturing all had
+          one; a patient's chart, the entity clinical work actually revolves
+          around, had none. The backend supported it the whole time (a Doctor
+          posting to a chart returns 201) — nothing rendered it, so care notes
+          had nowhere to go but the file names.
+
+          "note" rather than "comment": clinicians write notes on a chart. */}
+      <CommentThread entityType="project" entityId={patient.chartProjectId} noun="note" />
     </div>
   );
 }

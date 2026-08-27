@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { assertProjectVisible } from "../documents/documents.data-sources";
 import { restrictedProjectGate } from "../projects/projects.data-sources";
 
 /**
@@ -161,10 +162,39 @@ export const taskDetailDataSource: DataSourceDefinition<z.infer<typeof DetailPar
   name: "task.detail",
   paramsSchema: DetailParamsSchema,
   async resolve(params, ctx, tx) {
+    /**
+     * ⚠️ Comments review — the ownership floor, added because fixing Comments
+     * alone was not enough.
+     *
+     * `tasksWhere` needs a `task:read` grant, and a **Student holds none** —
+     * by design, they reach their own work through ownership. The Comments
+     * review gave `assertCommentTargetInScope` a floor so they could join the
+     * conversation about their own submission, and the API duly started
+     * answering 200. The browser then showed the fix was half-done: this
+     * source still 404'd, so `TaskDetail` — the page that HOSTS that
+     * conversation — rendered "Task not found, or you don't have access to
+     * it." The thread was reachable by API and unreachable by a person.
+     *
+     * Same floor, same order as Comments: scope first, then being the
+     * assignee, then owning or belonging to the project the work sits in.
+     * `assertProjectVisible` still runs before any of it, so a restricted
+     * project refuses outsiders exactly as before — this widens who may open a
+     * task they are party to, never which projects are visible.
+     */
     const scopeWhere = await tasksWhere(tx, ctx, {});
-    if (!scopeWhere) throw new NotFoundException(`No task "${params.id}"`);
-    const task = await tx.task.findFirst({ where: { ...scopeWhere, id: params.id } });
-    if (!task) throw new NotFoundException(`No task "${params.id}"`);
+    let task = scopeWhere ? await tx.task.findFirst({ where: { ...scopeWhere, id: params.id } }) : null;
+    if (!task) {
+      const candidate = await tx.task.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } });
+      if (!candidate) throw new NotFoundException(`No task "${params.id}"`);
+      await assertProjectVisible(tx, ctx, candidate.projectId);
+      const isAssignee = !!candidate.assigneeId && candidate.assigneeId === ctx.userId;
+      const onProject =
+        !!ctx.userId &&
+        (!!(await tx.project.findFirst({ where: { id: candidate.projectId, tenantId: ctx.tenantId, ownerId: ctx.userId }, select: { id: true } })) ||
+          !!(await tx.projectMember.findFirst({ where: { projectId: candidate.projectId, userId: ctx.userId }, select: { id: true } })));
+      if (!isAssignee && !onProject) throw new NotFoundException(`No task "${params.id}"`);
+      task = candidate;
+    }
 
     // Sequential, not Promise.all — same shared-tx rule as every other
     // multi-query resolver in this codebase.

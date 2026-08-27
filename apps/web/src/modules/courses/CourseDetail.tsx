@@ -89,7 +89,16 @@ export function CourseDetail({ courseId }: { courseId: string }) {
 
   // Only fetched for someone who can actually reassign — same enabled-gating
   // precedent ProjectDetail.tsx's own tenantUsers fetch already uses.
-  const { data: tenantUsersData } = useDataSourceQuery<{ id: string; displayName: string }[]>("users.list", {}, { enabled: !!data?.canUpdate });
+  const { data: tenantUsersData } = useDataSourceQuery<{ id: string; displayName: string }[]>(
+    // ⚠️ Comments review — was `users.list`, which needs `user:manage`. The
+    // guard asked `canUpdate`: a permission over THIS RESOURCE standing in for
+    // a permission over PEOPLE. Two different authorities, so it could never
+    // line up — verified live, a Teacher holding course:update is refused
+    // users.list 403 and the teacher dropdown came back empty.
+    "people.directory",
+    {},
+    { enabled: !!data?.canUpdate },
+  );
   const tenantUsers = Array.isArray(tenantUsersData) ? tenantUsersData : [];
 
   async function handleStatusChange(status: string) {
@@ -317,7 +326,6 @@ export function CourseDetail({ courseId }: { courseId: string }) {
         <CommentThread
           entityType="project"
           entityId={data.materialsProjectId}
-          mentionCandidates={data.teacherId && data.teacherName ? [{ id: data.teacherId, displayName: data.teacherName }] : []}
         />
       )}
 

@@ -219,8 +219,44 @@ describe("tasksWhere", () => {
 
 // Frontend Structural Redesign, Phase 0.
 describe("task.detail", () => {
-  it("throws NotFoundException when the actor has no task:read grant at all", async () => {
-    const detailTx = {} as PrismaTx;
+  it("throws NotFoundException when the actor has no task:read grant and no claim on the task", async () => {
+    // ⚠️ Comments review — no grant is no longer the end of the question. A
+    // Student holds no `task:read` at all and must still reach the task they
+    // were assigned, so the source now falls through to two ownership floors.
+    // Nothing here is assigned to or owned by the caller, so it is still 404.
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "someone-else" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1" }) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  /**
+   * ⚠️ The Student case, pinned end-to-end. Fixing Comments alone left the
+   * conversation reachable by API and unreachable by a person: this source
+   * still 404'd, so the page hosting the thread rendered "Task not found, or
+   * you don't have access to it."
+   */
+  it("lets the ASSIGNEE open their own task with no task:read grant at all", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "u1", title: "Essay" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", name: "Submissions" }) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+      user: { findFirst: jest.fn().mockResolvedValue({ displayName: "Ana" }) },
+    } as unknown as PrismaTx;
+    // `project:read:own` is exactly what the Student blueprint grants — they own
+    // their submissions project and hold no `task:*` at all.
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["project:read:own"]), detailTx)).resolves.toMatchObject({ id: "tk1" });
+  });
+
+  it("still refuses a task whose project the actor cannot reach, assignee or not", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "u1" }) },
+      // unreachable: assertProjectVisible finds nothing
+      project: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaTx;
     await expect(taskDetailDataSource.resolve({ id: "tk1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
   });
 

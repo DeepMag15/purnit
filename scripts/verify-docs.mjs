@@ -146,6 +146,27 @@ if (X) {
   }
 } else skip("CONTEXT's record of the Documents module (CONTEXT.md not present — untracked working doc)");
 
+// --- per-module: Comments & Collaboration review, 2026-08-26 ------------
+const comments = read("apps/api/src/modules/comments/comments.mutations.ts");
+const reach = read("apps/api/src/modules/collaboration/collaboration-reach.ts");
+const chat = read("apps/api/src/modules/chat/chat.mutations.ts");
+const thread = read("apps/web/src/modules/comments/CommentThread.tsx");
+
+check(comments.includes("assertProjectVisible"), "Comments uses the SHARED visibility gate, not its own copy");
+check(!/Not allowed to comment on this/.test(comments), "Comments no longer answers 403 for a hidden target (the existence leak)");
+check(comments.includes("isProjectOwnerOrMember"), "the comment ownership floor exists");
+check(comments.includes('type: "comment.created"'), "a comment notifies the work's owner, not only @mentions");
+check(read("apps/api/src/modules/tasks/tasks.data-sources.ts").includes("assertProjectVisible"), "task.detail carries the same ownership floor");
+
+check(reach.includes("export async function canReachUser"), "the collaboration boundary exists");
+check(chat.includes("canReachUser"), "conversation.createDm enforces it");
+check(spec.includes('"people.directory"') && spec.includes('"comments.mentionCandidates"'), "both new ungated sources are declared exceptions");
+
+check(!/mentionCandidates: MentionCandidate\[\]/.test(thread), "mentionCandidates is no longer a caller-supplied prop");
+check(thread.includes('"comments.mentionCandidates"'), "CommentThread sources its own mention list");
+check(read("apps/web/src/modules/patients/PatientsWorkspace.tsx").includes("CommentThread"), "Healthcare has a comment surface");
+check(!read("apps/web/src/modules/chat/ChatWorkspace.tsx").includes('"users.list"'), "Chat no longer calls the user:manage-gated users.list");
+
 console.log(
   `\n${fail === 0 ? "all checks passed" : `${fail} CHECK(S) FAILED`}` +
     (skipped.length ? `  (${skipped.length} skipped — see above)` : ""),

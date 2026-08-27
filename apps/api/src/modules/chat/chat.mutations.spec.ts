@@ -71,6 +71,10 @@ describe("conversation.createDm", () => {
     const existingDm = { id: "dm1", type: "dm", members: [{ userId: "u1" }, { userId: "u2" }] };
     const tx = {
       user: { findFirst: jest.fn().mockResolvedValue({ id: "u2" }) },
+      // Comments review — createDm now asks whether either party is a learner
+      // before opening a channel. Both people here are staff, which the rule
+      // deliberately leaves alone.
+      student: { findFirst: jest.fn().mockResolvedValue(null) },
       conversation: { findMany: jest.fn().mockResolvedValue([existingDm]), create: jest.fn() },
     } as unknown as PrismaTx;
 
@@ -83,6 +87,7 @@ describe("conversation.createDm", () => {
   it("creates a new dm with exactly 2 members when none exists yet", async () => {
     const tx = {
       user: { findFirst: jest.fn().mockResolvedValue({ id: "u2" }) },
+      student: { findFirst: jest.fn().mockResolvedValue(null) },
       conversation: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: "dm1", type: "dm" }) },
       conversationMember: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
@@ -93,6 +98,62 @@ describe("conversation.createDm", () => {
     expect(mocks.conversationMember.create).toHaveBeenCalledTimes(2);
     expect(mocks.conversationMember.create).toHaveBeenCalledWith({ data: { tenantId: "t1", conversationId: "dm1", userId: "u1" } });
     expect(mocks.conversationMember.create).toHaveBeenCalledWith({ data: { tenantId: "t1", conversationId: "dm1", userId: "u2" } });
+  });
+});
+
+/**
+ * ⚠️ The collaboration boundary, added by the Comments review.
+ *
+ * `conversation.createDm` was ungated with the comment "any tenant member may
+ * DM any other tenant member", and in an Education workspace that meant a
+ * Student could open a channel with any teacher who does not teach them, with
+ * any classmate, and with the School Administrator — all verified live at 201.
+ * The same student is correctly refused `users.list`, so the platform guarded
+ * enumeration and left contact wide open.
+ */
+describe("conversation.createDm — the collaboration boundary", () => {
+  /** A student whose connected staff are exactly `connectedIds`. */
+  const studentTx = (connectedIds: string[], over: Record<string, unknown> = {}) =>
+    ({
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "u2" }) },
+      student: { findFirst: jest.fn().mockResolvedValue({ id: "s1", userId: "u1" }), findMany: jest.fn().mockResolvedValue([{ userId: "u1" }]) },
+      enrollment: { findMany: jest.fn().mockResolvedValue([{ courseId: "c1", submissionsProjectId: "sp1" }]) },
+      course: { findMany: jest.fn().mockResolvedValue(connectedIds.map((id: string) => ({ teacherId: id }))) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([]) },
+      conversation: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: "dm1", type: "dm" }) },
+      conversationMember: { create: jest.fn().mockResolvedValue({}) },
+      ...over,
+    }) as unknown as PrismaTx;
+
+  it("lets a student message the teacher of a course they are enrolled in", async () => {
+    const tx = studentTx(["u2"]);
+    await expect(conversationCreateDmMutation.resolve({ otherUserId: "u2" }, context(), tx)).resolves.toBeDefined();
+  });
+
+  it("refuses a student messaging a teacher who does not teach them", async () => {
+    const tx = studentTx(["someone-else"]);
+    await expect(conversationCreateDmMutation.resolve({ otherUserId: "u2" }, context(), tx)).rejects.toThrow(NotFoundException);
+  });
+
+  /** Two learners sharing a course are not "connected" in the sense this
+   * rule protects — the student list subtracts every other learner. */
+  it("refuses a student messaging another student", async () => {
+    const tx = studentTx(["u2"], {
+      student: {
+        findFirst: jest.fn().mockResolvedValue({ id: "s1", userId: "u1" }),
+        findMany: jest.fn().mockResolvedValue([{ userId: "u1" }, { userId: "u2" }]),
+      },
+    });
+    await expect(conversationCreateDmMutation.resolve({ otherUserId: "u2" }, context(), tx)).rejects.toThrow(NotFoundException);
+  });
+
+  /** 404, not 403 — a learner probing ids must not learn who exists. */
+  it("answers NotFound rather than Forbidden, so ids reveal nothing", async () => {
+    const tx = studentTx(["someone-else"]);
+    const err = await conversationCreateDmMutation.resolve({ otherUserId: "u2" }, context(), tx).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotFoundException);
+    expect(err).not.toBeInstanceOf(ForbiddenException);
   });
 });
 

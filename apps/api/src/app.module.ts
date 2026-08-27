@@ -24,6 +24,7 @@ import { HrModule } from "./modules/hr/hr.module";
 import { RolesModule } from "./modules/roles/roles.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { CommentsModule } from "./modules/comments/comments.module";
+import { CollaborationModule } from "./modules/collaboration/collaboration.module";
 import { ChatModule } from "./modules/chat/chat.module";
 import { MeetingsModule } from "./modules/meetings/meetings.module";
 import { AnnouncementsModule } from "./modules/announcements/announcements.module";
@@ -91,6 +92,7 @@ import { MeController } from "./me/me.controller";
     RolesModule,
     SettingsModule,
     CommentsModule,
+    CollaborationModule,
     ChatModule,
     MeetingsModule,
     AnnouncementsModule,
