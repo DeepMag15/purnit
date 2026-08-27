@@ -1,0 +1,80 @@
+/**
+ * Pre-aggregated per-day metric values, written by
+ * AnalyticsSnapshotProcessorService — the "expensive/historical" half of the
+ * Analytics engine (the "cheap/live" half is computed fresh per request by
+ * each MetricDefinition's own computeLive, never stored here).
+ * Deliberately no DB-level unique constraint on (tenantId, metricKey,
+ * departmentId, periodStart) — a departmentId-inclusive compound unique
+ * index hits Postgres's "NULL is distinct from NULL" semantics, so multiple
+ * departmentId IS NULL rows for the same metric+period would NOT be
+ * rejected by one. Idempotency is enforced operationally instead: the
+ * processor deletes-then-reinserts *today's* rows for a metric on every
+ * tick. Rows for days before "today" are never touched once written —
+ * closed periods, immutable history.
+ */
+model AnalyticsSnapshot {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  // Matches the owning MetricDefinition.key ("module.verb", e.g.
+  // "tasks.completionRate") — free-text, not a DB enum, same treatment as
+  // every other status/key-shaped column in this schema.
+  metricKey    String   @map("metric_key")
+  // null = tenant-wide row. Non-null = scoped to one department. Phase A's
+  // processor always writes null; the column exists now so a future
+  // per-department rollup is an additive data change, not a migration.
+  departmentId String?  @map("department_id") @db.Uuid
+  value        Float
+  // UTC-midnight anchor of the bucket this row represents.
+  periodStart  DateTime @map("period_start")
+  // "day" | "week" | "month" — free-text vocabulary, same treatment as
+  // Task.status/AttendanceRecord.status, not a DB enum. Phase A only ever
+  // writes "day".
+  granularity  String   @default("day")
+  computedAt   DateTime @default(now()) @map("computed_at")
+
+  @@index([tenantId, metricKey, periodStart])
+  @@index([tenantId, metricKey, departmentId, periodStart])
+  @@map("analytics_snapshots")
+}
+
+/**
+ * Role- or user-level Analytics dashboard layout. `roleId` is a real,
+ * per-tenant materialized Role.id (never a blueprint-level id), so
+ * role-level rows are created at tenant provisioning time
+ * (AuthService.signup), not via seed.ts's static blueprint JSON like every
+ * other page/nav default.
+ * A row is keyed by exactly one of `userId` (a personal layout) or `roleId`
+ * (a role-level default template) — never both. `analytics.dashboard`'s own
+ * resolver checks the caller's personal row first, falling back to their
+ * role's template, then to the frontend's own auto-computed arrangement if
+ * neither exists (Phase D/E's shared "graceful, no backfill needed"
+ * principle — a missing row is a cosmetic fallback, never an error).
+ * `widgets` is an ordered array of `{key, visible, x, y, w, h}` — one entry
+ * per widget, `x/y/w/h` in react-grid-layout's own grid-unit convention
+ * (Phase E). Renamed in place from Phase D's coarser `sections: string[]`
+ * (an ordered list of module-section names) — that shape is superseded, not
+ * kept alongside this one; Phase D's own doc comment already flagged this
+ * column as the thing Phase E would extend.
+ * TenantConfig-style versioning discipline: never UPDATE `widgets` in
+ * place — a change inserts a new row (`version + 1`) and flips the prior
+ * version's `isActive` to false in the same transaction. Enforced at the DB
+ * level by two partial unique indexes (Phase E's own migration) — one per
+ * keying dimension, since a plain `(tenantId, userId, roleId)` unique
+ * couldn't express "at most one active row per *non-null* key" on its own.
+ */
+model DashboardLayout {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  roleId       String?  @map("role_id") @db.Uuid
+  dashboardKey String   @default("analytics") @map("dashboard_key")
+  name         String   @default("Default")
+  widgets      Json
+  isActive     Boolean  @default(true) @map("is_active")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([tenantId, roleId])
+  @@map("dashboard_layouts")
+}

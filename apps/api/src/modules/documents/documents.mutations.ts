@@ -7,7 +7,8 @@ import type { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 import { assertProjectVisible } from "./documents.data-sources";
-import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
+import { assertProjectReachable } from "../projects/projects.data-sources";
+import { enqueueDocumentEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 // Defense-in-depth alongside the "documents" bucket's own server-side
 // allowedMimeTypes/fileSizeLimit config — this check runs first, before any
@@ -53,6 +54,12 @@ function buildDocumentStoragePath(tenantId: string, projectId: string, fileName:
  * `task.create`'s existing precedent, which accepts any `projectId` with no
  * scope validation at all — see the plan's documented reasoning. */
 async function assertCanCreateInProject(tx: PrismaTx, ctx: MutationContext, projectId: string) {
+  // Documents module review — reachability BEFORE scope, always. A restricted
+  // project is not writable by someone who cannot open it, whatever their
+  // document:create scope says. This throws 404, so the check also refuses to
+  // confirm the project exists.
+  await assertProjectReachable(tx, ctx, projectId);
+
   const project = await tx.project.findFirst({ where: { id: projectId, tenantId: ctx.tenantId, deletedAt: null } });
   if (!project) throw new NotFoundException(`No project "${projectId}"`);
 
@@ -60,36 +67,55 @@ async function assertCanCreateInProject(tx: PrismaTx, ctx: MutationContext, proj
   if (!scope) throw new ForbiddenException('Missing permission "document:create"');
   const departmentSubtreeIds =
     scope === "department-subtree" && ctx.userDepartmentId ? await getDepartmentSubtreeIds(tx, ctx.tenantId, ctx.userDepartmentId) : undefined;
-  const inScope = isRowInScope(
-    scope,
-    { ownerId: project.ownerId, departmentId: project.departmentId },
-    { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
-  );
+  const inScope =
+    isRowInScope(
+      scope,
+      { ownerId: project.ownerId, departmentId: project.departmentId },
+      { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
+    ) || (await isProjectMember(tx, ctx, projectId));
   if (!inScope) throw new ForbiddenException("Not allowed to upload documents to this project");
   return project;
+}
+
+/** Documents module review — the membership floor.
+ *
+ * Being named on a project is itself a grant to work on it. Without this a
+ * Lead added as a real member of a project owned by someone else, with no
+ * department in common, was refused their own project's uploads (verified
+ * live, 403) — the same gap `requireTaskInScope` had before the Projects
+ * review put a membership floor under it. Checked only after the scope test
+ * fails, so it costs a query only in the case it exists to rescue. */
+async function isProjectMember(tx: PrismaTx, ctx: MutationContext, projectId: string): Promise<boolean> {
+  const membership = await tx.projectMember.findFirst({ where: { projectId, userId: ctx.userId }, select: { id: true } });
+  return !!membership;
 }
 
 /** Validates an *existing* Document row is within the actor's
  * document:update/delete scope — fetches the row plus its parent Project's
  * `{ownerId, departmentId}` in one query, exact same shape as
  * `requireTaskInScope` (tasks.mutations.ts). */
-async function requireDocumentInScope(tx: PrismaTx, ctx: MutationContext, documentId: string, action: "update" | "delete") {
+async function requireDocumentInScope(tx: PrismaTx, ctx: MutationContext, documentId: string, action: "update" | "delete" | "approve") {
   const existing = await tx.document.findFirst({
     where: { id: documentId, tenantId: ctx.tenantId, deletedAt: null },
     include: { project: { select: { id: true, ownerId: true, departmentId: true } } },
   });
   if (!existing) throw new NotFoundException(`No document "${documentId}"`);
 
+  // Documents module review — reachability BEFORE scope, same rule as
+  // creation. Rename, replace, approve and delete all land here.
+  await assertProjectReachable(tx, ctx, existing.projectId);
+
   const scope = ctx.effective.has("document", action);
   const departmentSubtreeIds =
     scope === "department-subtree" && ctx.userDepartmentId ? await getDepartmentSubtreeIds(tx, ctx.tenantId, ctx.userDepartmentId) : undefined;
   const inScope =
     scope &&
-    isRowInScope(
+    (isRowInScope(
       scope,
       { ownerId: existing.project.ownerId, departmentId: existing.project.departmentId },
       { userId: ctx.userId, departmentId: ctx.userDepartmentId, departmentSubtreeIds },
-    );
+    ) ||
+      (await isProjectMember(tx, ctx, existing.projectId)));
   if (!inScope) throw new ForbiddenException(`Not allowed to ${action} this document`);
 
   return existing;
@@ -136,6 +162,9 @@ const CreateInputSchema = z.object({
   name: z.string().min(1),
   mimeType: z.string().min(1),
   sizeBytes: z.number().int().positive(),
+  /** Projects ecosystem review — evidence for a specific piece of work.
+   * Optional: most documents are not evidence for anything. */
+  taskId: z.string().optional(),
 });
 
 export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInputSchema>> = {
@@ -146,10 +175,19 @@ export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInp
     await assertCanCreateInProject(tx, ctx, input.projectId);
     assertFileAllowed(input.mimeType, input.sizeBytes);
 
+    // Evidence must belong to work on THIS project. Without the check a
+    // document could be filed against a task in a project the uploader cannot
+    // see, quietly leaking that the task exists.
+    if (input.taskId) {
+      const task = await tx.task.findFirst({ where: { id: input.taskId, tenantId: ctx.tenantId, projectId: input.projectId, deletedAt: null } });
+      if (!task) throw new NotFoundException(`No task "${input.taskId}" on this project`);
+    }
+
     const document = await tx.document.create({
       data: {
         tenantId: ctx.tenantId,
         projectId: input.projectId,
+        taskId: input.taskId ?? null,
         name: input.name,
         storagePath: input.storagePath,
         mimeType: input.mimeType,
@@ -158,7 +196,7 @@ export const documentCreateMutation: MutationDefinition<z.infer<typeof CreateInp
       },
     });
     await logActivity(tx, ctx.tenantId, document.id, ctx.userId, "uploaded");
-    await enqueueEmbeddingJob(tx, ctx.tenantId, "document", document.id, document.mimeType);
+    await enqueueDocumentEmbeddingJob(tx, ctx.tenantId, document.id, document.mimeType);
     return document;
   },
 };
@@ -251,24 +289,94 @@ export const documentFinalizeReplaceMutation: MutationDefinition<z.infer<typeof 
       },
     });
     await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "replaced", `v${existing.version} -> v${existing.version + 1}`);
-    await enqueueEmbeddingJob(tx, ctx.tenantId, "document", updated.id, updated.mimeType);
+    await enqueueDocumentEmbeddingJob(tx, ctx.tenantId, updated.id, updated.mimeType);
     return updated;
   },
 };
 
 // --- Approval status ---
 
-const SetApprovalStatusInputSchema = z.object({ id: z.string(), status: z.enum(["pending", "approved", "rejected"]) });
+/**
+ * Documents module review — requesting an approval is not deciding one.
+ *
+ * ⚠️ What this fixes. `document.setApprovalStatus` gained
+ * `requiredPermission: "document:approve"` in the Projects review, which was
+ * right for approving and wrong for the "Request approval" button sharing the
+ * same mutation: the uploader — the one person that button exists for — got
+ * `403 Missing permission "document:approve"` (verified live). The inner
+ * uploader-refusal carved out `pending` correctly; the outer permission gate
+ * could not, because a gate cannot see which value is being set.
+ *
+ * Split exactly the way Tasks was split (`task.submitForReview` /
+ * `task.review`), for the same reason: the two halves answer to different
+ * people, so they are two mutations, not one with a branch.
+ */
+const RequestApprovalInputSchema = z.object({ id: z.string() });
+
+/** Ungated ON PURPOSE — declared in `authorization-invariants.spec.ts`.
+ * Asking someone to check your own work is ownership, not a privilege, and
+ * every role that can upload a document can ask for it to be approved. The
+ * uploader-only check below is the real authorization. */
+export const documentRequestApprovalMutation: MutationDefinition<z.infer<typeof RequestApprovalInputSchema>> = {
+  name: "document.requestApproval",
+  inputSchema: RequestApprovalInputSchema,
+  async resolve(input, ctx, tx) {
+    const existing = await requireDocumentRow(tx, ctx, input.id);
+    // Reachability still applies — "my own document" never means a document
+    // sitting in a project I cannot open.
+    await assertProjectReachable(tx, ctx, existing.projectId);
+
+    if (existing.uploadedById !== ctx.userId) {
+      throw new ForbiddenException("Only the person who uploaded a document can ask for it to be approved.");
+    }
+    if (existing.approvalStatus === "approved") {
+      throw new BadRequestException("This document has already been approved.");
+    }
+
+    const updated = await tx.document.update({ where: { id: input.id }, data: { approvalStatus: "pending" } });
+    await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "approval_requested");
+    return updated;
+  },
+};
+
+/** The document row plus nothing else — the ownership-scoped mutations need
+ * the row without asking a scope question that does not apply to them. */
+async function requireDocumentRow(tx: PrismaTx, ctx: MutationContext, documentId: string) {
+  const existing = await tx.document.findFirst({ where: { id: documentId, tenantId: ctx.tenantId, deletedAt: null } });
+  if (!existing) throw new NotFoundException(`No document "${documentId}"`);
+  return existing;
+}
+
+// "pending" is gone from this enum — it is `document.requestApproval`'s job
+// now, and leaving it here would keep a route to it behind the approver's own
+// permission.
+const SetApprovalStatusInputSchema = z.object({ id: z.string(), status: z.enum(["approved", "rejected"]) });
 
 export const documentSetApprovalStatusMutation: MutationDefinition<z.infer<typeof SetApprovalStatusInputSchema>> = {
   name: "document.setApprovalStatus",
   inputSchema: SetApprovalStatusInputSchema,
-  // Reuses document:update rather than a dedicated document:approve triple
-  // — a deliberate lightweight choice (see the plan's flagged judgment
-  // call); revisit if dedicated approver roles are ever wanted.
-  requiredPermission: "document:update",
+  // Projects ecosystem review (2026-08-26) — its OWN permission at last.
+  //
+  // This reused `document:update` as "a deliberate lightweight choice ...
+  // revisit if dedicated approver roles are ever wanted". Revisited: the same
+  // grant that lets someone edit a document let them approve it, so the person
+  // who uploaded a report could approve their own (verified live, 201). The
+  // review step was decorative.
+  requiredPermission: "document:approve",
   async resolve(input, ctx, tx) {
-    await requireDocumentInScope(tx, ctx, input.id, "update");
+    // "approve", not "update": the row-scope question here is which documents
+    // you may APPROVE, and those are different ladders. Checking update's
+    // scope would let a narrower edit grant silently cap an approval grant
+    // someone legitimately holds at a wider one.
+    const existing = await requireDocumentInScope(tx, ctx, input.id, "approve");
+
+    // Separation of duties, enforced rather than assumed. A supervisor holds
+    // document:approve legitimately AND uploads their own files, so the
+    // permission alone cannot carry this.
+    if (existing.uploadedById === ctx.userId) {
+      throw new ForbiddenException("You can't approve or reject a document you uploaded — someone else has to.");
+    }
+
     const updated = await tx.document.update({ where: { id: input.id }, data: { approvalStatus: input.status } });
     await logActivity(tx, ctx.tenantId, input.id, ctx.userId, "approval_status_changed", input.status);
     return updated;

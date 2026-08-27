@@ -1,7 +1,92 @@
+import { NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 import type { DataSourceContext, DataSourceDefinition } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+
+/**
+ * The gate for a **restricted** project, applied at every scope including
+ * `tenant` (Contextual Reporting, 2026-08-25).
+ *
+ * ⚠️ The hole this closes: `project:read:tenant` returned literally every
+ * project in the workspace, and every domain entity is backed by a real
+ * Project — so a patient's chart, a student's private submission and a
+ * registrar's student file were all readable by anyone holding that grant.
+ * Documents live on those projects, so `documents.list` and
+ * `document.getFileUrl` inherited the same reach. A Receptionist granted
+ * `project:read:tenant` for front-desk paperwork could read every clinical
+ * document in the hospital.
+ *
+ * A restricted project is reachable three ways, and no other:
+ *   - you **own** it (a student owns their own submissions project);
+ *   - you are a **member** (a patient's assigned doctor, a course's teacher);
+ *   - you hold the project's declared `accessPermission` — the role-level
+ *     path that lets a Nurse reach any chart without being named on each one.
+ *
+ * Unrestricted projects behave exactly as before, so ordinary IT projects,
+ * course materials, client files and inventory files are untouched.
+ */
+export function restrictedProjectGate(ctx: DataSourceContext): Record<string, unknown> {
+  // "resource:action:scope" -> "resource:action". Presence, not scope: holding
+  // `patient:update:own` is enough to be a clinical role.
+  const held = [...new Set(ctx.effective.toArray().map((g) => g.split(":").slice(0, 2).join(":")))];
+  return {
+    OR: [
+      { restricted: false },
+      { ownerId: ctx.userId },
+      { members: { some: { userId: ctx.userId } } },
+      ...(held.length > 0 ? [{ accessPermission: { in: held } }] : []),
+    ],
+  };
+}
+
+/**
+ * Documents module review (2026-08-26) — the same rule, asked about ONE
+ * project, so a WRITE can be held to it.
+ *
+ * ⚠️ The hole this closes. `restrictedProjectGate` above is reached only
+ * through `projectsWhere`, and only reads go that way. Every document write
+ * — create, rename, replace, approve, delete — scope-checked the project's
+ * own `{ownerId, departmentId}` directly and never consulted `restricted`
+ * at all. Verified live before the fix: a teacher who is refused 403 on
+ * listing, downloading and opening a student's submission could still rename
+ * it (201), mint a replace-upload URL over its contents (201) and plant new
+ * files in the folder (201); a School Administrator could delete it. Replace
+ * was the worst of the three, because re-uploading re-runs the embedding job,
+ * so the RAG index over a restricted document was rewritable by someone with
+ * no read access to it.
+ *
+ * Deliberately the gate object itself rather than a re-implementation of the
+ * same three conditions — a predicate written out by hand beside a filter is
+ * two definitions of one rule, and they drift.
+ *
+ * Deliberately NOT `projectsWhere`, which would have been the tighter-looking
+ * choice: that function needs `project:read`, and a Student holds no
+ * `project:*` grant at all by design — routing writes through it would have
+ * locked students out of their own submissions while fixing the leak.
+ */
+export async function assertProjectReachable(tx: PrismaTx, ctx: DataSourceContext, projectId: string): Promise<void> {
+  const reachable = await tx.project.findFirst({
+    where: { id: projectId, tenantId: ctx.tenantId, deletedAt: null, AND: [restrictedProjectGate(ctx)] },
+    select: { id: true },
+  });
+  // 404, not 403 — a restricted project must not confirm its own existence to
+  // someone outside it. Same one-answer-for-both-cases rule as every detail
+  // source (ARCHITECTURE.md §15.1, rule 2).
+  if (!reachable) throw new NotFoundException(`No project "${projectId}"`);
+}
+
+/**
+ * Module review, Projects (2026-08-26) — the filter that separates a real
+ * project from plumbing.
+ *
+ * ⚠️ Applied by the project-SHAPED sources only (list, detail, count,
+ * statusBreakdown), never inside `projectsWhere`. That function also governs
+ * document access, so filtering there would cut Healthcare off from patient
+ * charts, Education from course materials and Finance from client files —
+ * turning a vocabulary fix into an outage.
+ */
+export const REAL_PROJECT = { kind: "project" } as const;
 
 /** Applies the granted `project:read` scope to a where-clause. Returns
  * `null` only when there's no read grant at all — department/team scope no
@@ -30,11 +115,17 @@ export async function projectsWhere(tx: PrismaTx, ctx: DataSourceContext, extra:
   if (!scope) return null;
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null, ...extra };
+  // Layered with AND so it composes with whatever scope condition follows —
+  // a restricted project must be unreachable at EVERY scope, not just tenant.
+  const conditions: Record<string, unknown>[] = [restrictedProjectGate(ctx)];
+
   if (scope === "own") {
     where.ownerId = ctx.userId;
+    where.AND = conditions;
     return where;
   }
   if (scope === "tenant") {
+    where.AND = conditions;
     return where;
   }
   const scopeConditions: Record<string, unknown>[] = [
@@ -51,7 +142,10 @@ export async function projectsWhere(tx: PrismaTx, ctx: DataSourceContext, extra:
     // department / team — no teamId column on Project yet, "team" approximates to department (see rbac/scope-check.ts).
     scopeConditions.push({ departmentId: ctx.userDepartmentId });
   }
-  where.OR = scopeConditions;
+  // AND, not a merged OR: the department path must not become a way around
+  // the restriction gate.
+  conditions.push({ OR: scopeConditions });
+  where.AND = conditions;
   return where;
 }
 
@@ -93,7 +187,7 @@ export const projectsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
   paramsSchema: ListParamsSchema,
   requiredPermission: "project:read",
   async resolve(params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, params.status ? { status: params.status } : {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, ...(params.status ? { status: params.status } : {}) });
     if (!where) return [];
     // Phase 1: capped result set, no real cursor pagination yet — `bind.paginate`
     // is honored by the frontend requesting this source, not by pagination
@@ -113,6 +207,67 @@ export const projectsListDataSource: DataSourceDefinition<z.infer<typeof ListPar
   },
 };
 
+const DetailParamsSchema = z.object({ id: z.string() });
+
+/**
+ * Frontend Structural Redesign, Phase 0 — backs the new `/workspace/projects/[id]`
+ * route. Follows `document.detail`'s own precedent exactly: folds the `id`
+ * into the same scope-check the row-list source already uses (`projectsWhere`,
+ * here via its `extra` passthrough) rather than a separate existence-then-
+ * scope check, so "doesn't exist" and "exists but out of scope" both surface
+ * as one `NotFoundException` — never leaking which. No `requiredPermission`
+ * beyond what `projectsWhere` itself already enforces (`project:read`, same
+ * as `projects.list`).
+ */
+export const projectDetailDataSource: DataSourceDefinition<z.infer<typeof DetailParamsSchema>> = {
+  name: "project.detail",
+  paramsSchema: DetailParamsSchema,
+  async resolve(params, ctx, tx) {
+    // A backing project is not a project to this route: /workspace/projects/<id>
+    // rendered a patient chart through the IT project UI before this.
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, id: params.id });
+    if (!where) throw new NotFoundException(`No project "${params.id}"`);
+    const project = await tx.project.findFirst({ where });
+    if (!project) throw new NotFoundException(`No project "${params.id}"`);
+
+    // Sequential, not Promise.all — same shared-tx rule as every other
+    // multi-query resolver in this codebase (concurrent queries against one
+    // transactional `tx` are unsafe).
+    const ownerNames = await withOwnerNames(tx, [project]);
+    const membersByProject = await withMembers(tx, [project]);
+    const department = project.departmentId ? await tx.department.findFirst({ where: { id: project.departmentId }, select: { name: true } }) : null;
+    const taskCount = await tx.task.count({ where: { projectId: project.id, deletedAt: null } });
+    const documentCount = await tx.document.count({ where: { projectId: project.id, deletedAt: null } });
+
+    // A hand-written detail-page route (unlike a blueprint-driven composite)
+    // has no `actions` array pruned server-side to read capability from —
+    // same reasoning `patients.list`'s own `chartVisible` flag already
+    // established: compute the booleans the frontend needs directly off
+    // `ctx.effective`, the identical primitive every mutation's own
+    // requiredPermission check already uses. No new authorization concept.
+    const canUpdate = !!ctx.effective.has("project", "update");
+    const canDelete = !!ctx.effective.has("project", "delete");
+    const canCreateDocuments = !!ctx.effective.has("document", "create");
+    const canUpdateDocuments = !!ctx.effective.has("document", "update");
+    const canDeleteDocuments = !!ctx.effective.has("document", "delete");
+
+    return {
+      ...project,
+      owner: project.ownerId ? (ownerNames.get(project.ownerId) ?? null) : null,
+      departmentName: department?.name ?? null,
+      members: membersByProject.get(project.id) ?? [],
+      taskCount,
+      documentCount,
+      canUpdate,
+      canDelete,
+      canManageMembers: canUpdate,
+      canCreateDocuments,
+      canUpdateDocuments,
+      canDeleteDocuments,
+    };
+  },
+};
+
 const CountParamsSchema = z.object({ status: z.string().optional() });
 
 export const projectsCountDataSource: DataSourceDefinition<z.infer<typeof CountParamsSchema>> = {
@@ -120,7 +275,7 @@ export const projectsCountDataSource: DataSourceDefinition<z.infer<typeof CountP
   paramsSchema: CountParamsSchema,
   requiredPermission: "project:read",
   async resolve(params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, params.status ? { status: params.status } : {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT, ...(params.status ? { status: params.status } : {}) });
     if (!where) return 0;
     return tx.project.count({ where });
   },
@@ -136,9 +291,57 @@ export const projectsStatusBreakdownDataSource: DataSourceDefinition<z.infer<typ
   paramsSchema: StatusBreakdownParamsSchema,
   requiredPermission: "project:read",
   async resolve(_params, ctx, tx) {
-    const where = await projectsWhere(tx, ctx, {});
+    const where = await projectsWhere(tx, ctx, { ...REAL_PROJECT });
     if (!where) return [];
     const groups = await tx.project.groupBy({ by: ["status"], where, _count: { _all: true } });
     return groups.map((g) => ({ status: g.status, count: g._count._all }));
+  },
+};
+
+const MembersParamsSchema = z.object({ projectId: z.string() });
+
+/**
+ * Just the people on a project — for @-mention candidates and assignee
+ * pickers.
+ *
+ * Exists because `project.detail` now returns real projects only (module
+ * review, Projects), and two surfaces legitimately need members for a
+ * *backing* project: `DocumentDetail` builds its @-mention list from the
+ * document's project, and `TaskList` offers assignees from the target's
+ * members. Both would have silently degraded to an empty list on a patient
+ * chart or a course's materials.
+ *
+ * Scope-checked with `assertProjectVisible` rather than `projectsWhere` +
+ * `REAL_PROJECT`: reaching a project's people is exactly as permitted as
+ * reaching its documents, which is the same question `documents.list` asks.
+ * No `requiredPermission` for the same reason — reaching the project IS the
+ * gate. Returns names only; nothing here is sensitive beyond membership
+ * itself, which the caller can already see.
+ */
+export const projectMembersDataSource: DataSourceDefinition<z.infer<typeof MembersParamsSchema>> = {
+  name: "project.members",
+  paramsSchema: MembersParamsSchema,
+  async resolve(params, ctx, tx) {
+    // The same check `assertProjectVisible` performs, inlined rather than
+    // imported: `documents.data-sources` already imports `projectsWhere` from
+    // this file, so importing back would be a cycle. Deliberately WITHOUT
+    // `REAL_PROJECT` — a backing project's members are the whole point here.
+    // Empty rather than 404 when the caller cannot see the project — the same
+    // shape every other list source in this codebase uses (`projects.list`
+    // returns [] with no grant). It matters here because a reviewer can hold
+    // task:review on work sitting in a project they are not part of: throwing
+    // turned a legitimately-empty reassign picker into a console 404 on an
+    // otherwise working page.
+    const where = await projectsWhere(tx, ctx, { id: params.projectId });
+    const visible = where ? await tx.project.findFirst({ where }) : null;
+    if (!visible) return [];
+
+    const memberships = await tx.projectMember.findMany({ where: { projectId: params.projectId }, select: { userId: true } });
+    if (memberships.length === 0) return [];
+    const users = await tx.user.findMany({
+      where: { id: { in: memberships.map((m) => m.userId) }, tenantId: ctx.tenantId, deletedAt: null },
+      select: { id: true, displayName: true },
+    });
+    return users;
   },
 };

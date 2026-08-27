@@ -1,29 +1,31 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRenderContext } from "../../sdui/render-context";
 import { useDataSourceQuery, dataSourceQueryKey } from "../../sdui/use-data-binding";
 import { supabase } from "../../lib/supabase-client";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
-import { Badge } from "../../ui/Badge";
+import { StatusDot, type StatusTone } from "../../ui/StatusDot";
 import { Select } from "../../ui/Select";
-import { Input } from "../../ui/Input";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
-import { CommentThread } from "../comments/CommentThread";
+import { SearchBar } from "../../sdui/primitives/SearchBar";
 
 const DOCUMENTS_BUCKET = "documents";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  uploaded: "uploaded this document",
-  replaced: "uploaded a new version",
-  renamed: "renamed this document",
-  approval_status_changed: "changed the approval status",
-  deleted: "deleted this document",
+// Frontend Redesign, Phase 03 — StatusDot's tone vocabulary doesn't include
+// "accent"/"success" (see StatusDot.tsx), so approved/rejected/pending map
+// onto the closest workflow-status equivalents instead of carrying over the
+// old Badge tone values verbatim.
+const APPROVAL_STATUS_TONE: Record<string, StatusTone> = {
+  approved: "done",
+  rejected: "danger",
+  pending: "queued",
 };
 
 interface DocumentRow {
@@ -33,15 +35,14 @@ interface DocumentRow {
   sizeBytes: number;
   version: number;
   approvalStatus: string | null;
+  canRequestApproval: boolean;
+  canApprove: boolean;
+  taskId: string | null;
+  taskTitle: string | null;
   uploadedById: string;
   uploadedByName: string;
   createdAt: string;
   updatedAt: string;
-}
-
-interface MentionCandidate {
-  id: string;
-  displayName: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -64,24 +65,49 @@ function formatRelativeTime(iso: string): string {
 
 /**
  * Project Documents (Core Workspace Phase 2, Submodule 1) — a plain shared
- * component, not blueprint-registered, same "mounted per-row behind an
- * expand toggle" precedent as CommentThread. Permission gating comes from
- * `ProjectBoard`'s own `actions` array (document.create/update/delete),
- * passed down as booleans rather than re-deriving from render context here.
+ * component, not blueprint-registered, mounted inside `ProjectDetail`'s own
+ * Documents tab. Permission gating comes from `ProjectDetail`'s own
+ * `data.canCreateDocuments`/etc. flags, passed down as booleans rather than
+ * re-deriving from render context here.
+ *
+ * Frontend Structural Redesign, Phase 1 — the per-row expand toggle
+ * (activity history + comments) was removed: both are now redundant with
+ * the new `/workspace/documents/[id]` detail page's own Activity/Comments
+ * tabs, and this panel is already mounted one level inside a detail page
+ * (`ProjectDetail`), so a second nested expand-toggle for the same
+ * information was real clutter. Click-to-open-file/download/upload/
+ * replace/approval-status/delete all stay exactly as they were — genuinely
+ * fast, primary actions worth keeping inline, not moved to the detail page.
  */
+/** Documents module review — what these files are CALLED depends on what
+ * they hang off.
+ *
+ * The same panel serves an IT project, a patient's chart, a course, a client
+ * and an inventory item, and it said "Documents / Upload / Search documents…
+ * / No documents yet" to all five. A nurse does not file "documents" against
+ * a patient, they file records. Per the standing rule that a module must not
+ * be assumed to work the same way in every domain — the same finding the
+ * Projects review fixed one level up, where a patient chart was being
+ * rendered through the IT project UI.
+ *
+ * Vocabulary only: one word in, no behaviour change, and the default keeps
+ * every existing caller reading exactly as it did. */
 export function DocumentsPanel({
   projectId,
   canCreate,
   canUpdate,
   canDelete,
-  mentionCandidates,
+  noun = "document",
+  nounPlural,
 }: {
   projectId: string;
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
-  mentionCandidates: MentionCandidate[];
+  noun?: string;
+  nounPlural?: string;
 }) {
+  const plural = nounPlural ?? `${noun}s`;
   const { user, tenant, callMutation, aiAvailable, openAiPanel } = useRenderContext();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -89,7 +115,6 @@ export function DocumentsPanel({
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const replaceTargetId = useRef<string | null>(null);
 
   const params = { projectId, search: search || undefined };
@@ -167,7 +192,7 @@ export function DocumentsPanel({
 
   async function handleApprovalChange(id: string, status: string) {
     try {
-      await callMutation("document.setApprovalStatus", { id, status });
+      await callMutation(status === "pending" ? "document.requestApproval" : "document.setApprovalStatus", status === "pending" ? { id } : { id, status });
       invalidate();
     } catch (err) {
       toast.show(err instanceof Error ? err.message : "Couldn't update approval status", "danger");
@@ -179,23 +204,16 @@ export function DocumentsPanel({
       await callMutation("document.delete", { id });
       invalidate();
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : "Couldn't delete document", "danger");
+      toast.show(err instanceof Error ? err.message : `Couldn't delete ${noun}`, "danger");
     }
-  }
-
-  function toggleExpanded(id: string) {
-    setExpandedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-surface/50 p-2">
       <div className="flex items-center gap-2">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search documents…" className="h-7 flex-1 text-xs" />
+        <div className="flex-1">
+          <SearchBar value={search} onChange={setSearch} placeholder={`Search ${plural}…`} nodeId="documents-search" renderChild={() => null} />
+        </div>
         {canCreate && (
           <>
             <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -208,7 +226,7 @@ export function DocumentsPanel({
       </div>
 
       {isPending && <SkeletonRows />}
-      {!isPending && documents.length === 0 && <EmptyStateView message="No documents yet." />}
+      {!isPending && documents.length === 0 && <EmptyStateView message={`No ${plural} yet.`} />}
 
       {!isPending && documents.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -228,7 +246,10 @@ export function DocumentsPanel({
                     <span>·</span>
                     <span>{formatRelativeTime(d.updatedAt)}</span>
                     {d.approvalStatus && (
-                      <Badge tone={d.approvalStatus === "approved" ? "success" : d.approvalStatus === "rejected" ? "danger" : "accent"}>{d.approvalStatus}</Badge>
+                      <span className="inline-flex items-center gap-1">
+                        <StatusDot tone={APPROVAL_STATUS_TONE[d.approvalStatus] ?? "neutral"} />
+                        {d.approvalStatus}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -239,7 +260,7 @@ export function DocumentsPanel({
                         type="button"
                         onClick={() => openAiPanel("documents.summarize", { sourceType: "document", sourceId: d.id })}
                         title="Summarize with AI"
-                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                        className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                       >
                         <Icon name="summarize" size={14} />
                       </button>
@@ -247,13 +268,13 @@ export function DocumentsPanel({
                         type="button"
                         onClick={() => openAiPanel("documents.qa", { sourceType: "document", sourceId: d.id })}
                         title="Ask AI about this document"
-                        className="text-text-muted transition-colors duration-150 hover:text-text"
+                        className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                       >
                         <Icon name="auto_awesome" size={14} />
                       </button>
                     </>
                   )}
-                  <button type="button" onClick={() => handleOpen(d.id, "download")} title="Download" className="text-text-muted transition-colors duration-150 hover:text-text">
+                  <button type="button" onClick={() => handleOpen(d.id, "download")} title="Download" className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text">
                     <Icon name="download" size={14} />
                   </button>
                   {canUpdate && (
@@ -264,43 +285,50 @@ export function DocumentsPanel({
                         replaceInputRef.current?.click();
                       }}
                       title="Replace"
-                      className="text-text-muted transition-colors duration-150 hover:text-text"
+                      className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
                     >
                       <Icon name="publish" size={14} />
                     </button>
                   )}
-                  <button type="button" onClick={() => toggleExpanded(d.id)} title="Comments & history" className="text-text-muted transition-colors duration-150 hover:text-text">
-                    <Icon name="chat_bubble" size={14} />
-                  </button>
+                  <Link
+                    href={`/workspace/documents/${d.id}`}
+                    title="View details"
+                    className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-text"
+                  >
+                    <Icon name="open_in_new" size={14} />
+                  </Link>
                   {canDelete && (
-                    <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-150 hover:text-danger">
+                    <button type="button" onClick={() => handleDelete(d.id)} title="Delete" className="text-text-muted transition-colors duration-[var(--duration-fast)] hover:text-danger">
                       <Icon name="delete" size={14} />
                     </button>
                   )}
                 </div>
               </div>
 
-              {canUpdate && (
+              {/* Documents module review — two controls, two authorities.
+                  This was one block gated on `canUpdate`, which is neither of
+                  them: a Doctor holding document:update saw an approve/reject
+                  control that 403'd, and a dedicated approver saw nothing at
+                  all. The server decides both flags now (ARCHITECTURE.md
+                  §15.1, the seventh rule). */}
+              {d.approvalStatus === null && d.canRequestApproval && (
                 <div className="mt-1.5">
-                  {d.approvalStatus === null ? (
-                    <button type="button" onClick={() => handleApprovalChange(d.id, "pending")} className="text-xs text-accent hover:underline">
-                      Request approval
-                    </button>
-                  ) : (
-                    <Select value={d.approvalStatus} onChange={(e) => handleApprovalChange(d.id, e.target.value)} className="h-6 py-0 text-xs">
-                      <option value="pending">Pending</option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
-                    </Select>
-                  )}
+                  <button type="button" onClick={() => handleApprovalChange(d.id, "pending")} className="text-xs text-accent hover:underline">
+                    Request approval
+                  </button>
                 </div>
               )}
-
-              {expandedIds.has(d.id) && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <DocumentActivityFeed documentId={d.id} />
-                  <CommentThread entityType="document" entityId={d.id} mentionCandidates={mentionCandidates} />
+              {d.approvalStatus !== null && d.canApprove && (
+                <div className="mt-1.5">
+                  <Select value={d.approvalStatus} onChange={(e) => handleApprovalChange(d.id, e.target.value)} className="h-6 py-0 text-xs">
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </Select>
                 </div>
+              )}
+              {d.taskTitle && (
+                <p className="mt-1.5 text-xs text-text-muted">Evidence for &ldquo;{d.taskTitle}&rdquo;</p>
               )}
             </div>
           ))}
@@ -308,34 +336,6 @@ export function DocumentsPanel({
       )}
 
       <input ref={replaceInputRef} type="file" onChange={handleReplace} className="hidden" disabled={uploading} />
-    </div>
-  );
-}
-
-/** Mounted only while a document row is expanded — same "don't fetch what
- * nobody's looking at" discipline as CommentThread's own mount timing. */
-function DocumentActivityFeed({ documentId }: { documentId: string }) {
-  const { data } = useDataSourceQuery<{
-    versions: { id: string; version: number; sizeBytes: number; createdByName: string; createdAt: string }[];
-    activities: { id: string; type: string; detail: string | null; actorName: string; createdAt: string }[];
-  }>("document.detail", { id: documentId });
-
-  if (!data) return null;
-
-  return (
-    <div className="rounded-md border border-border bg-bg p-2 text-xs text-text-muted">
-      {data.activities.length === 0 ? (
-        <div>No activity yet.</div>
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {data.activities.map((a) => (
-            <li key={a.id}>
-              <span className="text-text">{a.actorName}</span> {ACTIVITY_LABELS[a.type] ?? a.type}
-              {a.detail ? ` (${a.detail})` : ""} — {formatRelativeTime(a.createdAt)}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

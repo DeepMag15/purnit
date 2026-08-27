@@ -11,8 +11,10 @@ import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
 import { Alert } from "../../ui/Alert";
 import { Badge } from "../../ui/Badge";
+import { PresenceDot } from "../../ui/PresenceDot";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { useToast } from "../../ui/Toast";
+import { usePresence } from "../presence/use-presence";
 
 export const TeamMembersSchema = z.object({});
 type Props = z.infer<typeof TeamMembersSchema>;
@@ -69,9 +71,6 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
   // form unusable, not an error state.
   const { data: rolesData } = useDataSourceQuery<RoleOption[]>("roles.list", {}, { enabled: canInvite || canChangeRole });
   const roles = Array.isArray(rolesData) ? rolesData : [];
-  useEffect(() => {
-    if (Array.isArray(rolesData)) setSelectedRoleId((current) => current || rolesData[0]?.id || "");
-  }, [rolesData]);
 
   // `departments.list` is gated on `department:manage`, which Company Admin
   // (the only role with `user:invite` today) always also holds.
@@ -123,6 +122,7 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
   }
 
   const rows = Array.isArray(data) ? (data as UserRow[]) : [];
+  const presence = usePresence(rows.map((u) => u.id));
 
   return (
     <Card>
@@ -133,6 +133,7 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Full name" className="flex-1" />
               <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="flex-1" />
               <Select value={selectedRoleId} onChange={(e) => setSelectedRoleId(e.target.value)}>
+                <option value="">Select role…</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}
@@ -212,7 +213,10 @@ export function TeamMembers({ bind, actions }: Props & CommonRenderProps) {
               return (
                 <li key={u.id} className="flex items-center justify-between py-2.5">
                   <div>
-                    <div className="text-sm font-medium text-text">{u.displayName}</div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-text">
+                      <PresenceDot status={presence.get(u.id)} />
+                      {u.displayName}
+                    </div>
                     <div className="text-xs text-text-muted">{u.email}</div>
                   </div>
                   <div className="flex items-center gap-2">

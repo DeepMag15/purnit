@@ -1,4 +1,4 @@
-import type { UINode } from "@antigravity/manifest-schema";
+import type { UINode } from "@purnit/manifest-schema";
 
 /** Rendered when a manifest references a `type@version` the client's
  * registry doesn't know — expected during a rolling deploy where the API
@@ -6,11 +6,7 @@ import type { UINode } from "@antigravity/manifest-schema";
  * gracefully instead of crashing the page. */
 export function UnknownNodeFallback({ node }: { node: UINode }) {
   return (
-    <div
-      role="note"
-      data-unknown-node={node.id}
-      style={{ padding: "0.5rem", border: "1px dashed #999", borderRadius: 4, color: "#666", fontSize: "0.875rem" }}
-    >
+    <div role="note" data-unknown-node={node.id} className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-text-muted">
       Unsupported widget ({node.type}@{node.version}).
     </div>
   );

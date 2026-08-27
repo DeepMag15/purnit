@@ -1,0 +1,38 @@
+/// Healthcare Domain, Phase A — the platform's first non-IT industry
+/// blueprint. A Patient owns a 1:1 auto-created "chart" Project
+/// (`chartProjectId`) — internal plumbing, never exposed as "Project"
+/// vocabulary anywhere in the Healthcare blueprint's own UI — so Tasks (care
+/// plan items), Documents (medical records/reports/prescriptions), and
+/// Comments all attach for free, reusing `projectsWhere`/`tasksWhere`'s own
+/// already-correct scope resolution completely unchanged. `patient.register`
+/// creates the Patient row, its backing Project row, and (if an assigned
+/// doctor is given) a ProjectMember row for that doctor, all in one
+/// transaction.
+///
+/// Deliberately no `departmentId` — Phase A ships no Healthcare department
+/// taxonomy (a disclosed MVP narrowing, see the Phase A plan §6.3); every
+/// grant in the Healthcare blueprint's roles uses only `own`/`tenant` scope.
+model Patient {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  chartProjectId   String    @unique @map("chart_project_id") @db.Uuid
+  name             String
+  dateOfBirth      DateTime? @map("date_of_birth")
+  contactPhone     String?   @map("contact_phone")
+  contactEmail     String?   @map("contact_email")
+  // Free-text vocabulary, same treatment as Task.status/Project.status — no
+  // DB enum. UI-documented set: "active" | "admitted" | "discharged".
+  status           String    @default("active")
+  assignedDoctorId String?   @map("assigned_doctor_id") @db.Uuid
+  registeredById   String    @map("registered_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@index([tenantId, assignedDoctorId])
+  @@index([tenantId, status])
+  @@map("patients")
+}

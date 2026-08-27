@@ -1,4 +1,4 @@
-import type { WorkspaceManifest, UINode } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest, UINode } from "@purnit/manifest-schema";
 import { getAccessToken } from "./session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -44,10 +44,29 @@ export interface SignupInput {
   password: string;
   companyName: string;
   displayName: string;
-  industry: "IT";
+  industry: "IT" | "Healthcare" | "Education" | "Finance" | "Manufacturing";
+  // Go-Live, Phase 03 — the wizard's plan choice. Optional: omitting all
+  // three provisions a Free workspace, exactly as signup did before.
+  planKey?: string;
+  interval?: "month" | "year";
+  seats?: number;
 }
 
-export function signup(input: SignupInput): Promise<{ tenantId: string; userId: string; workspaceId: string }> {
+export interface SignupResult {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  /** The plan actually provisioned — not necessarily the one requested. The
+   * server falls back to Free for an unavailable tier rather than erroring,
+   * so the wizard reads this instead of assuming its own input was honoured. */
+  plan: string | null;
+  billingInterval: string | null;
+  seats: number;
+  /** True only for a paid plan on a Stripe-configured deployment. */
+  checkoutRequired: boolean;
+}
+
+export function signup(input: SignupInput): Promise<SignupResult> {
   return apiFetch("/auth/signup", { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -55,6 +74,15 @@ export function signup(input: SignupInput): Promise<{ tenantId: string; userId: 
 // Throws ApiError (401) if the email doesn't belong to that workspace.
 export function verifyWorkspace(workspaceId: string, email: string): Promise<{ valid: true }> {
   return apiFetch("/auth/verify-workspace", { method: "POST", body: JSON.stringify({ workspaceId, email }) });
+}
+
+// Enterprise SSO — called with the workspace ID alone, before any email is
+// entered. Deliberately doesn't require an existing User row the way
+// verifyWorkspace does: a genuinely first-time SSO user has none yet (see
+// SsoController.workspaceSsoStatus's own doc comment for why this is a
+// separate, lighter check).
+export function getWorkspaceSsoStatus(workspaceId: string): Promise<{ ssoEnabled: boolean }> {
+  return apiFetch(`/auth/workspace-sso-status?workspaceId=${encodeURIComponent(workspaceId)}`);
 }
 
 export interface Me {

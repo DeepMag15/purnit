@@ -131,3 +131,21 @@ export const meetingsInviteCandidatesDataSource: DataSourceDefinition<z.infer<ty
     return users;
   },
 };
+
+const CapabilitiesParamsSchema = z.object({});
+
+/**
+ * Frontend Redesign, Phase 02 — `MeetingsWorkspace.tsx` moved off the SDUI
+ * Renderer onto a dedicated route, so it no longer gets a permission-pruned
+ * `actions` array to derive `canSchedule` from. Same `project.detail`-style
+ * capability-flag precedent as `calendar.capabilities`'s own doc comment —
+ * no `requiredPermission` (callable by anyone). Pure parity here, not a
+ * bug fix: `canSchedule` was already correctly `actions`-derived before.
+ */
+export const meetingsCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof CapabilitiesParamsSchema>> = {
+  name: "meetings.capabilities",
+  paramsSchema: CapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return { canSchedule: !!ctx.effective.has("meeting", "create") };
+  },
+};

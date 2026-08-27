@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
-import type { BlueprintRoleDef, DepartmentTypeDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef, DepartmentTypeDef } from "@purnit/manifest-schema";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { SupabaseAdminService } from "./supabase-admin.service";
 import { generateUniqueWorkspaceId } from "./workspace-id";
 import { materializeBlueprintRoles, materializeDepartmentTypeLabels } from "./materialize-roles";
 import type { SignupInput } from "./signup.schema";
+import { resolvePlanSelection } from "./resolve-plan-selection";
+import { DEFAULT_DASHBOARD_WIDGET_KEYS, autoLayout } from "../modules/analytics/dashboard-defaults";
+
 
 @Injectable()
 export class AuthService {
@@ -30,6 +33,26 @@ export class AuthService {
       throw new Error(`Blueprint "${input.industry}@${blueprint.version}" has no role.admin`);
     }
 
+    // Stripe Billing — every new tenant starts on the seeded Free plan,
+    // making the entitlement pipeline actually fire for real (previously
+    // `planId` was written nowhere, ever, so entitlement filtering was a
+    // permanent no-op for every tenant). A missing Free plan row falls back
+    // to `null` (today's "no plan = everything entitled" behavior) rather
+    // than blocking signup — a reseed always recreates it, so this should
+    // never actually happen, but signup must never hard-fail on it.
+    const freePlan = await this.tenantPrisma.root.plan.findFirst({ where: { key: "free" } });
+
+    // Go-Live, Phase 03 — the plan chosen in the signup wizard. Looked up
+    // here, decided in `resolvePlanSelection` (a pure function, so the
+    // "never trust what a public endpoint was sent" rules it enforces are
+    // directly testable). A `planKey` that isn't a real, public, self-serve
+    // tier resolves to Free rather than erroring.
+    const requestedPlan =
+      input.planKey && input.planKey !== "free"
+        ? await this.tenantPrisma.root.plan.findUnique({ where: { key: input.planKey }, include: { prices: true } })
+        : null;
+    const selection = resolvePlanSelection(input, freePlan, requestedPlan);
+
     const authUser = await this.supabaseAdmin.createUser(input.email, input.password);
     const workspaceId = await generateUniqueWorkspaceId(this.tenantPrisma, input.companyName);
 
@@ -41,7 +64,16 @@ export class AuthService {
             workspaceId,
             industry: input.industry,
             blueprintVersion: blueprint.version,
+            planId: selection.planId,
             status: "active",
+            // Go-Live, Phase 03 — the chosen shape, recorded up front so the
+            // workspace is immediately consistent with what the wizard
+            // quoted. `subscriptionStatus` is deliberately NOT "active" for
+            // a paid selection: nothing has been paid yet, and only the
+            // signed Stripe webhook is ever trusted to write that.
+            seatsPurchased: selection.seats,
+            billingInterval: selection.interval,
+            subscriptionStatus: selection.subscriptionStatus,
           },
         });
 
@@ -50,6 +82,22 @@ export class AuthService {
         const rolesByBlueprintId = await materializeBlueprintRoles(tx, tenant.id, blueprintRoles);
         await materializeDepartmentTypeLabels(tx, tenant.id, blueprintDef.departmentTypes ?? [], rolesByBlueprintId);
         const adminRole = rolesByBlueprintId.get("role.admin")!;
+
+        // Analytics Phase D/E — one role-level DashboardLayout default per
+        // in-scope role, seeded here rather than via seed.ts's static
+        // blueprint JSON: DashboardLayout.roleId is a real, per-tenant
+        // materialized Role.id (only known now, post-materializeBlueprintRoles),
+        // never a blueprint-level id. A role not present in this blueprint
+        // is simply skipped, not an error. One batched createMany, not N
+        // sequential creates — materialize-roles.ts's own doc comment
+        // records a real prior P2028 timeout from exactly that mistake
+        // inside this same signup transaction.
+        await tx.dashboardLayout.createMany({
+          data: DEFAULT_DASHBOARD_WIDGET_KEYS.filter((e) => !e.industry || e.industry === input.industry).flatMap(({ blueprintRoleId, keys }) => {
+            const role = rolesByBlueprintId.get(blueprintRoleId);
+            return role ? [{ tenantId: tenant.id, roleId: role.id, dashboardKey: "analytics", widgets: autoLayout(keys) }] : [];
+          }),
+        });
 
         const user = await tx.user.create({
           data: {
@@ -74,7 +122,22 @@ export class AuthService {
           },
         });
 
-        return { tenantId: tenant.id, userId: user.id, workspaceId: tenant.workspaceId };
+        return {
+          tenantId: tenant.id,
+          userId: user.id,
+          workspaceId: tenant.workspaceId,
+          // Go-Live, Phase 03 — what the wizard should do next. Returned
+          // rather than inferred client-side so the browser never has to
+          // reason about whether Stripe is configured or whether the plan it
+          // asked for was actually honoured.
+          plan: selection.planKey,
+          billingInterval: selection.interval,
+          seats: selection.seats,
+          /** True only for a paid plan on a Stripe-configured deployment.
+           * The wizard sends the user to Checkout when this is set, and
+           * straight into the workspace when it isn't. */
+          checkoutRequired: selection.checkoutRequired,
+        };
       });
     } catch (err) {
       // Signup must be all-or-nothing across Supabase Auth + our Postgres.

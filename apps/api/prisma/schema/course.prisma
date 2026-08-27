@@ -1,0 +1,36 @@
+/// Education Domain, Phase A. Course owns a 1:1 auto-created "materials"
+/// Project (`materialsProjectId`) — internal plumbing, never exposed as
+/// "Project" vocabulary in this blueprint's own UI, the exact same
+/// chartProjectId precedent Patient established — so Documents (syllabus,
+/// readings, handouts) and Comments (Discussion) attach for free, reusing
+/// projectsWhere's own already-correct scope resolution unchanged.
+/// `course.create` creates the Course row, its backing Project row, and (if
+/// a teacher is given) a ProjectMember row for that teacher, all in one
+/// transaction — verbatim structural mirror of `patient.register`.
+///
+/// Deliberately Course, not Student, owns this Project: shared course
+/// materials (syllabus/readings/handouts) is universally-needed and
+/// non-sensitive; a per-Student individual document file edges into
+/// student-record privacy better deferred to a later phase. A disclosed,
+/// deliberate scoping choice, not an oversight.
+model Course {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  materialsProjectId String    @unique @map("materials_project_id") @db.Uuid
+  name               String
+  description        String?
+  teacherId          String?   @map("teacher_id") @db.Uuid
+  // Free-text vocabulary. UI-documented set: "active" | "archived".
+  status             String    @default("active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  enrollments Enrollment[]
+  assignments Assignment[]
+
+  @@index([tenantId])
+  @@index([tenantId, teacherId])
+  @@index([tenantId, status])
+  @@map("courses")
+}

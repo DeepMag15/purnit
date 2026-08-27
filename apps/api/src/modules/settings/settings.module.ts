@@ -1,4 +1,5 @@
 import { Injectable, Module, type OnModuleInit } from "@nestjs/common";
+import { DataSourceRegistry } from "../../data-sources/data-source-registry.service";
 import { MutationRegistry } from "../../mutations/mutation-registry.service";
 import { TenantPrismaService } from "../../tenancy/tenant-prisma.service";
 import { AuthModule } from "../../auth/auth.module";
@@ -8,8 +9,10 @@ import {
   createUpdateBrandingMutation,
   createUpdateProfileMutation,
   createUpdateWorkspaceIdMutation,
+  updateAiProviderMutation,
   updateNavigationLabelMutation,
 } from "./settings.mutations";
+import { settingsCapabilitiesDataSource } from "./settings.data-sources";
 
 /** Same registrar pattern as every prior module — see projects.module.ts.
  * `TenantPrismaService` is `@Global()` (via `TenancyModule`) and already
@@ -19,15 +22,18 @@ import {
 @Injectable()
 class SettingsRegistrar implements OnModuleInit {
   constructor(
+    private readonly dataSources: DataSourceRegistry,
     private readonly mutations: MutationRegistry,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly supabaseAdmin: SupabaseAdminService,
   ) {}
 
   onModuleInit() {
+    this.dataSources.register(settingsCapabilitiesDataSource);
     this.mutations.register(createUpdateBrandingMutation(this.tenantPrisma));
     this.mutations.register(createUpdateWorkspaceIdMutation(this.tenantPrisma));
     this.mutations.register(updateNavigationLabelMutation);
+    this.mutations.register(updateAiProviderMutation);
     this.mutations.register(createUpdateProfileMutation(this.tenantPrisma));
     this.mutations.register(createCreateLogoUploadUrlMutation(this.supabaseAdmin));
   }

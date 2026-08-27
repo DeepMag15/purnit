@@ -1,9 +1,21 @@
 model Document {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  projectId    String    @map("project_id") @db.Uuid
-  project      Project   @relation(fields: [projectId], references: [id])
-  name         String
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  project        Project   @relation(fields: [projectId], references: [id])
+  /// Projects ecosystem review (2026-08-26) — the evidence link.
+  ///
+  /// A document had only a `projectId`, so a test report uploaded as evidence
+  /// for one task landed in a flat pile beside every other file on that
+  /// project: a reviewer could not see what a given piece of work produced.
+  ///
+  /// Nullable because most documents are not evidence for anything — course
+  /// materials, client contracts, a patient's scan. The project stays the
+  /// owner (it is what governs access); this only records which work produced
+  /// the file.
+  taskId         String?   @map("task_id") @db.Uuid
+  task           Task?     @relation(fields: [taskId], references: [id])
+  name           String
   // Current version's live data — always reflects the latest version, never
   // a historical one (those live in DocumentVersion, snapshotted at replace
   // time). No FK on storagePath; it's a bucket-relative key in the private
@@ -23,6 +35,7 @@ model Document {
 
   versions   DocumentVersion[]
   activities DocumentActivity[]
+  analyses   DocumentAnalysis[]
 
   @@index([tenantId])
   @@index([tenantId, projectId])

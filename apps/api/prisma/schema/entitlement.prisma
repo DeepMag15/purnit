@@ -1,12 +1,120 @@
 // Platform-level, NOT tenant-scoped.
 model Plan {
-  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key          String @unique
-  name         String
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key             String  @unique
+  name            String
   // string[] of entitlement keys unlocked by this plan.
-  entitlements Json
+  entitlements    Json
+  // Go-Live: the Stripe *Product*. Its Prices moved to `PlanPrice` below —
+  // a plan now has one price per billing interval, so a single
+  // `stripePriceId`/`priceCents` pair on this row could no longer express
+  // the catalog. Null on Free (no Stripe object at all) and on Enterprise
+  // ("contact us", never self-serve checkout).
+  stripeProductId String? @map("stripe_product_id")
+  // AI Assistant Phase F — a real, variable per-call cost to the platform
+  // operator, unlike the on/off entitlements above. Null = unlimited
+  // (Enterprise). A tenant with no Plan at all (`Tenant.planId` null) falls
+  // back to `DEFAULT_AI_MESSAGE_DAILY_CAP` in assert-ai-usage-cap.ts, not
+  // unlimited.
+  aiMessageDailyCap Int? @map("ai_message_daily_cap")
+
+  // --- Go-Live: pricing-page presentation + the seat model ---
+  // These drive the public pricing surface (`/api/public/plans`), which is
+  // read by the landing page, the pricing page and the signup wizard. They
+  // are deliberately DB rows rather than a hardcoded frontend constant so
+  // that changing a tier's copy or seat rules is a seed change, not a
+  // redeploy of the marketing site.
+  tagline    String?
+  // string[] — the pricing card's bullet list. Same untyped-JSON-bag
+  // treatment as `entitlements` above, for the same reason: purely
+  // descriptive, never used in an authorization decision.
+  highlights Json    @default("[]")
+  // "per_seat" — price scales with `Tenant.seatsPurchased` (Starter, Pro).
+  // "flat"     — a fixed price regardless of seats (Free).
+  // "contact"  — no self-serve checkout at all (Enterprise).
+  // Free-text app invariant, not a DB enum — same convention as
+  // `Tenant.subscriptionStatus` and `Task.status`.
+  seatModel  String  @default("per_seat") @map("seat_model")
+  minSeats   Int     @default(1) @map("min_seats")
+  // Hard cap on total active users. Null = unlimited. Free is 3. This is
+  // what `user.invite`'s seat check reads for a tenant with no paid
+  // subscription, since such a tenant has no meaningful `seatsPurchased`.
+  maxSeats   Int?    @map("max_seats")
+  trialDays  Int     @default(0) @map("trial_days")
+  // Whether the tier appears on the public pricing surface at all. Enterprise
+  // IS public (it's a real card with a "Contact us" action); this flag exists
+  // for any future internal/legacy/grandfathered tier that must keep working
+  // for its existing tenants without being offered to new ones.
+  isPublic   Boolean @default(true) @map("is_public")
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  prices PlanPrice[]
 
   @@map("plans")
+}
+
+/// Go-Live — one row per (plan, billing interval, currency).
+///
+/// `unitAmountCents` is the price of ONE seat for ONE interval, and it is the
+/// **display** authority: every price shown on the marketing site, the
+/// pricing page and the signup wizard is computed from these rows, never from
+/// a live Stripe API call. That is deliberate and load-bearing — it's what
+/// lets the entire public site render correctly with no Stripe account
+/// configured, and keeps pricing up if Stripe has an outage.
+///
+/// `stripePriceId` is the **charge** authority and stays null until a real
+/// Stripe account exists. Nothing auto-syncs the two: if a Price is edited in
+/// the Stripe Dashboard, `unitAmountCents` must be updated here by hand to
+/// match — the same caveat the old `Plan.priceCents` carried.
+///
+/// The yearly row's amount already includes the 2-months-free discount (it is
+/// 10x the monthly unit price, not 12x). The discount is expressed in the
+/// price itself rather than as a Stripe coupon so that one number drives both
+/// the marketing copy and the actual charge.
+model PlanPrice {
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId          String  @map("plan_id") @db.Uuid
+  plan            Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  // "month" | "year" — free-text app invariant, same convention as above.
+  interval        String
+  unitAmountCents Int     @map("unit_amount_cents")
+  currency        String  @default("usd")
+  stripePriceId   String? @map("stripe_price_id")
+
+  @@unique([planId, interval, currency])
+  @@map("plan_prices")
+}
+
+/// Go-Live — append-only record of every plan/seat/interval change, with the
+/// Stripe event that caused it.
+///
+/// Exists so a billing dispute has an answer that doesn't require reading
+/// Stripe's dashboard, and so a support question ("when did we go to 12
+/// seats?") is answerable from our own data. Written only from the webhook
+/// handler and the billing mutations — never from a UI action directly.
+///
+/// Tenant-scoped WITH RLS, unlike `StripeEvent` (which is genuinely global —
+/// its ids are Stripe's own). A tenant admin can legitimately be shown their
+/// own billing history, so this must fail closed at the DB the same way every
+/// other tenant-owned table does.
+model SubscriptionEvent {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  // "created" | "plan_changed" | "seats_changed" | "interval_changed"
+  // | "canceled" | "resumed" | "payment_failed" | "payment_recovered"
+  type          String
+  fromPlanKey   String?  @map("from_plan_key")
+  toPlanKey     String?  @map("to_plan_key")
+  fromSeats     Int?     @map("from_seats")
+  toSeats       Int?     @map("to_seats")
+  interval      String?
+  // Null for changes originating from an in-app mutation rather than an
+  // inbound Stripe event.
+  stripeEventId String?  @map("stripe_event_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@map("subscription_events")
 }
 
 model FeatureFlag {
@@ -18,4 +126,19 @@ model FeatureFlag {
 
   @@unique([tenantId, key])
   @@map("feature_flags")
+}
+
+// Stripe Billing — webhook idempotency. Stripe explicitly documents
+// at-least-once delivery, so every event is inserted here (by its own
+// Stripe-assigned id) before being processed; a unique-constraint violation
+// on a retry means "already handled," not an error. Platform-root table (no
+// tenantId — event ids are globally unique), same RLS-exempt treatment as
+// Plan/Blueprint/Tenant (none of those three ever receive a tenant_isolation
+// policy either, confirmed in the rls_and_app_role migration).
+model StripeEvent {
+  id        String   @id // Stripe's own event id (e.g. "evt_1Abc...") — the dedup key itself, not a surrogate.
+  type      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("stripe_events")
 }

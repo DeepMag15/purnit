@@ -1,0 +1,26 @@
+/// Finance Domain, Phase A. Owns a "files"-equivalent backing Project
+/// (`filesProjectId`) — client correspondence/contracts are real, sensitive
+/// content worth Documents+Comments reuse, mirroring Patient's chart Project
+/// and Course's materials Project. `accountManagerId` has no Prisma FK (same
+/// no-FK app-layer convention as `Patient.assignedDoctorId`/`Course.teacherId`).
+model Client {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  filesProjectId   String    @unique @map("files_project_id") @db.Uuid
+  name             String
+  contactEmail     String?   @map("contact_email")
+  contactPhone     String?   @map("contact_phone")
+  status           String    @default("active") // free-text: active/inactive/prospect, no DB enum
+  accountManagerId String?   @map("account_manager_id") @db.Uuid
+  createdById      String    @map("created_by_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  invoices Invoice[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, accountManagerId])
+  @@map("clients")
+}

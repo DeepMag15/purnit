@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { buildLogoUploadPath, mergeNavigationLabelPatch, mergeTenantProfile } from "./settings.mutations";
+import { buildLogoUploadPath, mergeAiProviderOverride, mergeNavigationLabelPatch, mergeTenantProfile } from "./settings.mutations";
 
 describe("mergeNavigationLabelPatch", () => {
   it("creates a fresh patch when there are no existing overrides", () => {
@@ -31,6 +31,29 @@ describe("mergeNavigationLabelPatch", () => {
     expect(result.navigation?.remove).toEqual(["nav.old"]);
     expect(result.navigation?.add).toEqual(existing.navigation.add);
     expect(result.pages).toEqual(existing.pages);
+  });
+});
+
+describe("mergeAiProviderOverride", () => {
+  it("sets a provider from an empty overrides object", () => {
+    expect(mergeAiProviderOverride({}, "openai")).toEqual({ ai: { provider: "openai" } });
+  });
+
+  it("overwrites an existing provider choice", () => {
+    const existing = { ai: { provider: "anthropic" as const } };
+    expect(mergeAiProviderOverride(existing, "gemini")).toEqual({ ai: { provider: "gemini" } });
+  });
+
+  it("clears the override back to the global default when provider is null", () => {
+    const existing = { ai: { provider: "openai" as const } };
+    expect(mergeAiProviderOverride(existing, null)).toEqual({});
+  });
+
+  it("preserves every other overrides key untouched", () => {
+    const existing = { navigation: { patch: { "nav.tasks": { label: "Work Items" } } } };
+    const result = mergeAiProviderOverride(existing, "gemini");
+    expect(result.navigation).toEqual(existing.navigation);
+    expect(result.ai).toEqual({ provider: "gemini" });
   });
 });
 

@@ -1,6 +1,6 @@
 import { collapsePermissions } from "../rbac/permission-collapse";
 import { pruneByPermissions } from "./permission-pruner";
-import type { BlueprintDefinition } from "@antigravity/manifest-schema";
+import type { BlueprintDefinition } from "@purnit/manifest-schema";
 
 const ADMIN_PERMISSIONS = collapsePermissions([
   "project:read:tenant",

@@ -8,19 +8,20 @@ import {
   type TenantConfigOverrides,
   type UINode,
   type WorkspaceManifest,
-} from "@antigravity/manifest-schema";
+} from "@purnit/manifest-schema";
 import { TenantPrismaService } from "../tenancy/tenant-prisma.service";
 import { PermissionResolverService } from "../rbac/permission-resolver.service";
 import { AiProviderService } from "../ai/provider/ai-provider.service";
 import type { EffectivePermissions } from "../rbac/permission-collapse";
 import { applyOverrides } from "./override-applier";
-import { filterByEntitlements } from "./entitlement-filter";
+import { filterByEntitlements, applyFeatureFlagOverrides } from "./entitlement-filter";
 import { pruneByPermissions } from "./permission-pruner";
 import type { Tenant, TenantConfig } from "../generated/prisma/client";
 
 export interface CompilerUser {
   id: string;
   displayName: string;
+  digestOptOut: boolean;
 }
 
 export interface WorkspaceIdentity {
@@ -112,7 +113,21 @@ export class ConfigEngineService {
    * compile time — resolving/authorizing what a source name means happens at
    * fetch time (`POST /api/data/:source`, stubbed this stage, real in Stage 8).
    */
-  private async resolveEntitledBlueprint(identity: WorkspaceIdentity): Promise<BlueprintDefinition> {
+  /**
+   * Also resolves Feature Flags here (not left to each caller) — both
+   * `compileWorkspace` and `compilePage` need flag-based entitlement
+   * overrides applied identically, and `compilePage`'s own lazy per-page
+   * fetch never separately fetched flags before this. Returning
+   * `featureFlags` alongside the entitled blueprint lets `compileWorkspace`
+   * reuse this same fetch for its manifest's own `featureFlags` map instead
+   * of querying `FeatureFlag` a second time per request (the exact
+   * duplicate-transaction shape CONTEXT.md §47's "performance-audit
+   * consolidation" already eliminated once for role assignments — same
+   * discipline, applied to this new field).
+   */
+  private async resolveEntitledBlueprint(
+    identity: WorkspaceIdentity,
+  ): Promise<{ blueprint: BlueprintDefinition; featureFlags: Record<string, boolean> }> {
     const { tenant, tenantConfigRow } = identity;
 
     const blueprintRow = await this.tenantPrisma.root.blueprint.findUnique({
@@ -130,7 +145,13 @@ export class ConfigEngineService {
       ? ((await this.tenantPrisma.root.plan.findUnique({ where: { id: tenant.planId } }))
           ?.entitlements as string[] | undefined) ?? null
       : null;
-    return filterByEntitlements(resolved, entitledModules);
+
+    const flagRows = await this.tenantPrisma.run(tenant.id, (tx) => tx.featureFlag.findMany({ where: { tenantId: tenant.id } }));
+    const featureFlags = Object.fromEntries(flagRows.map((f) => [f.key, f.enabled]));
+
+    const effectiveEntitledModules = applyFeatureFlagOverrides(resolved.modules, entitledModules, featureFlags);
+
+    return { blueprint: filterByEntitlements(resolved, effectiveEntitledModules), featureFlags };
   }
 
   /**
@@ -150,7 +171,7 @@ export class ConfigEngineService {
   async compileWorkspace(identity: WorkspaceIdentity): Promise<WorkspaceManifest> {
     const { tenant, effective, etag, user } = identity;
     const tenantId = tenant.id;
-    const entitled = await this.resolveEntitledBlueprint(identity);
+    const { blueprint: entitled, featureFlags } = await this.resolveEntitledBlueprint(identity);
     // Performance pass 2 (CONTEXT.md §48): only the one page this request
     // actually needs (the default dashboard) gets pruned — `dashboards`
     // itself passes through pruning untouched, so it's safe to read before
@@ -158,14 +179,13 @@ export class ConfigEngineService {
     const defaultPageId = entitled.dashboards.default;
     const pruned = pruneByPermissions(entitled, effective, defaultPageId);
 
-    // Performance-audit consolidation (CONTEXT.md §47): these were two
-    // separate `.run()` transactions — now one, two sequential awaits.
-    const { roleLabels, flagRows } = await this.tenantPrisma.run(tenantId, async (tx) => {
+    // Feature Flags — `resolveEntitledBlueprint` above already fetched
+    // `FeatureFlag` once (needed there for entitlement overrides), so this
+    // no longer re-fetches it; only role assignments remain here.
+    const { roleLabels } = await this.tenantPrisma.run(tenantId, async (tx) => {
       const assignments = await tx.roleAssignment.findMany({ where: { userId: user.id }, include: { role: true } });
-      const flagRows = await tx.featureFlag.findMany({ where: { tenantId } });
-      return { roleLabels: [...new Set(assignments.map((r) => r.role.label))], flagRows };
+      return { roleLabels: [...new Set(assignments.map((r) => r.role.label))] };
     });
-    const featureFlags = Object.fromEntries(flagRows.map((f) => [f.key, f.enabled]));
 
     const page = pruned.pages[defaultPageId];
     if (!page) throw new Error(`Default dashboard page "${defaultPageId}" not found after pruning`);
@@ -180,7 +200,7 @@ export class ConfigEngineService {
         branding: tenant.branding as Record<string, unknown>,
         profile: tenant.profile as Record<string, unknown>,
       },
-      user: { id: user.id, displayName: user.displayName, roles: roleLabels, permissionsHash: effective.permissionsHash },
+      user: { id: user.id, displayName: user.displayName, roles: roleLabels, permissionsHash: effective.permissionsHash, digestOptOut: user.digestOptOut },
       navigation: pruned.navigation,
       page,
       featureFlags,
@@ -203,7 +223,7 @@ export class ConfigEngineService {
    * invariant as the manifest itself, applied to direct page fetches too.
    */
   async compilePage(identity: WorkspaceIdentity, pageId: string): Promise<{ page: UINode; etag: string } | null> {
-    const entitled = await this.resolveEntitledBlueprint(identity);
+    const { blueprint: entitled } = await this.resolveEntitledBlueprint(identity);
     const pruned = pruneByPermissions(entitled, identity.effective, pageId);
     const page = pruned.pages[pageId];
     if (!page) return null;

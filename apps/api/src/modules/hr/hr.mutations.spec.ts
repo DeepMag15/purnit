@@ -108,6 +108,7 @@ describe("departmentDeleteMutation", () => {
       },
       team: { count: jest.fn().mockResolvedValue(0), ...((overrides.team as object) ?? {}) },
       user: { count: jest.fn().mockResolvedValue(0), ...((overrides.user as object) ?? {}) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
   }
 
@@ -137,6 +138,7 @@ describe("teamDeleteMutation", () => {
         delete: jest.fn().mockResolvedValue({ id: "team1" }),
       },
       user: { count: jest.fn().mockResolvedValue(userCount) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaTx;
   }
 

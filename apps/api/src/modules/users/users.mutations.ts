@@ -6,6 +6,8 @@ import type { SupabaseAdminService } from "../../auth/supabase-admin.service";
 import type { EmailService } from "../../email/email.service";
 import type { PrismaTx, TenantPrismaService } from "../../tenancy/tenant-prisma.service";
 import { isRoleAssignableBy } from "../../rbac/role-hierarchy";
+import { logAudit } from "../../audit/log-audit";
+import { assertSeatAvailable } from "../../billing/assert-seat-available";
 
 const logger = new Logger("UsersMutations");
 
@@ -82,6 +84,13 @@ export function createUserInviteMutation(
       const existing = await tx.user.findFirst({ where: { tenantId: ctx.tenantId, email: input.email, deletedAt: null } });
       if (existing) throw new BadRequestException("This user has already been invited to this workspace");
 
+      // Go-Live — the seat ceiling. Deliberately checked AFTER the
+      // already-invited check above, so re-inviting an existing member gets
+      // its specific message rather than a misleading "you're out of seats",
+      // and BEFORE any Supabase Auth account is created, so a blocked invite
+      // never leaves an orphaned auth user behind.
+      await assertSeatAvailable(tx, tenantPrisma, ctx.tenantId);
+
       const tenant = await tenantPrisma.root.tenant.findUnique({ where: { id: ctx.tenantId } });
       if (!tenant) throw new BadRequestException(`No tenant "${ctx.tenantId}"`);
 
@@ -116,6 +125,14 @@ export function createUserInviteMutation(
           },
         });
         await tx.roleAssignment.create({ data: { tenantId: ctx.tenantId, userId: user.id, roleId: role.id } });
+        // Audit Logs (module 6 of 6) — user lifecycle is one of the bounded
+        // ~15-20 high-value call sites.
+        await logAudit(tx, ctx, {
+          action: "user.invite",
+          resource: "user",
+          resourceId: user.id,
+          after: { email: user.email, displayName: user.displayName, roleId: role.id, departmentId: input.departmentId },
+        });
 
         // Sent inside the request, after the transaction's writes are queued
         // but the account is already usable regardless of delivery outcome —
@@ -182,10 +199,23 @@ export const userChangeRoleMutation: MutationDefinition<z.infer<typeof ChangeRol
       throw new ForbiddenException(`Not allowed to assign role "${role.label}"`);
     }
 
+    // Fetched purely for the audit trail's "before" value — role/permission
+    // changes are exactly the kind of high-value event this module exists
+    // for, worth one extra read here.
+    const previousAssignment = await tx.roleAssignment.findFirst({ where: { tenantId: ctx.tenantId, userId: input.userId } });
+
     // Single-role-per-user, matching how user.invite only ever creates one —
     // a promotion/demotion replaces what someone IS, not adds a second role.
     await tx.roleAssignment.deleteMany({ where: { tenantId: ctx.tenantId, userId: input.userId } });
     await tx.roleAssignment.create({ data: { tenantId: ctx.tenantId, userId: input.userId, roleId: role.id } });
+
+    await logAudit(tx, ctx, {
+      action: "user.changeRole",
+      resource: "user",
+      resourceId: input.userId,
+      before: { roleId: previousAssignment?.roleId ?? null },
+      after: { roleId: role.id },
+    });
 
     return { success: true };
   },
@@ -221,10 +251,20 @@ export const userAssignDepartmentMutation: MutationDefinition<z.infer<typeof Ass
 
     await validateDepartmentAndTeam(tx, ctx.tenantId, input.departmentId, input.teamId);
 
-    return tx.user.update({
+    const updated = await tx.user.update({
       where: { id: input.userId },
       data: { departmentId: input.departmentId, teamId: input.teamId ?? null },
     });
+
+    await logAudit(tx, ctx, {
+      action: "user.assignDepartment",
+      resource: "user",
+      resourceId: input.userId,
+      before: { departmentId: user.departmentId, teamId: user.teamId },
+      after: { departmentId: updated.departmentId, teamId: updated.teamId },
+    });
+
+    return updated;
   },
 };
 
@@ -257,6 +297,16 @@ export const userSetManagerMutation: MutationDefinition<z.infer<typeof SetManage
       if (!manager) throw new BadRequestException(`No user "${input.managerId}" in this tenant`);
     }
 
-    return tx.user.update({ where: { id: input.userId }, data: { managerId: input.managerId } });
+    const updated = await tx.user.update({ where: { id: input.userId }, data: { managerId: input.managerId } });
+
+    await logAudit(tx, ctx, {
+      action: "user.setManager",
+      resource: "user",
+      resourceId: input.userId,
+      before: { managerId: user.managerId },
+      after: { managerId: updated.managerId },
+    });
+
+    return updated;
   },
 };

@@ -1,13 +1,8 @@
 import type { EffectivePermissions } from "../rbac/permission-collapse";
-import type { BlueprintDefinition, NavItem, UINode } from "@antigravity/manifest-schema";
+import { isPermissionGranted as isAllowed } from "../rbac/permission-gate";
+import type { BlueprintDefinition, NavItem, UINode } from "@purnit/manifest-schema";
 
-function isAllowed(requiredPermission: string | undefined, effective: EffectivePermissions): boolean {
-  if (!requiredPermission) return true;
-  const [resource, action] = requiredPermission.split(":");
-  return effective.has(resource!, action!) !== null;
-}
-
-function pruneNavItems(items: NavItem[], effective: EffectivePermissions): NavItem[] {
+export function pruneNavItems(items: NavItem[], effective: EffectivePermissions): NavItem[] {
   return items
     .filter((item) => isAllowed(item.requiredPermission, effective))
     .map((item) => (item.children ? { ...item, children: pruneNavItems(item.children, effective) } : item))

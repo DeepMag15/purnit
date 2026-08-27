@@ -1,4 +1,4 @@
-import type { BlueprintRoleDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef } from "@purnit/manifest-schema";
 
 /**
  * Resolves a role's final flat permission set from a base (inherited/parent)

@@ -1,0 +1,67 @@
+// Core Workspace Modules, Phase 3, Submodule 1: Calendar & Scheduling.
+// Covers calendar entries NOT already handled by Meeting (participant-invite
+// scheduled calls) or Task.dueDate (a task's own deadline) — company
+// holidays, department town halls, personal reminders/deadlines.
+model CalendarEvent {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  authorId     String    @map("author_id") @db.Uuid
+  // true = personal, visible only to authorId (own scope, always paired with
+  // departmentId=null). false = broadcast, ancestor-chain visibility mirrors
+  // Announcement exactly. Deliberately its own field rather than overloading
+  // departmentId's nullability — departmentId=null already means "tenant-wide
+  // broadcast" for isPrivate=false rows, and this codebase has hit the
+  // "collapsing two meanings onto one nullable field" bug class for real
+  // twice already (isRowInScope's "own is a floor" fix, tasksWhere's
+  // assigned-to-me-must-OR fix).
+  isPrivate    Boolean   @default(true) @map("is_private")
+  // Meaningful only when isPrivate=false: null = tenant-wide broadcast
+  // (calendarEvent:create:tenant), non-null = this department + its full
+  // descendant subtree. No FK — same app-layer-scoped-target treatment as
+  // Announcement.departmentId/Meeting.departmentId.
+  departmentId String?   @map("department_id") @db.Uuid
+  title        String
+  description  String?
+  startAt      DateTime  @map("start_at")
+  // Nullable — a point-in-time marker (e.g. a submission deadline) has no
+  // real end; a ranged block (e.g. a town hall) does. Same optionality
+  // reasoning as Task.dueDate.
+  endAt        DateTime? @map("end_at")
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, authorId])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, startAt])
+  @@map("calendar_events")
+}
+
+// Outbox pattern, mirrors EmbeddingJob's shape/pattern exactly (polymorphic
+// sourceType/sourceId, status/attempts/lastError/availableAt, same compound
+// index) — polled by CalendarReminderProcessorService. One deliberate
+// addition vs. EmbeddingJob: recipientUserId — a reminder is inherently
+// per-person (each recipient gets their own Notification + email), unlike
+// embedding a document.
+model CalendarReminder {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  // "meeting" | "calendarEvent" | "task" — free-text vocabulary, same
+  // treatment as EmbeddingJob.sourceType/Task.status.
+  sourceType      String   @map("source_type")
+  sourceId        String   @map("source_id") @db.Uuid
+  recipientUserId String   @map("recipient_user_id") @db.Uuid
+  status          String   @default("pending")
+  attempts        Int      @default(0)
+  lastError       String?  @map("last_error")
+  // Always explicitly computed (startAt - reminderMinutesBefore) at enqueue
+  // time — no @default(now()), unlike EmbeddingJob, since this row is never
+  // meant to fire "as soon as possible."
+  availableAt     DateTime @map("available_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, status, availableAt])
+  @@map("calendar_reminders")
+}

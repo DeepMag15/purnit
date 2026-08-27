@@ -1,5 +1,5 @@
 import { applyKeyedListPatch, applyOverrides } from "./override-applier";
-import type { BlueprintDefinition, NavItem } from "@antigravity/manifest-schema";
+import type { BlueprintDefinition, NavItem } from "@purnit/manifest-schema";
 
 function sampleBlueprint(): BlueprintDefinition {
   return {

@@ -1,4 +1,4 @@
-import type { BlueprintRoleDef, DepartmentTypeDef } from "@antigravity/manifest-schema";
+import type { BlueprintRoleDef, DepartmentTypeDef } from "@purnit/manifest-schema";
 import { Prisma } from "../generated/prisma/client";
 import type { PrismaClient, Role } from "../generated/prisma/client";
 import type { PrismaTx } from "../tenancy/tenant-prisma.service";
@@ -12,6 +12,12 @@ import { resolveBlueprintRoles } from "../rbac/grant-resolution";
  * created) and `seed.ts`'s existing-tenant re-sync (missing roles get
  * created, existing ones get their `label`/`permissions`/`extendsRoleId`
  * refreshed) — the exact same code path, so the two can never drift apart.
+ *
+ * `rank` is deliberately NOT in the update branch's `data` — it's set once
+ * from the blueprint def when a role is first created, then left alone on
+ * every subsequent reseed, so a Company Admin's own manual reordering
+ * (`role.reorder`) survives every future `pnpm run prisma:seed`. Do not add
+ * it there by analogy with label/permissions/extendsRoleId.
  *
  * Relies on `resolveBlueprintRoles`'s dependency ordering: a role's parent
  * is always processed (and so already present in `byBlueprintId`) before
@@ -31,6 +37,7 @@ export async function materializeBlueprintRoles(
   const existingByBlueprintId = new Map(existing.map((r) => [r.sourceBlueprintRoleId!, r]));
 
   const byBlueprintId = new Map<string, Role>();
+  let fallbackRank = 0;
   for (const { id, permissions } of resolved) {
     const def = defById.get(id)!;
     const parent = def.extends ? byBlueprintId.get(def.extends) : undefined;
@@ -42,10 +49,18 @@ export async function materializeBlueprintRoles(
           data: { label: def.label, permissions, extendsRoleId: parent?.id ?? null },
         })
       : await tx.role.create({
-          data: { tenantId, label: def.label, sourceBlueprintRoleId: id, extendsRoleId: parent?.id ?? null, permissions },
+          data: {
+            tenantId,
+            label: def.label,
+            sourceBlueprintRoleId: id,
+            extendsRoleId: parent?.id ?? null,
+            permissions,
+            rank: def.rank ?? fallbackRank,
+          },
         });
 
     byBlueprintId.set(id, role);
+    fallbackRank++;
   }
   return byBlueprintId;
 }

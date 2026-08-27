@@ -1,0 +1,21 @@
+/// Finance Domain, Phase A. An append-only ledger — deliberately no
+/// `updatedAt`/`deletedAt`. A correction is a new (possibly negative)
+/// payment row, never an edit — the standard accounting practice for an
+/// audit trail that must never silently change after the fact. `amount` is
+/// `Int` cents, same convention as `Invoice`'s money fields.
+model Payment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  invoiceId    String   @map("invoice_id") @db.Uuid
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id])
+  amount       Int
+  method       String // free-text: cash/check/credit_card/bank_transfer/other, no DB enum
+  paidAt       DateTime @map("paid_at")
+  recordedById String   @map("recorded_by_id") @db.Uuid
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, invoiceId])
+  @@map("payments")
+}

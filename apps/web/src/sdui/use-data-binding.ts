@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BindExpr, DataBinding, UINode } from "@antigravity/manifest-schema";
+import type { BindExpr, DataBinding, UINode } from "@purnit/manifest-schema";
 import { useRenderContext } from "./render-context";
 import { useFilterState } from "./filter-state";
 import { getByPath } from "./interpolate";

@@ -61,6 +61,32 @@ export class SupabaseAdminService {
     await this.client.auth.admin.deleteUser(authUserId);
   }
 
+  /** Enterprise SSO — the mechanism that lets a Keycloak-brokered login end
+   * in a REAL Supabase session, so `custom_access_token_hook` fires exactly
+   * as it does for password logins and `tenant_id`/`permissions_hash` land
+   * on the JWT with zero changes to jwt-verifier.service.ts or the hook
+   * itself. `hashedToken` is a fully-authenticating bearer credential until
+   * consumed by `verifyMagicLinkOtp` below — callers must never log it or
+   * return it in any response, and must consume it within the same request. */
+  async generateMagicLink(email: string): Promise<{ hashedToken: string }> {
+    const { data, error } = await this.client.auth.admin.generateLink({ type: "magiclink", email });
+    if (error || !data.properties?.hashed_token) {
+      throw new Error(`Failed to generate SSO session link: ${error?.message ?? "unknown error"}`);
+    }
+    return { hashedToken: data.properties.hashed_token };
+  }
+
+  /** Consumes a `generateMagicLink` token — `type: "email"` here is correct
+   * even though the link above was generated with `type: "magiclink"`; this
+   * is Supabase's own asymmetry between the two calls, not a typo. */
+  async verifyMagicLinkOtp(hashedToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    const { data, error } = await this.client.auth.verifyOtp({ token_hash: hashedToken, type: "email" });
+    if (error || !data.session) {
+      throw new Error(`Failed to verify SSO session link: ${error?.message ?? "unknown error"}`);
+    }
+    return { accessToken: data.session.access_token, refreshToken: data.session.refresh_token };
+  }
+
   /** Returns a short-lived signed upload URL + the eventual public URL for
    * `path` — the caller (a mutation) never handles the file's bytes itself;
    * the browser uploads directly to Storage using this URL, keeping the

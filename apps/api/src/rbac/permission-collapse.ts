@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { parsePermissionString, type Scope } from "@antigravity/manifest-schema";
+import { parsePermissionString, type Scope } from "@purnit/manifest-schema";
 import { broaderScope } from "./scope";
 
 export interface EffectivePermissions {

@@ -4,6 +4,8 @@ import type { MutationDefinition } from "../../mutations/mutation-registry.servi
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
 import { isRoleAssignableBy } from "../../rbac/role-hierarchy";
+import { logAudit } from "../../audit/log-audit";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Pure, exported, unit-testable — `ownSubtreeIds` is the department-being-
  * reparented's own subtree (its id plus every descendant, per
@@ -45,7 +47,9 @@ export const departmentCreateMutation: MutationDefinition<z.infer<typeof CreateD
       const parent = await tx.department.findFirst({ where: { id: input.parentId, tenantId: ctx.tenantId } });
       if (!parent) throw new BadRequestException(`No department "${input.parentId}" in this tenant`);
     }
-    return tx.department.create({ data: { tenantId: ctx.tenantId, name: input.name, parentId: input.parentId, type: input.type } });
+    const department = await tx.department.create({ data: { tenantId: ctx.tenantId, name: input.name, parentId: input.parentId, type: input.type } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "department", department.id); // AI RAG Phase C
+    return department;
   },
 };
 
@@ -107,7 +111,7 @@ export const departmentUpdateMutation: MutationDefinition<z.infer<typeof UpdateD
       }
     }
 
-    return tx.department.update({
+    const updated = await tx.department.update({
       where: { id: input.id },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
@@ -115,6 +119,8 @@ export const departmentUpdateMutation: MutationDefinition<z.infer<typeof UpdateD
         ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "department", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -168,7 +174,13 @@ export const departmentDeleteMutation: MutationDefinition<z.infer<typeof DeleteD
     });
     if (blockerMessage) throw new ConflictException(blockerMessage);
 
-    return tx.department.delete({ where: { id: input.id } });
+    const deleted = await tx.department.delete({ where: { id: input.id } });
+
+    // Audit Logs (module 6 of 6) — org-structure deletes are one of the
+    // bounded, high-value categories this module exists for.
+    await logAudit(tx, ctx, { action: "department.delete", resource: "department", resourceId: input.id, before: { name: department.name } });
+
+    return deleted;
   },
 };
 
@@ -204,7 +216,9 @@ export const teamCreateMutation: MutationDefinition<z.infer<typeof CreateTeamInp
 
     const department = await tx.department.findFirst({ where: { id: input.departmentId, tenantId: ctx.tenantId } });
     if (!department) throw new BadRequestException(`No department "${input.departmentId}" in this tenant`);
-    return tx.team.create({ data: { tenantId: ctx.tenantId, name: input.name, departmentId: input.departmentId } });
+    const team = await tx.team.create({ data: { tenantId: ctx.tenantId, name: input.name, departmentId: input.departmentId } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "team", team.id); // AI RAG Phase C
+    return team;
   },
 };
 
@@ -235,7 +249,9 @@ export const teamUpdateMutation: MutationDefinition<z.infer<typeof UpdateTeamInp
     if (!team) throw new NotFoundException(`No team "${input.id}"`);
     await assertCanManageTeam(tx, ctx, team);
 
-    return tx.team.update({ where: { id: input.id }, data: { name: input.name } });
+    const updated = await tx.team.update({ where: { id: input.id }, data: { name: input.name } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "team", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -269,7 +285,9 @@ export const teamMoveToDepartmentMutation: MutationDefinition<z.infer<typeof Mov
       throw new ForbiddenException("Not allowed to move a team outside your own subtree");
     }
 
-    return tx.team.update({ where: { id: input.id }, data: { departmentId: input.departmentId } });
+    const updated = await tx.team.update({ where: { id: input.id }, data: { departmentId: input.departmentId } });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "team", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -304,7 +322,11 @@ export const teamDeleteMutation: MutationDefinition<z.infer<typeof DeleteTeamInp
     });
     if (blockerMessage) throw new ConflictException(blockerMessage);
 
-    return tx.team.delete({ where: { id: input.id } });
+    const deleted = await tx.team.delete({ where: { id: input.id } });
+
+    await logAudit(tx, ctx, { action: "team.delete", resource: "team", resourceId: input.id, before: { name: team.name } });
+
+    return deleted;
   },
 };
 

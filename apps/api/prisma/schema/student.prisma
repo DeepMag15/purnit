@@ -1,0 +1,61 @@
+/// Education Domain, Phase A — the platform's second non-IT industry
+/// blueprint. Deliberately NO backing "chart" Project (unlike Patient) —
+/// Course, not Student, owns the shared-materials Project in this domain
+/// (see course.prisma's own doc comment for why).
+///
+/// **Student Role (2026-08-25) — Student is now optionally login-capable.**
+/// Phase A recorded it as non-login "by design", because
+/// MeetingParticipant/ProjectMember/RoleAssignment only ever resolve against
+/// real User rows and a Student had none. That was right while nobody signed
+/// in as a student; it became the single thing blocking a student from
+/// reaching their own courses, assignments or grades, all of which key off
+/// `studentId`.
+///
+/// `userId` is the whole seam. **Nullable** because a Registrar registering a
+/// student is still the normal case and must keep working untouched — a login
+/// may come later, or never. **Unique** because one login maps to exactly one
+/// student record. Every existing query is unaffected: nothing filters on it,
+/// and staff-facing scope resolution still runs through `studentsWhere`.
+model Student {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  /// The login this student signs in with, when they have one. See the model
+  /// comment — nullable and unique, and never used to widen staff scope.
+  userId         String?   @unique @map("user_id") @db.Uuid
+  /// Contextual Reporting (2026-08-25) — the student's own file: enrolment
+  /// forms, transcripts, the paperwork a Registrar keeps. Backed by a Project
+  /// for the same reason Patient/Course/Client are: Documents and Comments
+  /// attach for free through machinery that already resolves scope correctly.
+  ///
+  /// ⚠️ Phase A deliberately deferred this, noting "a per-Student individual
+  /// document file edges into student-record privacy". That caution was right
+  /// and is only partly answered: `projectsWhere` at tenant scope returns
+  /// every project, so any Education role holding `project:read:tenant` —
+  /// Teacher and Teaching Assistant included — can see these files. If
+  /// student paperwork should be registrar-only, that needs a real
+  /// project-level visibility mechanism, which does not exist yet. Recorded
+  /// here rather than discovered later.
+  ///
+  /// Nullable: students registered before this shipped have none, and are
+  /// backfilled lazily on first use rather than by a migration that would
+  /// create a Project row for every historical student.
+  filesProjectId String?   @unique @map("files_project_id") @db.Uuid
+  name           String
+  dateOfBirth    DateTime? @map("date_of_birth")
+  contactPhone   String?   @map("contact_phone")
+  contactEmail   String?   @map("contact_email")
+  // Free-text vocabulary, no DB enum — same treatment as Patient.status.
+  // UI-documented set: "active" | "graduated" | "withdrawn".
+  status         String    @default("active")
+  registeredById String    @map("registered_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  enrollments Enrollment[]
+  grades      Grade[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("students")
+}

@@ -20,16 +20,62 @@ model AiConversation {
 }
 
 model AiMessage {
-  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String         @map("tenant_id") @db.Uuid
-  conversationId String         @map("conversation_id") @db.Uuid
-  conversation   AiConversation @relation(fields: [conversationId], references: [id])
-  // "user" | "assistant" — no "tool" role until real tool-calling ships.
-  role           String
-  content        String
-  usage          Json?
-  createdAt      DateTime       @default(now()) @map("created_at")
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String              @map("tenant_id") @db.Uuid
+  conversationId   String              @map("conversation_id") @db.Uuid
+  conversation     AiConversation      @relation(fields: [conversationId], references: [id])
+  // "user" | "assistant" | "tool" — validated by AiMessageRoleSchema
+  // (ai-assistant/ai-message-role.ts, Phase D), not an unconstrained string.
+  role             String
+  content          String
+  usage            Json?
+  createdAt        DateTime            @default(now()) @map("created_at")
+  toolCallProposal AiToolCallProposal?
 
   @@index([tenantId, conversationId, createdAt])
+  // AI Assistant Phase F — serves assertUnderAiDailyCap's per-tenant,
+  // per-day COUNT; the index above leads with conversationId so it can't
+  // serve a tenant-wide date-range count efficiently on its own.
+  @@index([tenantId, role, createdAt])
   @@map("ai_messages")
+}
+
+// Phase D (tool-calling). One row per assistant-proposed tool call, created
+// by aiMessage.send when the model's response includes a tool call, and
+// resolved synchronously by aiToolCall.confirm — no background poller,
+// unlike EmbeddingJob/CalendarReminder, since there's no "claimed but not
+// yet processed" window here. Kept as its own table rather than fields on
+// AiMessage: AiMessage rows are create-only/immutable everywhere else in
+// this codebase (never a single .update() call anywhere) — layering mutable
+// workflow state onto that same row would conflate "what the model said"
+// (a historical transcript) with "what has since happened as a result."
+// `messageId @unique` also mechanically enforces the v1 scope cut of at
+// most one tool call per assistant turn.
+model AiToolCallProposal {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  messageId      String    @unique @map("message_id") @db.Uuid
+  message        AiMessage @relation(fields: [messageId], references: [id])
+  // Must resolve via MutationRegistry.get() AND appear in AI_TOOL_ALLOWLIST
+  // at confirm time — re-checked fresh, never trusted from this stored
+  // string alone (see ai-tool-call.mutations.ts).
+  mutationName   String    @map("mutation_name")
+  // The model's proposed arguments, exactly as returned by the provider —
+  // unvalidated at propose-time storage; re-parsed fresh against the
+  // target mutation's own Zod schema at confirm time.
+  input          Json
+  // "pending" | "executed" — deliberately thin, no attempts/lastError/
+  // availableAt backoff like EmbeddingJob: confirmation and execution
+  // happen synchronously in one request, so there's no poller-tracked
+  // in-flight window. A confirm attempt that errors rolls back the whole
+  // transaction (including any status write), so the row just stays
+  // "pending" and is safely retryable.
+  status         String    @default("pending")
+  resultSummary  String?   @map("result_summary")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  @@index([tenantId, conversationId])
+  @@map("ai_tool_call_proposals")
 }

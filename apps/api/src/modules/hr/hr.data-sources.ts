@@ -19,6 +19,28 @@ async function scopedDepartmentIds(tx: PrismaTx, ctx: DataSourceContext): Promis
   return ctx.userDepartmentId ? [ctx.userDepartmentId] : [];
 }
 
+/**
+ * AI RAG Phase C — the reusable `xWhere`-style scope functions this module
+ * never had before (every other module's own data-sources already has
+ * one). Built on the existing `scopedDepartmentIds` primitive, same as
+ * `departmentsListDataSource`/`teamsListDataSource` above. HR's own RAG
+ * content is Department/Team rows, not `User` rows — confirmed directly:
+ * this module has no roster/User query anywhere.
+ */
+export async function hrDepartmentWhere(tx: PrismaTx, ctx: DataSourceContext, extra: Record<string, unknown> = {}): Promise<Record<string, unknown> | null> {
+  const scope = ctx.effective.has("department", "manage");
+  if (!scope) return null;
+  const ids = await scopedDepartmentIds(tx, ctx);
+  return { tenantId: ctx.tenantId, archivedAt: null, ...(ids === null ? {} : { id: { in: ids } }), ...extra };
+}
+
+export async function hrTeamWhere(tx: PrismaTx, ctx: DataSourceContext, extra: Record<string, unknown> = {}): Promise<Record<string, unknown> | null> {
+  const scope = ctx.effective.has("department", "manage");
+  if (!scope) return null;
+  const ids = await scopedDepartmentIds(tx, ctx);
+  return { tenantId: ctx.tenantId, archivedAt: null, ...(ids === null ? {} : { departmentId: { in: ids } }), ...extra };
+}
+
 const ListDepartmentsParamsSchema = z.object({ includeArchived: z.boolean().optional() });
 
 export const departmentsListDataSource: DataSourceDefinition<z.infer<typeof ListDepartmentsParamsSchema>> = {
@@ -87,5 +109,28 @@ export const departmentTypesListDataSource: DataSourceDefinition<z.infer<typeof 
   async resolve(_params, ctx, tx) {
     const rows = await tx.departmentTypeRoleLabel.findMany({ where: { tenantId: ctx.tenantId }, select: { departmentType: true }, distinct: ["departmentType"] });
     return rows.map((r) => ({ id: r.departmentType }));
+  },
+};
+
+const HrCapabilitiesParamsSchema = z.object({});
+
+/** Frontend Redesign Phase 04 — `OrgStructure.tsx`'s move off the generic
+ * Renderer loses the `actions` prop its edit controls currently check. 11 of
+ * its 13 gated mutations (every `department.*`/`team.*` one) declare
+ * `requiredPermission: "department:manage"` — one `canManageDepartment` flag
+ * genuinely covers them. But `user.assignDepartment`/`user.setManager`
+ * (confirmed directly against `users.mutations.ts`, not assumed from the
+ * shared "org placement" framing) declare `"user:manage"`, a different real
+ * resource — the same `canBrowseOrg`/`canBrowseProjects`-style split Phase
+ * 03 needed for Analytics. No `requiredPermission` of its own (callable by
+ * anyone), same precedent as `analytics.capabilities`. */
+export const hrCapabilitiesDataSource: DataSourceDefinition<z.infer<typeof HrCapabilitiesParamsSchema>> = {
+  name: "hr.capabilities",
+  paramsSchema: HrCapabilitiesParamsSchema,
+  async resolve(_params, ctx) {
+    return {
+      canManageDepartment: ctx.effective.has("department", "manage") !== null,
+      canManageUserAssignment: ctx.effective.has("user", "manage") !== null,
+    };
   },
 };

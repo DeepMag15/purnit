@@ -87,7 +87,7 @@ export const rolesListDataSource: DataSourceDefinition<z.infer<typeof ListRolesP
   paramsSchema: ListRolesParamsSchema,
   requiredPermission: "user:manage",
   async resolve(_params, ctx, tx) {
-    const roles = await tx.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { createdAt: "asc" } });
+    const roles = await tx.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: "asc" } });
     return roles.map((r) => ({ id: r.id, label: r.label }));
   },
 };

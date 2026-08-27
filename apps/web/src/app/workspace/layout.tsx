@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import { useRouter, usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
-import type { WorkspaceManifest } from "@antigravity/manifest-schema";
+import type { WorkspaceManifest } from "@purnit/manifest-schema";
 import { getAccessToken, clearAccessToken } from "../../lib/session";
 import { getWorkspaceBootstrap, getWorkspacePage, ApiError, callDataSource, callMutation, clearManifestCache } from "../../lib/api-client";
 import { RenderContextProvider } from "../../sdui/render-context";
@@ -12,15 +12,20 @@ import { collectSourceBindings, dataSourceQueryKey, resolveBindExpr } from "../.
 import { BootstrapContextProvider } from "./bootstrap-context";
 import { registerAllComponents } from "../../sdui/register-all";
 import { NotificationBell } from "../../modules/notifications/NotificationBell";
+import { usePresenceHeartbeat } from "../../modules/presence/usePresenceHeartbeat";
 import { AiPanel } from "../../modules/ai/AiPanel";
+import { BlueprintPageDialog } from "../../sdui/BlueprintPageDialog";
 import { Icon } from "../../ui/Icon";
 import { Dropdown, DropdownItem } from "../../ui/Dropdown";
 import { CommandPalette, type CommandItem } from "../../ui/CommandPalette";
+import { Tooltip } from "../../ui/Tooltip";
+import { Breadcrumbs } from "../../ui/Breadcrumbs";
 import { Skeleton } from "../../ui/Skeleton";
 import { Alert } from "../../ui/Alert";
 import { cn } from "../../ui/utils";
 import { WorkspaceSidebar, hrefForNavItem } from "../../ui/WorkspaceSidebar";
-import { flattenNavItems } from "../../ui/nav-tree";
+import { flattenNavItems, findNavPath } from "../../ui/nav-tree";
+import { getQuickCreateItems } from "../../lib/quick-create";
 
 // Persisted across navigation/reload — same reasoning as lib/session.ts's
 // access-token storage (a plain UI preference, not sensitive, doesn't need
@@ -40,9 +45,12 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [aiPanelPreset, setAiPanelPreset] = useState<string | undefined>();
   const [aiPanelContext, setAiPanelContext] = useState<unknown>();
+  const [blueprintModalPageId, setBlueprintModalPageId] = useState<string | null>(null);
+  const [blueprintModalVariant, setBlueprintModalVariant] = useState<"modal" | "drawer">("modal");
 
   // Performance pass 2 (CONTEXT.md §48): hover-intent prefetch. `next/link`
   // (WorkspaceSidebar) already prefetches the target route's JS bundle; this
@@ -77,6 +85,27 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true") setCollapsed(true);
   }, []);
 
+  // Presence & Status (module 4 of 6) — gated on `manifest` (mirrors every
+  // other authenticated-only effect here), not `getAccessToken()` directly:
+  // no point heartbeating before the workspace has actually loaded.
+  usePresenceHeartbeat(!!manifest);
+
+  // Owns the Cmd/Ctrl+K shortcut — moved here from CommandPalette itself
+  // (Phase E) now that it's a controlled open/onClose component, matching
+  // Dialog's own contract: the parent decides *when* it opens (this
+  // shortcut, or the new visible header search button below), the overlay
+  // itself still self-manages Escape-to-close.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   function toggleCollapsed() {
     setCollapsed((current) => {
       const next = !current;
@@ -108,12 +137,14 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadBootstrap is stable in intent (only reads router/getAccessToken); re-running on every render would defeat the point of a manual refetchBootstrap
   }, [router]);
 
+  const quickCreateItems = useMemo(() => (manifest ? getQuickCreateItems(manifest) : []), [manifest]);
+
   const commandItems: CommandItem[] = useMemo(() => {
     if (!manifest) return [];
     // Flattened so nested leaves (e.g. under "HR"/"Workspace Administration")
     // are reachable via Cmd/Ctrl+K too; pure disclosure groups (no pageId)
     // aren't navigable, so they're filtered out rather than palette rows.
-    return flattenNavItems(manifest.navigation)
+    const navItems: CommandItem[] = flattenNavItems(manifest.navigation)
       .filter((item) => item.pageId !== undefined)
       .map((item) => ({
         id: item.id,
@@ -121,7 +152,16 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
         icon: item.icon,
         onSelect: () => router.push(hrefFor(manifest, item.pageId)!),
       }));
-  }, [manifest, router]);
+    // Quick actions in the same flat list as navigation, matching Round 3's
+    // "one control, every create action" doctrine.
+    const quickActions: CommandItem[] = quickCreateItems.map((item) => ({
+      id: `quick-create.${item.id}`,
+      label: item.label,
+      icon: item.icon,
+      onSelect: () => router.push(item.href),
+    }));
+    return [...quickActions, ...navItems];
+  }, [manifest, router, quickCreateItems]);
 
   // Performance pass 2 (CONTEXT.md §48): both context values used to be
   // fresh object literals constructed inline in JSX on every render of this
@@ -142,6 +182,10 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     setAiPanelContext(context);
     setAiPanelOpen(true);
   }, []);
+  const openBlueprintModal = useCallback((pageId: string, variant: "modal" | "drawer") => {
+    setBlueprintModalVariant(variant);
+    setBlueprintModalPageId(pageId);
+  }, []);
   const renderContextValue = useMemo(() => {
     if (!manifest) return null;
     return {
@@ -153,8 +197,9 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
       refetchBootstrap: loadBootstrap,
       openAiPanel,
       aiAvailable: manifest.aiAvailable,
+      openBlueprintModal,
     };
-  }, [manifest, navigate, loadBootstrap, openAiPanel]);
+  }, [manifest, navigate, loadBootstrap, openAiPanel, openBlueprintModal]);
   const bootstrapContextValue = useMemo(() => (manifest ? { manifest } : null), [manifest]);
 
   if (error) {
@@ -221,7 +266,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 
           <aside
             className={cn(
-              "z-40 flex w-sidebar-width shrink-0 flex-col overflow-hidden border-r border-border bg-surface p-3 transition-[width,transform] duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0",
+              "z-40 flex w-sidebar-width shrink-0 flex-col overflow-hidden border-r border-border bg-surface-sunk p-3 transition-[width,transform] duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0",
               "fixed inset-y-0 left-0",
               drawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
               collapsed ? "md:w-sidebar-collapsed" : "md:w-sidebar-width",
@@ -253,7 +298,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={toggleCollapsed}
-              className="hidden h-8 w-full shrink-0 items-center justify-center rounded-md border border-border text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text md:flex"
+              className="hidden h-8 w-full shrink-0 items-center justify-center rounded-md border border-border text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text md:flex"
             >
               <Icon name={collapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"} size={16} />
             </button>
@@ -261,17 +306,68 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="glass-panel sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border px-4">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <button type="button" className="text-text-muted md:hidden" onClick={() => setDrawerOpen(true)}>
                   <Icon name="menu" size={20} />
                 </button>
+                <Breadcrumbs path={findNavPath(manifest.navigation, manifest, pathname)} onNavigate={navigate} />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCommandPaletteOpen(true)}
+                  className="interactive-press flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-xs text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
+                >
+                  <Icon name="search" size={15} />
+                  <span className="hidden sm:inline">Search</span>
+                  <kbd className="hidden rounded border border-border px-1 py-0.5 text-[10px] text-text-muted sm:inline">⌘K</kbd>
+                </button>
+                {quickCreateItems.length > 0 && (
+                  <Dropdown
+                    align="end"
+                    trigger={({ toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        className="interactive-press flex h-8 items-center gap-1.5 rounded-md bg-text px-2.5 text-xs font-semibold text-bg transition-colors duration-[var(--duration-fast)] hover:opacity-90"
+                      >
+                        <Icon name="add" size={15} />
+                        <span className="hidden sm:inline">New</span>
+                      </button>
+                    )}
+                  >
+                    {({ close }) => (
+                      <>
+                        {quickCreateItems.map((item) => (
+                          <DropdownItem
+                            key={item.id}
+                            onClick={() => {
+                              close();
+                              router.push(item.href);
+                            }}
+                          >
+                            <Icon name={item.icon} size={15} />
+                            {item.label}
+                          </DropdownItem>
+                        ))}
+                      </>
+                    )}
+                  </Dropdown>
+                )}
+                <Tooltip content={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+                  <button
+                    type="button"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
+                  >
+                    <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={16} />
+                  </button>
+                </Tooltip>
                 {manifest.aiAvailable && (
                   <button
                     type="button"
                     onClick={() => openAiPanel()}
-                    className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+                    className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-text-muted transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover hover:text-text"
                   >
                     <Icon name="auto_awesome" size={15} />
                     Ask AI
@@ -290,20 +386,30 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
                     </button>
                   )}
                 >
-                  {({ close }) => (
+                  {() => (
                     <>
                       <div className="border-b border-border px-3 py-2">
-                        <div className="truncate text-sm font-medium text-text">{manifest.user.displayName}</div>
+                        <div className="flex items-center gap-2">
+                          {logoUrl ? (
+                            <img src={logoUrl} alt="" className="h-5 w-5 shrink-0 rounded object-contain" />
+                          ) : (
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-accent text-[9px] font-semibold text-accent-fg">
+                              {tenantInitials}
+                            </span>
+                          )}
+                          <span className="truncate text-xs font-medium text-text-muted">{manifest.tenant.name}</span>
+                        </div>
+                        <div className="mt-1.5 truncate text-sm font-medium text-text">{manifest.user.displayName}</div>
                         <div className="truncate text-xs text-text-muted">{manifest.user.roles.join(", ")}</div>
                       </div>
-                      <DropdownItem
-                        onClick={() => {
-                          setTheme(theme === "dark" ? "light" : "dark");
-                          close();
-                        }}
-                      >
-                        <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} size={15} />
-                        {theme === "dark" ? "Light mode" : "Dark mode"}
+                      {/* Role-Based Workspaces, Stage D — personal settings
+                        * live here, not in the sidebar. The sidebar's Settings
+                        * entry is now workspace administration and gated on
+                        * `settings:manage`; this is everyone's own account and
+                        * needs no permission. */}
+                      <DropdownItem onClick={() => router.push("/workspace/account")}>
+                        <Icon name="account_circle" size={15} />
+                        Account settings
                       </DropdownItem>
                       <DropdownItem danger onClick={handleLogout}>
                         <Icon name="logout" size={15} />
@@ -318,8 +424,9 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
             <main className="flex-1 p-4 md:p-6">{children}</main>
           </div>
         </div>
-        <CommandPalette items={commandItems} />
+        <CommandPalette items={commandItems} open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
         <AiPanel open={aiPanelOpen} onClose={() => setAiPanelOpen(false)} preset={aiPanelPreset} context={aiPanelContext} />
+        <BlueprintPageDialog pageId={blueprintModalPageId} variant={blueprintModalVariant} onClose={() => setBlueprintModalPageId(null)} />
       </RenderContextProvider>
     </BootstrapContextProvider>
   );

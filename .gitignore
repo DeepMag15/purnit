@@ -4,6 +4,9 @@ build/
 .next/
 .env
 .env.local
+# Any backup of a real .env is still a real secret file.
+.env.bak
+.env.*.bak
 *.log
 *.tsbuildinfo
 .turbo/
@@ -17,3 +20,26 @@ apps/api/src/generated/
 
 # Third-party, downloaded (not authored here) — see infra/jitsi/README.md
 infra/jitsi/docker-jitsi-meet/
+
+# Live security-sweep artifacts (regenerated per run, never committed)
+scripts/security-sweep/mutation-map.json
+scripts/security-sweep/*-result.json
+scripts/security-sweep/browser-shots/
+
+# Internal working documents — the project's own state/history notes, kept
+# locally and deliberately not published. ARCHITECTURE.md (tracked) remains
+# the public technical design; see README.
+CONTEXT.md
+CHANGELOG.md
+
+# Claude Code local settings — personal, machine-specific tool state
+# (accumulated permission entries, absolute paths, session ids). The lock
+# file below was already ignored; the whole directory is local-only.
+.claude/settings.json
+.claude/settings.local.json
+
+# Captured auth tokens from manual API probing. Short-lived by nature and
+# never source; one was committed once (an expired end-user access token,
+# apps/api/.jwt-stage4) and this pattern is here so it cannot recur.
+.jwt-*
+*.jwt

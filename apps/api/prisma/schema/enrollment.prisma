@@ -1,0 +1,40 @@
+/// Education Domain, Phase A. The Student×Course join. Required because
+/// ProjectMember only accepts real User rows and Student has none — same
+/// reasoning that makes Appointment its own model rather than a
+/// MeetingParticipant extension. `finalGrade` is the course-level grade
+/// (report-card line), deliberately separate from Grade's per-assignment
+/// scores — a Student can be "enrolled" with no assignments graded yet, and
+/// a course can be graded overall before every individual assignment is.
+model Enrollment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  studentId    String   @map("student_id") @db.Uuid
+  student      Student  @relation(fields: [studentId], references: [id])
+  courseId     String   @map("course_id") @db.Uuid
+  course       Course   @relation(fields: [courseId], references: [id])
+  // Free-text vocabulary. UI-documented set: "enrolled" | "completed" | "dropped".
+  status       String   @default("enrolled")
+  finalGrade   String?  @map("final_grade")
+  /// Contextual Reporting (2026-08-25) — where this student submits work for
+  /// this course. Deliberately on Enrollment, not on Student or Course:
+  /// Course.materialsProjectId is *shared*, so a submission there would be
+  /// visible to every classmate, and a per-Student project would mix every
+  /// course together. The Student×Course join is the only place a private
+  /// per-course submission actually belongs.
+  ///
+  /// This is also the submission surface whose absence was disclosed when the
+  /// Student role shipped — "completion means graded" was a consequence of
+  /// there being nowhere to submit to.
+  ///
+  /// Nullable and created lazily on first submission: enrolling 2,000
+  /// students should not create 2,000 empty Project rows.
+  submissionsProjectId String? @unique @map("submissions_project_id") @db.Uuid
+  enrolledById String   @map("enrolled_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([studentId, courseId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, courseId])
+  @@map("enrollments")
+}

@@ -1,5 +1,7 @@
+import { NotFoundException } from "@nestjs/common";
 import { collapsePermissions } from "../../rbac/permission-collapse";
-import { tasksWhere } from "./tasks.data-sources";
+import { tasksWhere, taskDetailDataSource } from "./tasks.data-sources";
+import { restrictedProjectGate } from "../projects/projects.data-sources";
 import type { DataSourceContext } from "../../data-sources/data-source-registry.service";
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 
@@ -7,7 +9,35 @@ import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 // "department-subtree", the only branch that touches `tx` (see
 // department-subtree.ts). A real `PrismaTx` isn't needed to exercise the
 // pure branching logic this spec covers.
-const tx = {} as PrismaTx;
+/** `tasksWhere` resolves the caller's teammates at department/team scope —
+ * Task has no `assignee` relation, so the department's people are looked up
+ * rather than filtered on a join. Empty by default; the tests that care supply
+ * their own. */
+const tx = { user: { findMany: jest.fn().mockResolvedValue([]) } } as unknown as PrismaTx;
+
+/** A tx whose department has these people in it. */
+function txWithTeammates(ids: string[]) {
+  return { user: { findMany: jest.fn().mockResolvedValue(ids.map((id) => ({ id }))) } } as unknown as PrismaTx;
+}
+
+/** The two floors every non-own, non-tenant scope now carries, in order. */
+const MEMBER_FLOOR = { project: { members: { some: { userId: "u1" } } } };
+
+/**
+ * Documents module review — EVERY clause now carries the restricted-project
+ * gate, at every scope including `tenant`.
+ *
+ * Built by calling the real `restrictedProjectGate` rather than copying its
+ * shape, deliberately: a hand-written duplicate beside the thing it mirrors is
+ * two definitions of one rule, and the test would keep passing while they
+ * drifted. What each expectation below asserts is "the same gate
+ * `projectsWhere` applies", not a literal.
+ *
+ * `existing` is whatever a `departmentId` filter already put on `project`.
+ */
+function gateFor(grants: string[], userDepartmentId: string | null = null, existing: Record<string, unknown> = {}) {
+  return { project: { ...existing, AND: [restrictedProjectGate(context(grants, userDepartmentId))] } };
+}
 
 function context(grants: string[], userDepartmentId: string | null = null): DataSourceContext {
   return {
@@ -24,18 +54,24 @@ describe("tasksWhere", () => {
   });
 
   it("tenant scope filters only by tenantId", async () => {
-    expect(await tasksWhere(tx, context(["task:read:tenant"]), {})).toEqual({ tenantId: "t1", deletedAt: null });
+    expect(await tasksWhere(tx, context(["task:read:tenant"]), {})).toEqual({ tenantId: "t1", deletedAt: null, ...gateFor(["task:read:tenant"]) });
   });
 
   it("own scope filters by assigneeId (Task has no ownerId column)", async () => {
-    expect(await tasksWhere(tx, context(["task:read:own"]), {})).toEqual({ tenantId: "t1", deletedAt: null, assigneeId: "u1" });
+    expect(await tasksWhere(tx, context(["task:read:own"]), {})).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      ...gateFor(["task:read:own"]),
+    });
   });
 
   it("department/team scope includes both the owning project's departmentId AND tasks assigned to me", async () => {
     expect(await tasksWhere(tx, context(["task:read:department"], "d1"), {})).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
+      ...gateFor(["task:read:department"], "d1"),
     });
   });
 
@@ -49,7 +85,8 @@ describe("tasksWhere", () => {
     expect(await tasksWhere(tx, context(["task:read:team"], null), {})).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR],
+      ...gateFor(["task:read:team"], null),
     });
   });
 
@@ -58,8 +95,9 @@ describe("tasksWhere", () => {
     expect(where).toEqual({
       tenantId: "t1",
       deletedAt: null,
-      OR: [{ assigneeId: "u1" }, { project: { departmentId: "d1" } }],
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
       assigneeId: "teammate-1",
+      ...gateFor(["task:read:team"], "d1"),
     });
   });
 
@@ -68,6 +106,7 @@ describe("tasksWhere", () => {
       tenantId: "t1",
       deletedAt: null,
       status: "todo",
+      ...gateFor(["task:read:tenant"]),
     });
   });
 
@@ -93,5 +132,205 @@ describe("tasksWhere", () => {
   it("a client-supplied assigneeId is honored as-is under tenant scope", async () => {
     const where = await tasksWhere(tx, context(["task:read:tenant"]), { assigneeId: "teammate-1" });
     expect(where!.assigneeId).toBe("teammate-1");
+  });
+
+  // Phase B (Analytics filters): departmentId/projectId are applied before
+  // scope branching, so every scope path inherits them — including the
+  // early "own"/"tenant" returns, which a naive implementation could easily
+  // miss since they return before the OR-scope block runs.
+  it("a departmentId filter narrows tenant scope via the owning project's departmentId", async () => {
+    const where = await tasksWhere(tx, context(["task:read:tenant"]), { departmentId: "d9" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, ...gateFor(["task:read:tenant"], null, { departmentId: "d9" }) });
+  });
+
+  it("a departmentId filter is still applied under own scope, layered alongside the assigneeId floor", async () => {
+    const where = await tasksWhere(tx, context(["task:read:own"]), { departmentId: "d9" });
+    expect(where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      ...gateFor(["task:read:own"], null, { departmentId: "d9" }),
+    });
+  });
+
+  it("a departmentId filter is AND-ed alongside department/team scope's own OR condition, never replacing it", async () => {
+    const where = await tasksWhere(tx, context(["task:read:department"], "d1"), { departmentId: "d9" });
+    expect(where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      OR: [{ assigneeId: "u1" }, MEMBER_FLOOR, { project: { departmentId: "d1" } }],
+      ...gateFor(["task:read:department"], "d1", { departmentId: "d9" }),
+    });
+  });
+
+  /**
+   * ⚠️ A scope widening, pinned deliberately.
+   *
+   * Every condition above reads `project.departmentId`, which
+   * `project.create` leaves null by default — so a Lead could not SEE, and
+   * therefore could not review, their own team member's submitted work.
+   * Verified live before the fix.
+   */
+  it("includes tasks assigned to people in the caller's own department", async () => {
+    const where = await tasksWhere(txWithTeammates(["worker1", "worker2"]), context(["task:read:team"], "d1"), {});
+    expect(where!.OR).toContainEqual({ assigneeId: { in: ["worker1", "worker2"] } });
+  });
+
+  it("adds no assignee condition when the caller's department is empty", async () => {
+    const where = await tasksWhere(txWithTeammates([]), context(["task:read:team"], "d1"), {});
+    expect((where!.OR as Record<string, unknown>[]).some((c) => "assigneeId" in c && typeof c.assigneeId === "object")).toBe(false);
+  });
+
+  it("does not widen tenant scope, which already sees everything", async () => {
+    const teamTx = txWithTeammates(["worker1"]);
+    await tasksWhere(teamTx, context(["task:read:tenant"]), {});
+    expect((teamTx as unknown as { user: { findMany: jest.Mock } }).user.findMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ⚠️ Documents module review — the leak this closes.
+   *
+   * A student's submission is a Task in their own restricted submissions
+   * project, and its title names them. `projectsWhere` has gated restricted
+   * projects since Contextual Reporting; `tasksWhere` never consulted
+   * `restricted` at all, so another teacher holding `task:read:tenant` — the
+   * widest grant, and the one that returns before the OR-scope block below —
+   * saw every student's submission in the school.
+   */
+  it("applies the restricted-project gate at every scope, tenant included", async () => {
+    for (const [grants, dept] of [
+      [["task:read:tenant"], null],
+      [["task:read:own"], null],
+      [["task:read:team"], "d1"],
+      [["task:read:department"], "d1"],
+    ] as const) {
+      const where = await tasksWhere(tx, context([...grants], dept), {});
+      const project = where!.project as Record<string, unknown>;
+      expect(project).toBeDefined();
+      expect(project.AND).toEqual([restrictedProjectGate(context([...grants], dept))]);
+    }
+  });
+
+  it("a projectId filter is honored as a direct passthrough regardless of scope", async () => {
+    const where = await tasksWhere(tx, context(["task:read:tenant"]), { projectId: "p1" });
+    expect(where).toEqual({ tenantId: "t1", deletedAt: null, projectId: "p1", ...gateFor(["task:read:tenant"]) });
+  });
+});
+
+// Frontend Structural Redesign, Phase 0.
+describe("task.detail", () => {
+  it("throws NotFoundException when the actor has no task:read grant and no claim on the task", async () => {
+    // ⚠️ Comments review — no grant is no longer the end of the question. A
+    // Student holds no `task:read` at all and must still reach the task they
+    // were assigned, so the source now falls through to two ownership floors.
+    // Nothing here is assigned to or owned by the caller, so it is still 404.
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "someone-else" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1" }) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  /**
+   * ⚠️ The Student case, pinned end-to-end. Fixing Comments alone left the
+   * conversation reachable by API and unreachable by a person: this source
+   * still 404'd, so the page hosting the thread rendered "Task not found, or
+   * you don't have access to it."
+   */
+  it("lets the ASSIGNEE open their own task with no task:read grant at all", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "u1", title: "Essay" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "p1", name: "Submissions" }) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+      user: { findFirst: jest.fn().mockResolvedValue({ displayName: "Ana" }) },
+    } as unknown as PrismaTx;
+    // `project:read:own` is exactly what the Student blueprint grants — they own
+    // their submissions project and hold no `task:*` at all.
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["project:read:own"]), detailTx)).resolves.toMatchObject({ id: "tk1" });
+  });
+
+  it("still refuses a task whose project the actor cannot reach, assignee or not", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", projectId: "p1", assigneeId: "u1" }) },
+      // unreachable: assertProjectVisible finds nothing
+      project: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context([]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("throws NotFoundException when the task doesn't exist or is out of the actor's scope", async () => {
+    const detailTx = { task: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)).rejects.toThrow(NotFoundException);
+  });
+
+  it("scopes the lookup by the actor's own tasksWhere, merged with the requested id", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const detailTx = { task: { findFirst } } as unknown as PrismaTx;
+    await expect(taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:own"]), detailTx)).rejects.toThrow(NotFoundException);
+    // Inherits the restricted-project gate through tasksWhere, which is the
+    // point of merging onto it rather than rebuilding a clause here.
+    expect(findFirst.mock.calls[0]![0].where).toEqual({
+      tenantId: "t1",
+      deletedAt: null,
+      assigneeId: "u1",
+      id: "tk1",
+      ...gateFor(["task:read:own"]),
+    });
+  });
+
+  it("returns the task with resolved assignee/project names", async () => {
+    const detailTx = {
+      task: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: "tk1", title: "Fix bug", description: null, status: "todo", priority: "high", assigneeId: "u1", projectId: "p1" }),
+      },
+      user: { findFirst: jest.fn().mockResolvedValue({ displayName: "Alice" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const result = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as {
+      assigneeName: string | null;
+      projectName: string | null;
+    };
+
+    expect(result.assigneeName).toBe("Alice");
+    expect(result.projectName).toBe("Redesign");
+  });
+
+  it("returns a null assigneeName without querying user when the task is unassigned", async () => {
+    const userFindFirst = jest.fn();
+    const detailTx = {
+      task: {
+        findFirst: jest.fn().mockResolvedValue({ id: "tk1", title: "Unassigned", description: null, status: "todo", priority: "medium", assigneeId: null, projectId: "p1" }),
+      },
+      user: { findFirst: userFindFirst },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const result = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as { assigneeName: string | null };
+    expect(result.assigneeName).toBeNull();
+    expect(userFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("has no requiredPermission — visibility is enforced entirely by tasksWhere, same as tasks.list", () => {
+    expect(taskDetailDataSource.requiredPermission).toBeUndefined();
+  });
+
+  it("computes canUpdate from ctx.effective, not a hardcoded true", async () => {
+    const detailTx = {
+      task: { findFirst: jest.fn().mockResolvedValue({ id: "tk1", title: "Fix bug", assigneeId: null, projectId: "p1" }) },
+      project: { findFirst: jest.fn().mockResolvedValue({ name: "Redesign" }) },
+    } as unknown as PrismaTx;
+
+    const readOnly = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant"]), detailTx)) as { canUpdate: boolean };
+    expect(readOnly.canUpdate).toBe(false);
+
+    const editable = (await taskDetailDataSource.resolve({ id: "tk1" }, context(["task:read:tenant", "task:update:tenant"]), detailTx)) as {
+      canUpdate: boolean;
+    };
+    expect(editable.canUpdate).toBe(true);
   });
 });

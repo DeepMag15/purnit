@@ -8,6 +8,23 @@ import { WorkspaceSettings, WorkspaceSettingsSchema } from "../modules/settings/
 import { ChatWorkspace, ChatWorkspaceSchema } from "../modules/chat/ChatWorkspace";
 import { MeetingsWorkspace, MeetingsWorkspaceSchema } from "../modules/meetings/MeetingsWorkspace";
 import { AnnouncementsWorkspace, AnnouncementsWorkspaceSchema } from "../modules/announcements/AnnouncementsWorkspace";
+import { CalendarWorkspace, CalendarWorkspaceSchema } from "../modules/calendar/CalendarWorkspace";
+import { AttendanceWorkspace, AttendanceWorkspaceSchema } from "../modules/attendance/AttendanceWorkspace";
+import { RolesPermissionsWorkspace, RolesPermissionsWorkspaceSchema } from "../modules/roles/RolesPermissionsWorkspace";
+import { AnalyticsDashboard, AnalyticsDashboardSchema } from "../modules/analytics/AnalyticsDashboard";
+import { PatientsWorkspace, PatientsWorkspaceSchema } from "../modules/patients/PatientsWorkspace";
+import { AppointmentsWorkspace, AppointmentsWorkspaceSchema } from "../modules/appointments/AppointmentsWorkspace";
+import { StudentsWorkspace, StudentsWorkspaceSchema } from "../modules/students/StudentsWorkspace";
+import { CoursesWorkspace, CoursesWorkspaceSchema } from "../modules/courses/CoursesWorkspace";
+import { StudentCourses, StudentCoursesSchema } from "../modules/student-portal/StudentCourses";
+import { StudentAssignments, StudentAssignmentsSchema } from "../modules/student-portal/StudentAssignments";
+import { StudentProgress, StudentProgressSchema } from "../modules/student-portal/StudentProgress";
+import { ClientsWorkspace, ClientsWorkspaceSchema } from "../modules/clients/ClientsWorkspace";
+import { InvoicesWorkspace, InvoicesWorkspaceSchema } from "../modules/invoices/InvoicesWorkspace";
+import { SuppliersWorkspace, SuppliersWorkspaceSchema } from "../modules/suppliers/SuppliersWorkspace";
+import { InventoryItemsWorkspace, InventoryItemsWorkspaceSchema } from "../modules/inventory-items/InventoryItemsWorkspace";
+import { PurchaseOrdersWorkspace, PurchaseOrdersWorkspaceSchema } from "../modules/purchase-orders/PurchaseOrdersWorkspace";
+import { WorkOrdersWorkspace, WorkOrdersWorkspaceSchema } from "../modules/work-orders/WorkOrdersWorkspace";
 
 let registered = false;
 
@@ -25,4 +42,22 @@ export function registerAllComponents(): void {
   registerPrimitive("ChatWorkspace", 1, ChatWorkspaceSchema, ChatWorkspace);
   registerPrimitive("MeetingsWorkspace", 1, MeetingsWorkspaceSchema, MeetingsWorkspace);
   registerPrimitive("AnnouncementsWorkspace", 1, AnnouncementsWorkspaceSchema, AnnouncementsWorkspace);
+  registerPrimitive("CalendarWorkspace", 1, CalendarWorkspaceSchema, CalendarWorkspace);
+  registerPrimitive("AttendanceWorkspace", 1, AttendanceWorkspaceSchema, AttendanceWorkspace);
+  registerPrimitive("RolesPermissionsWorkspace", 1, RolesPermissionsWorkspaceSchema, RolesPermissionsWorkspace);
+  registerPrimitive("AnalyticsDashboard", 1, AnalyticsDashboardSchema, AnalyticsDashboard);
+  registerPrimitive("PatientsWorkspace", 1, PatientsWorkspaceSchema, PatientsWorkspace);
+  registerPrimitive("AppointmentsWorkspace", 1, AppointmentsWorkspaceSchema, AppointmentsWorkspace);
+  registerPrimitive("StudentsWorkspace", 1, StudentsWorkspaceSchema, StudentsWorkspace);
+  registerPrimitive("CoursesWorkspace", 1, CoursesWorkspaceSchema, CoursesWorkspace);
+  // Student Role — the learner-facing half of the Education domain.
+  registerPrimitive("StudentCourses", 1, StudentCoursesSchema, StudentCourses);
+  registerPrimitive("StudentAssignments", 1, StudentAssignmentsSchema, StudentAssignments);
+  registerPrimitive("StudentProgress", 1, StudentProgressSchema, StudentProgress);
+  registerPrimitive("ClientsWorkspace", 1, ClientsWorkspaceSchema, ClientsWorkspace);
+  registerPrimitive("InvoicesWorkspace", 1, InvoicesWorkspaceSchema, InvoicesWorkspace);
+  registerPrimitive("SuppliersWorkspace", 1, SuppliersWorkspaceSchema, SuppliersWorkspace);
+  registerPrimitive("InventoryItemsWorkspace", 1, InventoryItemsWorkspaceSchema, InventoryItemsWorkspace);
+  registerPrimitive("PurchaseOrdersWorkspace", 1, PurchaseOrdersWorkspaceSchema, PurchaseOrdersWorkspace);
+  registerPrimitive("WorkOrdersWorkspace", 1, WorkOrdersWorkspaceSchema, WorkOrdersWorkspace);
 }

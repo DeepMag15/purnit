@@ -1,0 +1,30 @@
+/// Manufacturing Domain, Phase A. Real FK to InventoryItem (the finished good
+/// being produced). `assignedToId` has no Prisma FK (same no-FK app-layer
+/// convention as `Course.teacherId`/`Patient.assignedDoctorId`), defaults to
+/// the creator on `workOrder.create` — a real, non-inert `:own` scope floor
+/// for Production Planner. `status` is a narrow workflow field
+/// (planned|in_progress|completed|cancelled); `workOrder.complete` is the ONE
+/// mutation allowed to move it to "completed" (runs the BOM stock math),
+/// gated on the distinct `workOrder:complete` permission (not `:update`) —
+/// the production-side half of this domain's segregation-of-duties control.
+model WorkOrder {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  itemId       String        @map("item_id") @db.Uuid
+  item         InventoryItem @relation(fields: [itemId], references: [id])
+  quantity     Int
+  status       String        @default("planned")
+  dueDate      DateTime      @map("due_date")
+  assignedToId String?       @map("assigned_to_id") @db.Uuid
+  notes        String?
+  createdById  String        @map("created_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  deletedAt    DateTime?     @map("deleted_at")
+
+  @@index([tenantId])
+  @@index([tenantId, itemId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedToId])
+  @@map("work_orders")
+}

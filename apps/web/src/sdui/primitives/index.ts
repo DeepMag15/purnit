@@ -21,7 +21,38 @@ import { EmptyState, EmptyStateSchema } from "./EmptyState";
 import { ChartSchema } from "./Chart";
 const Chart = dynamic(() => import("./Chart").then((m) => m.Chart));
 
-import { Table, TableSchema } from "./Table";
+// Phase C (Visual & Widget-Type Depth) — Treemap/Funnel/TimelineChart all
+// pull in recharts, same bundle-size reasoning as Chart above: schema
+// (plain Zod, no recharts import) stays static since registerPrimitive
+// validates props against it synchronously, only the component is lazy.
+import { TreemapSchema } from "./Treemap";
+const Treemap = dynamic(() => import("./Treemap").then((m) => m.Treemap));
+import { FunnelSchema } from "./Funnel";
+const Funnel = dynamic(() => import("./Funnel").then((m) => m.Funnel));
+import { TimelineChartSchema } from "./TimelineChart";
+const TimelineChart = dynamic(() => import("./TimelineChart").then((m) => m.TimelineChart));
+import { GanttChartSchema } from "./GanttChart";
+const GanttChart = dynamic(() => import("./GanttChart").then((m) => m.GanttChart));
+
+// Analytics Phase G — pulls in @dnd-kit/core, same bundle-size reasoning as
+// the recharts-based primitives above: schema stays static, component is lazy.
+import { KanbanBoardSchema } from "./KanbanBoard";
+const KanbanBoard = dynamic(() => import("./KanbanBoard").then((m) => m.KanbanBoard));
+
+// Platform UI/UX Redesign, Phase F — pulls in react-grid-layout, same
+// bundle-size reasoning as the primitives above: schema stays static
+// (needed synchronously by registerPrimitive), component is lazy.
+import { DashboardGridSchema } from "./DashboardGrid";
+const DashboardGrid = dynamic(() => import("./DashboardGrid").then((m) => m.DashboardGrid));
+
+// Hand-built (no recharts) — statically imported, same as Heatmap/List below.
+import { Heatmap, HeatmapSchema } from "./Heatmap";
+import { CalendarHeatmap, CalendarHeatmapSchema } from "./CalendarHeatmap";
+import { ProgressGoal, ProgressGoalSchema } from "./ProgressGoal";
+import { Leaderboard, LeaderboardSchema } from "./Leaderboard";
+import { ActivityFeed, ActivityFeedSchema } from "./ActivityFeed";
+
+import { Table, TableSchema, Table3, Table3Schema } from "./Table";
 import { List, ListSchema } from "./List";
 
 import { SearchBar, SearchBarSchema } from "./SearchBar";
@@ -56,7 +87,21 @@ export function registerCorePrimitives(): void {
   registerPrimitive("Chart", 1, ChartSchema, Chart);
 
   registerPrimitive("Table", 2, TableSchema, Table);
+  registerPrimitive("Table", 3, Table3Schema, Table3);
   registerPrimitive("List", 1, ListSchema, List);
+
+  // Phase C (Visual & Widget-Type Depth)
+  registerPrimitive("Treemap", 1, TreemapSchema, Treemap);
+  registerPrimitive("Funnel", 1, FunnelSchema, Funnel);
+  registerPrimitive("Heatmap", 1, HeatmapSchema, Heatmap);
+  registerPrimitive("CalendarHeatmap", 1, CalendarHeatmapSchema, CalendarHeatmap);
+  registerPrimitive("TimelineChart", 1, TimelineChartSchema, TimelineChart);
+  registerPrimitive("GanttChart", 1, GanttChartSchema, GanttChart);
+  registerPrimitive("KanbanBoard", 1, KanbanBoardSchema, KanbanBoard);
+  registerPrimitive("DashboardGrid", 1, DashboardGridSchema, DashboardGrid);
+  registerPrimitive("ProgressGoal", 1, ProgressGoalSchema, ProgressGoal);
+  registerPrimitive("Leaderboard", 1, LeaderboardSchema, Leaderboard);
+  registerPrimitive("ActivityFeed", 1, ActivityFeedSchema, ActivityFeed);
 
   registerPrimitive("SearchBar", 1, SearchBarSchema, SearchBar);
   registerPrimitive("FilterBar", 1, FilterBarSchema, FilterBar);

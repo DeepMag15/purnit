@@ -29,7 +29,7 @@ export function Dropdown({
       {open && (
         <div
           className={cn(
-            "absolute top-[calc(100%+6px)] z-20 min-w-[180px] rounded-lg border border-border bg-surface py-1 shadow-lg",
+            "dropdown-enter absolute top-[calc(100%+6px)] z-20 min-w-[180px] rounded-lg border border-border bg-surface py-1 shadow-lg",
             align === "end" ? "right-0" : "left-0",
           )}
         >
@@ -46,7 +46,7 @@ export function DropdownItem({ onClick, children, danger }: { onClick?: () => vo
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-surface-hover",
+        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover",
         danger ? "text-danger" : "text-text",
       )}
     >

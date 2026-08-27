@@ -4,6 +4,8 @@ import type { MutationContext, MutationDefinition } from "../../mutations/mutati
 import type { PrismaTx } from "../../tenancy/tenant-prisma.service";
 import { isRowInScope } from "../../rbac/scope-check";
 import { getDepartmentSubtreeIds } from "../../rbac/department-subtree";
+import { logAudit } from "../../audit/log-audit";
+import { enqueueEmbeddingJob } from "../../ai/embeddings/embedding-ingestion";
 
 /** Only resolved when actually needed — see department-subtree.ts. Shared by
  * every `isRowInScope` call site in this file rather than repeated inline. */
@@ -23,7 +25,7 @@ export const projectCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
   inputSchema: CreateInputSchema,
   requiredPermission: "project:create",
   async resolve(input, ctx, tx) {
-    return tx.project.create({
+    const project = await tx.project.create({
       data: {
         tenantId: ctx.tenantId,
         name: input.name,
@@ -33,6 +35,8 @@ export const projectCreateMutation: MutationDefinition<z.infer<typeof CreateInpu
         departmentId: input.departmentId ?? ctx.userDepartmentId ?? undefined,
       },
     });
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "project", project.id); // AI RAG Phase C
+    return project;
   },
 };
 
@@ -58,7 +62,12 @@ export const projectUpdateMutation: MutationDefinition<z.infer<typeof UpdateInpu
     }
 
     const { id, ...data } = input;
-    return tx.project.update({ where: { id }, data });
+    const updated = await tx.project.update({ where: { id }, data });
+    // Re-embeds on every update, not just name/description changes — a
+    // status-only edit still re-enqueues, cheap and safe (the processor's
+    // own content-hash diff no-ops if the extracted text is unchanged).
+    await enqueueEmbeddingJob(tx, ctx.tenantId, "project", updated.id); // AI RAG Phase C
+    return updated;
   },
 };
 
@@ -126,6 +135,11 @@ export const projectDeleteMutation: MutationDefinition<z.infer<typeof DeleteInpu
     }
 
     await tx.project.update({ where: { id: input.id }, data: { deletedAt: new Date() } });
+
+    // Audit Logs (module 6 of 6) — deletes are one of the bounded, high-value
+    // categories this module exists for.
+    await logAudit(tx, ctx, { action: "project.delete", resource: "project", resourceId: input.id, before: { name: existing.name } });
+
     return { success: true };
   },
 };

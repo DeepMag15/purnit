@@ -16,8 +16,20 @@ export class PermissionResolverService {
       where: { userId },
       include: { role: true },
     });
-    const grants = assignments.flatMap((a) => a.role.permissions as string[]);
-    return collapsePermissions(grants);
+    const roleGrants = assignments.flatMap((a) => a.role.permissions as string[]);
+
+    // Delegation (per-user override) — active (non-revoked) grants only.
+    // Sequential with the query above, not Promise.all: both share this
+    // caller's transactional `tx`, and issuing concurrent queries against
+    // one interactive transaction is the exact bug class isRoleAssignableBy
+    // hit (role-hierarchy.ts).
+    const delegations = await tx.permissionDelegation.findMany({
+      where: { userId, revokedAt: null },
+      select: { permission: true },
+    });
+    const delegationGrants = delegations.map((d) => d.permission);
+
+    return collapsePermissions([...roleGrants, ...delegationGrants]);
   }
 
   /**

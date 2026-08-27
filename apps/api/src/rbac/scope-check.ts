@@ -1,4 +1,4 @@
-import type { Scope } from "@antigravity/manifest-schema";
+import type { Scope } from "@purnit/manifest-schema";
 
 export interface ScopeCheckSubject {
   ownerId?: string | null;

@@ -10,6 +10,7 @@ export interface CurrentUser {
   email: string;
   departmentId: string | null;
   mustChangePassword: boolean;
+  digestOptOut: boolean;
 }
 
 /** Resolves the internal User row for the current request's auth context.
@@ -33,7 +34,15 @@ export class CurrentUserService {
    * one more sequential await inside the caller's own transaction.
    */
   async getWithTx(tx: PrismaTx, tenantId: string, authUserId: string): Promise<CurrentUser> {
-    const user = await tx.user.findFirst({ where: { authUserId } });
+    // ⚠️ `deletedAt: null` is load-bearing as of Go-Live Phase 05, not a
+    // defensive filter. This lookup is the chokepoint every authenticated
+    // request passes through (workspace bootstrap, every data source, every
+    // mutation), and it previously matched deleted users too — which was
+    // harmless only because nothing had ever soft-deleted a User row. The
+    // moment account deletion and workspace closure exist, omitting it would
+    // make both features cosmetic: the account would look deleted while
+    // retaining full access to every record in the tenant.
+    const user = await tx.user.findFirst({ where: { authUserId, deletedAt: null } });
     if (!user) throw new NotFoundException("No user record for this session");
     return {
       id: user.id,
@@ -43,6 +52,7 @@ export class CurrentUserService {
       email: user.email,
       departmentId: user.departmentId,
       mustChangePassword: user.mustChangePassword,
+      digestOptOut: user.digestOptOut,
     };
   }
 

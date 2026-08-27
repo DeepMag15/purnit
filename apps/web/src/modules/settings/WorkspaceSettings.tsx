@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../../ui/Icon";
-import type { CommonRenderProps } from "../../sdui/registry";
 import { useRenderContext } from "../../sdui/render-context";
+import { useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useBootstrap } from "../../app/workspace/bootstrap-context";
 import { Card, CardHeader, CardBody } from "../../ui/Card";
 import { Input } from "../../ui/Input";
@@ -10,8 +11,10 @@ import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
 import { Badge } from "../../ui/Badge";
 import { Alert } from "../../ui/Alert";
+import { Switch } from "../../ui/Switch";
 import { useToast } from "../../ui/Toast";
 import { supabase } from "../../lib/supabase-client";
+import { formatCents } from "../invoices/money";
 
 // Must match the bucket name in apps/api/src/auth/supabase-admin.service.ts
 // exactly — the upload URL is signed against that bucket server-side, and
@@ -20,34 +23,69 @@ const LOGO_BUCKET = "logos";
 const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/svg+xml";
 
+// Kept exported (unused by this file itself) — register-all.ts's old
+// catch-all registration for "WorkspaceSettings" still imports it, and is
+// deliberately left registered, not removed, same precedent as every prior
+// Phase 02/03 migration (see AnalyticsDashboardSchema).
 export const WorkspaceSettingsSchema = z.object({});
-type Props = z.infer<typeof WorkspaceSettingsSchema>;
 
-// "Workspace details," "Branding" (read-only half), and "My profile" are
-// unconditionally rendered — visible to every authenticated tenant member,
-// per the user's explicit "Settings should be visible to all, actions
-// controlled by permissions" request. Only the *edit* controls inside each
-// section are presence-gated, same mechanism as every prior composite.
-export function WorkspaceSettings({ actions }: Props & CommonRenderProps) {
+interface SettingsCapabilities {
+  canManageSettings: boolean;
+  canManageBilling: boolean;
+  canManageFeatureFlags: boolean;
+  canManageSso: boolean;
+}
+
+// Role-Based Workspaces, Stage D — this page is now workspace ADMINISTRATION
+// only, gated on `settings:manage`. "My profile" moved to /workspace/account,
+// reached from the avatar menu and carrying no permission gate, because it
+// acts solely on the signed-in person's own account.
+//
+// That split supersedes the earlier "Settings visible to all, actions
+// controlled by permissions" arrangement: the reason Settings was shown to
+// everyone was the personal card inside it, and once that has its own home
+// there is nothing left here a non-admin needs. Within the remaining cards,
+// edit controls are still presence-gated the same way as every other
+// composite, since a Company Admin is not the only role that may hold some of
+// these grants in a customised setup.
+//
+// Frontend Redesign Phase 04 — a dedicated route, replacing the generic
+// `/workspace/page.settings` catch-all. `actions` (the old Renderer-supplied
+// mutation-presence list) is gone; `settings.capabilities` (new, additive,
+// read-only backend data source) replaces it. 6 of the old 9 flags collapsed
+// to one `canManageSettings` (all share `requiredPermission: "settings:manage"`,
+// confirmed directly per-mutation, not assumed from "same card" framing);
+// billing/feature-flags/SSO each keep their own flag since each is a
+// genuinely different real resource (`billing:manage`/`featureFlag:manage`/
+// `sso:manage`) — same `canBrowseOrg`/`canBrowseProjects`-style split Phase
+// 03 needed for Analytics.
+export function WorkspaceSettings() {
   const { manifest } = useBootstrap();
-
-  const canUpdateBranding = actions?.some((a) => a.kind === "mutation" && a.mutation === "tenant.updateBranding") ?? false;
-  const canUpdateWorkspaceId = actions?.some((a) => a.kind === "mutation" && a.mutation === "tenant.updateWorkspaceId") ?? false;
-  const canUpdateNavLabel = actions?.some((a) => a.kind === "mutation" && a.mutation === "workspaceConfig.updateNavigationLabel") ?? false;
-  const canUpdateProfile = actions?.some((a) => a.kind === "mutation" && a.mutation === "tenant.updateProfile") ?? false;
-  const canUploadLogo = actions?.some((a) => a.kind === "mutation" && a.mutation === "tenant.createLogoUploadUrl") ?? false;
+  const { data: caps } = useDataSourceQuery<SettingsCapabilities>("settings.capabilities");
+  const canManageSettings = caps?.canManageSettings ?? false;
+  const canManageBilling = caps?.canManageBilling ?? false;
+  const canManageFeatureFlags = caps?.canManageFeatureFlags ?? false;
+  const canManageSso = caps?.canManageSso ?? false;
   const profile = manifest.tenant.profile as Record<string, unknown>;
 
   return (
     <div className="flex flex-col gap-4">
-      <MyProfileCard user={manifest.user} />
-      <WorkspaceDetailsCard tenant={manifest.tenant} editable={canUpdateWorkspaceId} />
-      <BrandingCard branding={manifest.tenant.branding as Record<string, unknown>} editable={canUpdateBranding} canUploadLogo={canUploadLogo} />
-      <CompanyInfoCard profile={profile} editable={canUpdateProfile} />
-      <TimezoneCard profile={profile} editable={canUpdateProfile} />
-      <BusinessHoursCard profile={profile} editable={canUpdateProfile} />
+      {/* Role-Based Workspaces, Stage D — "My profile" moved out to
+        * /workspace/account, reached from the avatar menu. This page is now
+        * workspace administration only and is gated on `settings:manage`;
+        * leaving a personal card here would have meant a non-admin losing
+        * access to their own profile when that gate was added. */}
+      <WorkspaceDetailsCard tenant={manifest.tenant} editable={canManageSettings} />
+      <BrandingCard branding={manifest.tenant.branding as Record<string, unknown>} editable={canManageSettings} canUploadLogo={canManageSettings} />
+      <CompanyInfoCard profile={profile} editable={canManageSettings} />
+      <TimezoneCard profile={profile} editable={canManageSettings} />
+      <BusinessHoursCard profile={profile} editable={canManageSettings} />
+      {canManageBilling && <BillingCard />}
+      {canManageFeatureFlags && <FeatureFlagsCard />}
+      {canManageSettings && <AiProviderCard />}
+      {canManageSso && <EnterpriseSsoCard />}
 
-      {canUpdateNavLabel && (
+      {canManageSettings && (
         <Card>
           <CardHeader title="Navigation labels" />
           <CardBody className="flex flex-col divide-y divide-border">
@@ -61,24 +99,373 @@ export function WorkspaceSettings({ actions }: Props & CommonRenderProps) {
   );
 }
 
-function MyProfileCard({ user }: { user: { displayName: string; roles: string[] } & Record<string, unknown> }) {
+interface BillingCapabilities {
+  currentPlan: { key: string; name: string } | null;
+  subscriptionStatus: string | null;
+  hasStripeCustomer: boolean;
+  stripeConfigured: boolean;
+  availablePlans: { key: string; name: string; priceCents: number | null; selfServe: boolean }[];
+}
+
+// Stripe Billing — whole-card presence gate (billing:manage, Admin-only), no
+// partial-field editing the way most other Settings cards allow. Uses
+// `useDataSourceQuery` (cached/deduped) rather than the ad hoc `useEffect`+
+// `callDataSource` pattern `NotificationBell.tsx` still uses — that older
+// pattern predates `useDataSourceQuery`'s own doc comment explicitly calling
+// it out as superseded; nothing about being a plain Settings sub-component
+// (not blueprint-bound) requires the older style.
+function BillingCard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const [redirecting, setRedirecting] = useState<string | null>(null);
+
+  const { data, isPending, refetch } = useDataSourceQuery<BillingCapabilities>("billing.capabilities");
+
+  useEffect(() => {
+    const billingResult = searchParams.get("billing");
+    if (!billingResult) return;
+    if (billingResult === "success") {
+      toast.show("Subscription updated — this may take a few seconds to fully reflect.");
+    } else if (billingResult === "cancelled") {
+      toast.show("Checkout cancelled", "danger");
+    }
+    router.replace("/workspace/settings");
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires once on mount to consume the one-time redirect query param, not on every searchParams identity change
+  }, []);
+
+  async function handleUpgrade(planKey: string) {
+    setRedirecting(planKey);
+    try {
+      const result = (await callMutation("billing.createCheckoutSession", { planKey })) as { url: string };
+      window.location.assign(result.url);
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't start checkout", "danger");
+      setRedirecting(null);
+    }
+  }
+
+  async function handleManageBilling() {
+    setRedirecting("portal");
+    try {
+      const result = (await callMutation("billing.createPortalSession", {})) as { url: string };
+      window.location.assign(result.url);
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't open billing portal", "danger");
+      setRedirecting(null);
+    }
+  }
+
   return (
     <Card>
-      <CardHeader title="My profile" />
-      <CardBody className="flex flex-col gap-2 text-sm">
-        <Row label="Name" value={user.displayName} />
-        <Row
-          label="Role"
-          value={
-            <div className="flex gap-1.5">
-              {user.roles.map((r) => (
-                <Badge key={r} tone="accent">
-                  {r}
-                </Badge>
-              ))}
+      <CardHeader
+        title="Billing & Plan"
+        action={
+          data?.hasStripeCustomer ? (
+            <Button size="sm" variant="secondary" onClick={handleManageBilling} disabled={redirecting !== null}>
+              {redirecting === "portal" ? "Opening…" : "Manage Billing"}
+            </Button>
+          ) : undefined
+        }
+      />
+      <CardBody className="flex flex-col gap-4 text-sm">
+        {isPending && <div className="text-text-muted">Loading…</div>}
+        {!isPending && !data?.stripeConfigured && (
+          <Alert tone="info">Stripe isn&apos;t configured in this environment yet — plan changes aren&apos;t available.</Alert>
+        )}
+        {!isPending && data && (
+          <>
+            <Row
+              label="Current plan"
+              value={
+                <div className="flex items-center gap-2">
+                  <Badge tone="accent">{data.currentPlan?.name ?? "None"}</Badge>
+                  {data.subscriptionStatus && <span className="text-xs capitalize text-text-muted">{data.subscriptionStatus}</span>}
+                </div>
+              }
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {data.availablePlans.map((plan) => {
+                const isCurrent = plan.key === data.currentPlan?.key;
+                return (
+                  <div key={plan.key} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                    <div className="text-sm font-semibold text-text">{plan.name}</div>
+                    <div className="text-lg font-semibold text-text">
+                      {plan.priceCents === null ? "Contact us" : plan.priceCents === 0 ? "Free" : `${formatCents(plan.priceCents)}/mo`}
+                    </div>
+                    {isCurrent ? (
+                      <Badge>Current plan</Badge>
+                    ) : plan.selfServe && data.stripeConfigured ? (
+                      <Button size="sm" onClick={() => handleUpgrade(plan.key)} disabled={redirecting !== null}>
+                        {redirecting === plan.key ? "Redirecting…" : "Upgrade"}
+                      </Button>
+                    ) : !plan.selfServe ? (
+                      <a href="mailto:sales@example.com" className="text-xs font-medium text-accent hover:underline">
+                        Contact sales
+                      </a>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          }
-        />
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+interface FeatureFlagRow {
+  id: string;
+  key: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+// Feature Flags (module 3 of the 4-initiative backlog) — same whole-card
+// presence gate as BillingCard above (featureFlag:manage, Admin-only).
+// `featureFlags.list` is the admin-facing view (row metadata included);
+// separate from the manifest's own `featureFlags` map every authenticated
+// user already gets unconditionally for components that check a key
+// directly — see feature-flags.data-sources.ts's own doc comment.
+function FeatureFlagsCard() {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const { data, isPending, refetch } = useDataSourceQuery<FeatureFlagRow[]>("featureFlags.list");
+  const flags = Array.isArray(data) ? data : [];
+
+  const [newKey, setNewKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleToggle(key: string, enabled: boolean) {
+    try {
+      await callMutation("featureFlag.set", { key, enabled });
+      refetch();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't update flag", "danger");
+    }
+  }
+
+  async function handleAdd() {
+    const key = newKey.trim();
+    if (!key) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await callMutation("featureFlag.set", { key, enabled: true });
+      toast.show(`Flag "${key}" created`);
+      setNewKey("");
+      refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create flag");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Feature Flags" />
+      <CardBody className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-text-muted">
+          Per-tenant overrides layered on top of your plan. A key matching a module (e.g. &quot;leave&quot;, &quot;crm&quot;) hides or
+          force-shows that module regardless of plan; any other key is just exposed to components that check it directly.
+        </p>
+        {isPending && <div className="text-text-muted">Loading…</div>}
+        {!isPending && flags.length === 0 && <div className="text-text-muted">No flags set yet.</div>}
+        {!isPending && flags.length > 0 && (
+          <div className="flex flex-col divide-y divide-border">
+            {flags.map((flag) => (
+              <div key={flag.id} className="flex items-center justify-between py-2">
+                <span className="font-mono text-xs text-text">{flag.key}</span>
+                <Switch checked={flag.enabled} onChange={(e) => handleToggle(flag.key, e.target.checked)} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-end gap-2 border-t border-border pt-3">
+          <Input label="New flag key" placeholder="e.g. leave" value={newKey} onChange={(e) => setNewKey(e.target.value)} className="flex-1" />
+          <Button size="sm" onClick={handleAdd} disabled={saving || !newKey.trim()}>
+            {saving ? "Adding…" : "Add"}
+          </Button>
+        </div>
+        {error && <Alert tone="danger">{error}</Alert>}
+      </CardBody>
+    </Card>
+  );
+}
+
+interface AiProviderSettings {
+  currentOverride: "anthropic" | "gemini" | "openai" | null;
+  globalDefault: string;
+  configuredProviders: string[];
+}
+
+const AI_PROVIDER_LABELS: Record<string, string> = { anthropic: "Anthropic", gemini: "Gemini", openai: "OpenAI" };
+
+// AI Assistant Phase F — a tenant's own AI completion-provider override, on
+// top of the workspace-wide AI_COMPLETION_PROVIDER default. Same
+// whole-card presence gate as BillingCard/FeatureFlagsCard (settings:manage,
+// Admin-only).
+function AiProviderCard() {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const { data, isPending, refetch } = useDataSourceQuery<AiProviderSettings>("ai.providerSettings");
+  const [saving, setSaving] = useState(false);
+
+  async function handleChange(value: string) {
+    setSaving(true);
+    try {
+      await callMutation("workspaceConfig.updateAiProvider", { provider: value === "default" ? null : value });
+      toast.show("AI provider updated");
+      refetch();
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Couldn't update AI provider", "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="AI Provider" />
+      <CardBody className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-text-muted">
+          Overrides which AI provider your workspace&apos;s assistant uses, on top of the platform-wide default. A provider greyed out
+          below has no API key configured in this environment.
+        </p>
+        {isPending && <div className="text-text-muted">Loading…</div>}
+        {!isPending && data && (
+          <Select
+            aria-label="AI provider"
+            value={data.currentOverride ?? "default"}
+            onChange={(e) => handleChange(e.target.value)}
+            disabled={saving}
+            className="max-w-xs"
+          >
+            <option value="default">Workspace default ({AI_PROVIDER_LABELS[data.globalDefault] ?? data.globalDefault})</option>
+            {(["anthropic", "gemini", "openai"] as const).map((provider) => (
+              <option key={provider} value={provider} disabled={!data.configuredProviders.includes(provider)}>
+                {AI_PROVIDER_LABELS[provider]}
+                {!data.configuredProviders.includes(provider) ? " (not configured)" : ""}
+              </option>
+            ))}
+          </Select>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+interface SsoConfigView {
+  enabled: boolean;
+  idpAlias: string | null;
+  displayName: string | null;
+  defaultRoleId: string | null;
+  requireEmailVerified: boolean;
+}
+
+// Enterprise SSO (SSO/SAML initiative) — same whole-card presence gate as
+// BillingCard/FeatureFlagsCard above (sso:manage, Admin-only). `idpAlias` is
+// system-generated server-side (sso.configure) and shown read-only here,
+// never an editable field — see sso.prisma's own doc comment on why an
+// admin-typed alias would be a real cross-tenant confusion risk in a shared
+// Keycloak realm. The admin's own manual step is creating an Identity
+// Provider in Keycloak's Admin Console using this exact alias.
+function EnterpriseSsoCard() {
+  const { callMutation } = useRenderContext();
+  const toast = useToast();
+  const { data, isPending, refetch } = useDataSourceQuery<SsoConfigView>("sso.get");
+  const { data: rolesData } = useDataSourceQuery<{ id: string; label: string }[]>("roles.list");
+  const roles = Array.isArray(rolesData) ? rolesData : [];
+
+  const [enabled, setEnabled] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [defaultRoleId, setDefaultRoleId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.enabled);
+    setDisplayName(data.displayName ?? "");
+    setDefaultRoleId(data.defaultRoleId ?? "");
+  }, [data]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await callMutation("sso.configure", {
+        enabled,
+        displayName: displayName.trim() || undefined,
+        defaultRoleId: defaultRoleId || undefined,
+      });
+      toast.show("Enterprise SSO settings saved");
+      refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save Enterprise SSO settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCopyAlias() {
+    if (!data?.idpAlias) return;
+    await navigator.clipboard.writeText(data.idpAlias);
+    toast.show("Copied");
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Enterprise SSO" />
+      <CardBody className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-text-muted">
+          Brokered through a self-hosted Keycloak realm. Once saved, create an Identity Provider in Keycloak using the alias below, pointed at
+          your own SAML or OIDC identity provider.
+        </p>
+        {isPending && <div className="text-text-muted">Loading…</div>}
+        {!isPending && (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-text">Enabled</span>
+              <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            </div>
+            {data?.idpAlias && (
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                <div>
+                  <div className="text-xs text-text-muted">Keycloak Identity Provider alias</div>
+                  <code className="font-mono text-xs text-text">{data.idpAlias}</code>
+                </div>
+                <Button size="sm" variant="secondary" onClick={handleCopyAlias}>
+                  Copy
+                </Button>
+              </div>
+            )}
+            <Input label="Display name" placeholder="e.g. Okta" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-muted">Default role for new SSO sign-ins</label>
+              <Select value={defaultRoleId} onChange={(e) => setDefaultRoleId(e.target.value)}>
+                <option value="">Select a role…</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {enabled && !defaultRoleId && (
+              <Alert tone="danger">A default role is required while Enterprise SSO is enabled — sign-ins will be rejected until one is set.</Alert>
+            )}
+            {error && <Alert tone="danger">{error}</Alert>}
+            <Button size="sm" onClick={handleSave} disabled={saving} className="self-start">
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </>
+        )}
       </CardBody>
     </Card>
   );

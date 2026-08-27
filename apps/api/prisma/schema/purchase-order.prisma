@@ -1,0 +1,29 @@
+/// Manufacturing Domain, Phase A. Real FK to Supplier. `lineItems` is a Json
+/// array (`{inventoryItemId, description, quantity, unitCost, amount}[]`),
+/// mirrors Invoice.lineItems exactly — `subtotal`/`tax`/`total` are always
+/// computed server-side, never trusted from the client. `status` is a narrow
+/// workflow field (draft|submitted|received|cancelled); `purchaseOrder.receive`
+/// is the ONE mutation allowed to move it to "received", gated on the
+/// distinct `purchaseOrder:receive` permission (not `:update`) — the real
+/// procurement segregation-of-duties control this domain is built around.
+model PurchaseOrder {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  supplierId   String    @map("supplier_id") @db.Uuid
+  supplier     Supplier  @relation(fields: [supplierId], references: [id])
+  status       String    @default("draft")
+  lineItems    Json      @map("line_items")
+  subtotal     Int
+  tax          Int       @default(0)
+  total        Int
+  expectedDate DateTime  @map("expected_date")
+  createdById  String    @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  @@index([tenantId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}

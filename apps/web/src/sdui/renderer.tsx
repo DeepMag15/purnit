@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { UINode } from "@antigravity/manifest-schema";
+import type { UINode } from "@purnit/manifest-schema";
 import { getPrimitive } from "./registry";
 import { NodeErrorBoundary } from "./node-error-boundary";
 import { UnknownNodeFallback } from "./unknown-node-fallback";

@@ -1,279 +1,370 @@
+"use client";
+
 import { z } from "zod";
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../../ui/Icon";
 import type { CommonRenderProps } from "../../sdui/registry";
 import { useDataBinding, useDataSourceQuery } from "../../sdui/use-data-binding";
 import { useRenderContext } from "../../sdui/render-context";
+import { useAsyncAction } from "../../sdui/use-async-action";
+import { useFormValidation } from "../../sdui/use-form-validation";
+import { required } from "../../sdui/validators";
 import { EmptyStateView } from "../../sdui/primitives/EmptyState";
-import { CommentThread } from "../comments/CommentThread";
-import { Card, CardHeader, CardBody } from "../../ui/Card";
+import { KanbanBoard } from "../../sdui/primitives/KanbanBoard";
+import { Table3 } from "../../sdui/primitives/Table";
+import { PageHeader } from "../../ui/PageHeader";
+import { ViewSwitcher, type ViewOption } from "../../ui/ViewSwitcher";
+import { Dialog } from "../../ui/Dialog";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
 import { Button } from "../../ui/Button";
 import { Alert } from "../../ui/Alert";
 import { SkeletonRows } from "../../ui/Skeleton";
 import { Badge } from "../../ui/Badge";
-import { Dropdown } from "../../ui/Dropdown";
-import { useToast } from "../../ui/Toast";
+import { Avatar } from "../../ui/Avatar";
 
 // `title` is optional, same pattern ProjectBoard already established — most
-// existing usage (page.tasks) renders with none, CardHeader returns null.
-export const TaskListSchema = z.object({ title: z.string().optional() });
+// existing usage (page.tasks) renders with none, PageHeader falls back to
+// "Tasks".
+/**
+ * Module review, Projects (2026-08-26) — what a task attaches to, per domain.
+ *
+ * A Task needs a `projectId`, and four of five domains have no Projects
+ * module: a Project backs each Patient / Course / Client / InventoryItem. This
+ * picker used to be fed by `projects.list`, so a Nurse creating a Care Task
+ * chose from a dropdown reading "Chart: J. Chen" — internal plumbing names,
+ * never meant to be seen (verified live in all four domains).
+ *
+ * The blueprint now names the real thing instead: Healthcare says Patient,
+ * Education says Course. Defaults to Projects, so IT is untouched and any
+ * blueprint that says nothing keeps today's behaviour.
+ */
+export const TaskListSchema = z.object({
+  title: z.string().optional(),
+  /** What a task hangs off in this domain, e.g. "Patient". */
+  targetLabel: z.string().optional(),
+  /** List source for the options, e.g. "patients.list". */
+  targetSource: z.string().optional(),
+  /** Field on each row holding the backing projectId, e.g. "chartProjectId". */
+  targetProjectField: z.string().optional(),
+  /** Field to show, e.g. "name". */
+  targetNameField: z.string().optional(),
+});
 type Props = z.infer<typeof TaskListSchema>;
 
 interface TaskRow {
   id: string;
   title: string;
   status: string;
+  /** Already supplied by `tasks.list`; used instead of deriving the name from
+   * a project's member list, which only worked when that list was loaded. */
+  assigneeName?: string | null;
   priority: string;
   projectId: string;
   assigneeId: string | null;
-}
-
-interface MemberOption {
-  id: string;
-  displayName: string;
-}
-
-interface ProjectOption {
-  id: string;
-  name: string;
-  members: MemberOption[];
+  dueDate: string | null;
 }
 
 // Free-text `status` column, no DB-level enum (see tasks.prisma) — this is
-// Phase 1's fixed vocabulary for the UI only, not an enforced constraint.
-const STATUSES = ["todo", "in_progress", "done"];
-const STATUS_TONE: Record<string, "neutral" | "info" | "success"> = { todo: "neutral", in_progress: "info", done: "success" };
+// this UI's own fixed vocabulary, not an enforced constraint. Reused
+// directly as KanbanBoard's `columns` prop (Frontend Structural Redesign,
+// Phase 1) — unlike Project.status (free-form, no fixed set), Task.status
+// already has one, so the Board view always shows all three columns rather
+// than deriving them from whatever's currently present in the data.
+// Projects ecosystem review — "in_review" joins the vocabulary. Without a
+// column for it, work a person submitted disappeared off the board entirely,
+// which is the worst possible moment to lose sight of it. It is locked
+// (see KanbanBoard's `lockedColumns`): visible, countable, not draggable.
+const STATUSES = ["todo", "in_progress", "in_review", "done"];
+const LOCKED_STATUSES = ["in_review"];
+const STATUS_TONE: Record<string, "neutral" | "info" | "warning" | "success"> = { todo: "neutral", in_progress: "info", in_review: "warning", done: "success" };
+const STATUS_LABEL: Record<string, string> = { todo: "To do", in_progress: "In progress", in_review: "In review", done: "Done" };
 // Same free-text-vocabulary treatment as STATUS_TONE — Task.priority has no
 // DB-level enum either (see tasks.prisma).
 const PRIORITY_TONE: Record<string, "danger" | "warning" | "neutral"> = { high: "danger", medium: "warning", low: "neutral" };
 
-export function TaskList({ title, bind, actions }: Props & CommonRenderProps) {
-  const { data, loading, error, refetch, queryKey } = useDataBinding(bind);
+// Calendar & Scheduling (Core Workspace Phase 3) — fixed frontend-only
+// vocabulary, same treatment as STATUSES/PRIORITY_TONE. Only offered once a
+// due date is actually chosen (see the create form below).
+const REMINDER_PRESETS = [
+  { value: "15", label: "15 minutes before" },
+  { value: "30", label: "30 minutes before" },
+  { value: "60", label: "1 hour before" },
+  { value: "1440", label: "1 day before" },
+];
+
+const VIEWS: ViewOption[] = [
+  { id: "board", label: "Board", icon: "view_kanban" },
+  { id: "table", label: "Table", icon: "table_rows" },
+  { id: "list", label: "List", icon: "view_list" },
+];
+
+/**
+ * Frontend Structural Redesign, Phase 1 — mirrors `ProjectBoard.tsx`'s own
+ * Phase 0 shape exactly: `PageHeader` + `ViewSwitcher` (Board/Table/List,
+ * all bound to the same `tasks.list` data), `KanbanBoard@1` (columns from
+ * the existing fixed `STATUSES` vocabulary, wired to the already-existing
+ * `task.updateStatus` — no `seed.ts` change needed, unlike Projects'
+ * Kanban), `Table@3`, and a `Dialog`-based create form replacing the old
+ * inline row. The per-row Comments toggle, reassign `Dropdown`, and status
+ * `Select` are all removed — `TaskDetail.tsx` (Phase 0) already has a
+ * Comments tab, and both status-change and reassign move there too (Phase
+ * 1's own `TaskDetail` extension) for the same "list rows show state, the
+ * detail page is where you change it" consistency Projects already
+ * established. Board-view dragging is the one exception, same as Projects.
+ */
+export function TaskList({ title, bind, actions, targetLabel, targetSource, targetProjectField, targetNameField }: Props & CommonRenderProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data, loading, error, refetch } = useDataBinding(bind);
   const { callMutation } = useRenderContext();
-  const queryClient = useQueryClient();
-  const toast = useToast();
+  const [view, setView] = useState("board");
+  const [createOpen, setCreateOpen] = useState(false);
 
-  // Presence-gated, same pattern as ProjectBoard: the create/update-status
-  // controls only render if the corresponding action survived Stage 4's
-  // permission pruning — the manifest already reflects what this user may
-  // do, so there's no separate client-side permission check here.
   const canCreate = actions?.some((a) => a.kind === "mutation" && a.mutation === "task.create") ?? false;
-  const canUpdateStatus = actions?.some((a) => a.kind === "mutation" && a.mutation === "task.updateStatus") ?? false;
-  const canReassign = actions?.some((a) => a.kind === "mutation" && a.mutation === "task.reassign") ?? false;
 
-  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
   const [newTitle, setNewTitle] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newReminderMinutes, setNewReminderMinutes] = useState("");
+  const { pending: creating, error: createError, run: runCreate, clearError } = useAsyncAction();
+  const { fieldErrors, validate, clearFieldError } = useFormValidation<{ title: string; projectId: string }>({
+    title: required("Task title is required"),
+    projectId: required("Choose one"),
+  });
 
   // A task needs a project to belong to — fetched directly (not via `bind`)
-  // since it's this composite's own UI need, not the node's data. Cached and
-  // deduped against anything else on the page asking for `projects.list`
-  // with the same params (CONTEXT.md §48). `projects.list` also carries each
-  // project's `members` (see ProjectBoard's member-assignment UI), which the
-  // assignee picker below (and the per-row reassign control) reads straight
-  // off this same fetch — no second data source needed. No `project:read`
-  // grant, or none exist yet, just leaves this empty — not an error state.
-  const { data: projectsData } = useDataSourceQuery<ProjectOption[]>("projects.list", {}, { enabled: canCreate || canReassign });
-  const projects = Array.isArray(projectsData) ? projectsData : [];
+  // since it's this composite's own UI need, not the node's bound data.
+  const source = targetSource ?? "projects.list";
+  const projectField = targetProjectField ?? "id";
+  const nameField = targetNameField ?? "name";
+  const label = targetLabel ?? "Project";
+
+  const { data: targetData } = useDataSourceQuery<Record<string, unknown>[]>(source, {}, { enabled: canCreate });
+  const targets = (Array.isArray(targetData) ? targetData : [])
+    .map((row) => ({ projectId: String(row[projectField] ?? ""), name: String(row[nameField] ?? "Untitled") }))
+    // A domain row whose backing project is missing (an older record created
+    // before that anchor existed) would otherwise offer an option that fails
+    // on submit.
+    .filter((t) => !!t.projectId);
 
   useEffect(() => {
-    if (Array.isArray(projectsData)) setSelectedProjectId((current) => current || projectsData[0]?.id || "");
-  }, [projectsData]);
+    setSelectedProjectId((current) => current || targets[0]?.projectId || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the option set itself changes.
+  }, [targetData]);
 
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
-  const assigneeOptions = selectedProject?.members ?? [];
+  // Assignees come from the chosen target's own project members. Fetched via
+  // `project.members` rather than `project.detail`, which now returns real
+  // projects only — on a chart or a course's materials it would 404.
+  const { data: memberData } = useDataSourceQuery<{ id: string; displayName: string }[]>(
+    "project.members",
+    { projectId: selectedProjectId },
+    { enabled: canCreate && !!selectedProjectId },
+  );
+  const assigneeOptions = Array.isArray(memberData) ? memberData : [];
 
-  // Reset the assignee whenever the selected project changes (or its
-  // member list resolves) so a stale pick from a different project can
-  // never be silently sent along.
   useEffect(() => {
     setSelectedAssigneeId((current) => (assigneeOptions.some((m) => m.id === current) ? current : ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-derive when the selected project itself changes.
   }, [selectedProjectId]);
 
+  function openCreate() {
+    setNewTitle("");
+    setNewDueDate("");
+    setNewReminderMinutes("");
+    clearError();
+    clearFieldError("title");
+    clearFieldError("projectId");
+    setCreateOpen(true);
+  }
+
+  // Frontend Redesign, Phase 01 — the dashboard's Quick Actions/AI widgets
+  // and the header/Command Palette's quick-create menu all link here with
+  // `?compose=1` rather than duplicating this module's own create form.
+  // Runs once; the param is stripped immediately after so a refresh or
+  // back-navigation doesn't reopen the dialog.
+  useEffect(() => {
+    if (searchParams.get("compose") === "1" && canCreate) {
+      openCreate();
+      router.replace("/workspace/page.tasks");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once intent; openCreate/canCreate are recreated every render but their identity isn't what this effect should react to.
+  }, [searchParams]);
+
   async function handleCreate() {
-    if (!newTitle.trim() || !selectedProjectId) return;
-    setCreating(true);
-    setCreateError(null);
-    try {
+    if (!validate({ title: newTitle, projectId: selectedProjectId })) return;
+    await runCreate(async () => {
       await callMutation("task.create", {
         projectId: selectedProjectId,
         title: newTitle.trim(),
         ...(selectedAssigneeId ? { assigneeId: selectedAssigneeId } : {}),
+        ...(newDueDate ? { dueDate: newDueDate } : {}),
+        ...(newDueDate && newReminderMinutes ? { reminderMinutesBefore: Number(newReminderMinutes) } : {}),
       });
-      toast.show(`Task "${newTitle.trim()}" created`);
-      setNewTitle("");
+      setCreateOpen(false);
       refetch();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Couldn't create task");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  // Optimistic UI (performance pass 2, CONTEXT.md §48) — representative,
-  // not applied to every mutation in this codebase. Patches the cached rows
-  // immediately (the status dropdown reflects the change with zero visible
-  // delay) rather than waiting on the round trip; rolls back to the
-  // pre-mutation snapshot if the server rejects it, then reconciles for
-  // real via `refetch()` either way.
-  async function handleStatusChange(taskId: string, status: string) {
-    const previous = queryClient.getQueryData<TaskRow[]>(queryKey);
-    queryClient.setQueryData<TaskRow[]>(queryKey, (rows) => rows?.map((t) => (t.id === taskId ? { ...t, status } : t)));
-    try {
-      await callMutation("task.updateStatus", { id: taskId, status });
-    } catch (err) {
-      queryClient.setQueryData(queryKey, previous);
-      toast.show(err instanceof Error ? err.message : "Couldn't update task status", "danger");
-    } finally {
-      refetch();
-    }
-  }
-
-  async function handleReassign(taskId: string, assigneeId: string) {
-    await callMutation("task.reassign", { id: taskId, assigneeId });
-    refetch();
-  }
-
-  // Comments & Mentions (CONTEXT.md §49) — mounted per row only while
-  // expanded, not for every row all the time, so `comments.list` isn't
-  // fetched for tasks nobody's actually looking at.
-  function toggleComments(taskId: string) {
-    setExpandedTaskIds((current) => {
-      const next = new Set(current);
-      if (next.has(taskId)) next.delete(taskId);
-      else next.add(taskId);
-      return next;
     });
+  }
+
+  function openDetail(taskId: string) {
+    router.push(`/workspace/tasks/${taskId}`);
   }
 
   const rows = Array.isArray(data) ? (data as TaskRow[]) : [];
 
   return (
-    <Card>
-      <CardHeader title={title} />
-      <CardBody className="flex flex-col gap-3">
-        {canCreate && (
-          <div className="flex flex-wrap gap-2">
-            <Select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
-              {projects.length === 0 && <option value="">No projects yet</option>}
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <Select value={selectedAssigneeId} onChange={(e) => setSelectedAssigneeId(e.target.value)} disabled={assigneeOptions.length === 0}>
-              <option value="">{assigneeOptions.length === 0 ? "No members on this project yet" : "Assign to… (defaults to you)"}</option>
-              {assigneeOptions.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName}
-                </option>
-              ))}
-            </Select>
-            <Input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              placeholder="New task title"
-              className="flex-1"
-            />
-            <Button onClick={handleCreate} disabled={creating || !newTitle.trim() || !selectedProjectId}>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title={title ?? "Tasks"}
+        description="Track and manage your team's work items."
+        actions={
+          canCreate && (
+            <Button onClick={openCreate}>
               <Icon name="add" size={14} />
-              {creating ? "Adding…" : "New Task"}
+              New Task
+            </Button>
+          )
+        }
+        viewSwitcher={<ViewSwitcher views={VIEWS} activeId={view} onChange={setView} />}
+      />
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Task">
+        <div className="flex flex-col gap-3">
+          <Select
+            label={label}
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            error={fieldErrors.projectId}
+          >
+            {targets.length === 0 && <option value="">No {label.toLowerCase()}s yet</option>}
+            {targets.map((t) => (
+              <option key={t.projectId} value={t.projectId}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            label="Assignee"
+            value={selectedAssigneeId}
+            onChange={(e) => setSelectedAssigneeId(e.target.value)}
+            disabled={assigneeOptions.length === 0}
+          >
+            <option value="">{assigneeOptions.length === 0 ? "No members on this project yet" : "Assign to… (defaults to you)"}</option>
+            {assigneeOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName}
+              </option>
+            ))}
+          </Select>
+          <Input
+            label="Title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            error={fieldErrors.title}
+            autoFocus
+          />
+          <Input
+            label="Due date"
+            type="date"
+            value={newDueDate}
+            onChange={(e) => {
+              setNewDueDate(e.target.value);
+              if (!e.target.value) setNewReminderMinutes("");
+            }}
+          />
+          <Select label="Reminder" value={newReminderMinutes} onChange={(e) => setNewReminderMinutes(e.target.value)} disabled={!newDueDate}>
+            <option value="">No reminder</option>
+            {REMINDER_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+          {createError && <Alert tone="danger">{createError}</Alert>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={creating}>
+              {creating ? "Creating…" : "Create"}
             </Button>
           </div>
-        )}
-        {createError && <Alert tone="danger">{createError}</Alert>}
+        </div>
+      </Dialog>
 
-        {loading && <SkeletonRows />}
-        {error && <Alert tone="danger">Couldn&apos;t load tasks: {error}</Alert>}
-        {!loading && !error && rows.length === 0 && <EmptyStateView message="No tasks yet." />}
-        {!loading && !error && rows.length > 0 && (
-          <ul className="flex flex-col divide-y divide-border">
-            {rows.map((task) => {
-              const taskProject = projects.find((p) => p.id === task.projectId);
-              const reassignOptions = taskProject?.members ?? [];
-              const commentsExpanded = expandedTaskIds.has(task.id);
-              return (
-                <li key={task.id} className="flex flex-col gap-2 py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm text-text">{task.title}</span>
-                      {task.priority && <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleComments(task.id)}
-                        className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
-                      >
-                        <Icon name="chat_bubble" size={11} />
-                        Comments
-                      </button>
-                      {canReassign && (
-                        <Dropdown
-                          align="end"
-                          trigger={({ toggle }) => (
-                            <button
-                              type="button"
-                              onClick={toggle}
-                              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover"
-                            >
-                              <Icon name="group" size={11} />
-                              Reassign
-                            </button>
-                          )}
-                        >
-                          {({ close }) => (
-                            <div className="max-h-56 w-56 overflow-y-auto py-1">
-                              {reassignOptions.length === 0 && (
-                                <div className="px-3 py-2 text-xs text-text-muted">No members on this project.</div>
-                              )}
-                              {reassignOptions.map((m) => (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => {
-                                    close();
-                                    void handleReassign(task.id, m.id);
-                                  }}
-                                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-hover"
-                                >
-                                  {m.displayName}
-                                  {task.assigneeId === m.id && <Badge tone="accent">current</Badge>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </Dropdown>
-                      )}
-                      {canUpdateStatus ? (
-                        <Select value={task.status} onChange={(e) => handleStatusChange(task.id, e.target.value)} className="h-8 text-xs">
-                          {STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <Badge tone={STATUS_TONE[task.status] ?? "neutral"}>{task.status}</Badge>
-                      )}
-                    </div>
-                  </div>
-                  {commentsExpanded && <CommentThread entityType="task" entityId={task.id} mentionCandidates={reassignOptions} />}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardBody>
-    </Card>
+      {loading && <SkeletonRows />}
+      {error && <Alert tone="danger">Couldn&apos;t load tasks: {error}</Alert>}
+      {!loading && !error && rows.length === 0 && <EmptyStateView message="No tasks yet." />}
+
+      {!loading && !error && rows.length > 0 && view === "board" && (
+        <KanbanBoard
+          nodeId="tasks-board-kanban"
+          groupKey="status"
+          labelKey="title"
+          columns={STATUSES}
+          lockedColumns={LOCKED_STATUSES}
+          updateMutation="task.updateStatus"
+          updateValueKey="status"
+          bind={bind}
+          actions={actions}
+          renderChild={() => null}
+        />
+      )}
+
+      {!loading && !error && rows.length > 0 && view === "table" && (
+        <Table3
+          nodeId="tasks-table"
+          columns={["title", "status", "priority"]}
+          sortable
+          filterable
+          pageSize={20}
+          bind={bind}
+          actions={[]}
+          onRowClick={(row) => openDetail(String(row.id))}
+          renderChild={() => null}
+        />
+      )}
+
+      {!loading && !error && rows.length > 0 && view === "list" && (
+        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+          {rows.map((task) => {
+            const taskProject = targets.find((t) => t.projectId === task.projectId);
+            // `tasks.list` already carries the assignee's name; deriving it from
+            // a project's member list only ever worked when that list happened
+            // to be loaded, and does not work at all for a domain target.
+            const assignee = task.assigneeName ? { displayName: task.assigneeName } : undefined;
+            return (
+              <li
+                key={task.id}
+                onClick={() => openDetail(task.id)}
+                className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition-colors duration-[var(--duration-fast)] hover:bg-surface-hover"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="flex min-w-0 flex-col">
+                    <span className="min-w-0 truncate text-sm font-medium text-text">{task.title}</span>
+                    {taskProject && <span className="min-w-0 truncate text-xs text-text-muted">{taskProject.name}</span>}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Badge tone={PRIORITY_TONE[task.priority] ?? "neutral"}>{task.priority}</Badge>
+                    {task.dueDate && (
+                      <Badge tone={new Date(task.dueDate) < new Date() && task.status !== "done" ? "danger" : "neutral"}>
+                        {new Date(task.dueDate).toLocaleDateString()}
+                      </Badge>
+                    )}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <Badge tone={STATUS_TONE[task.status] ?? "neutral"}>{STATUS_LABEL[task.status] ?? task.status}</Badge>
+                  {assignee && <Avatar name={assignee.displayName} size="sm" />}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

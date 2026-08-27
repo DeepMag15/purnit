@@ -1,34 +1,58 @@
 model User {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String    @map("tenant_id") @db.Uuid
-  authUserId       String    @unique @map("auth_user_id") @db.Uuid
-  email            String
-  displayName      String    @map("display_name")
-  departmentId     String?   @map("department_id") @db.Uuid
-  teamId           String?   @map("team_id") @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  authUserId         String    @unique @map("auth_user_id") @db.Uuid
+  email              String
+  displayName        String    @map("display_name")
+  departmentId       String?   @map("department_id") @db.Uuid
+  teamId             String?   @map("team_id") @db.Uuid
   // The reports-to relationship — independent of role/department, and never
   // silently derived from either. The one mechanism every future approval
   // workflow (leave, performance review, ...) routes through. See
   // ORG_HIERARCHY.md §9. Self-referential; no relation fields declared
   // (mirrors Department.parentId's own plain-FK-only treatment) since
   // nothing needs a typed "reports" collection yet.
-  managerId        String?   @map("manager_id") @db.Uuid
-  status           String    @default("active")
+  managerId          String?   @map("manager_id") @db.Uuid
+  status             String    @default("active")
   // HR module fields — free-text UI vocabulary (employmentStatus), not DB
   // enums, same pattern as Task.status. Nullable: existing users have none
   // of these set until an Admin fills them in via the HR page.
-  jobTitle         String?   @map("job_title")
-  employmentStatus String?   @default("active") @map("employment_status")
-  startDate        DateTime? @map("start_date")
+  jobTitle           String?   @map("job_title")
+  employmentStatus   String?   @default("active") @map("employment_status")
+  startDate          DateTime? @map("start_date")
   // Set true only by user.invite (an Admin-generated temporary password).
   // Defaults false so self-serve signup admins (who set their own real
   // password) and every pre-existing user are unaffected. Cleared by
   // AuthService.completeFirstLogin once the user has changed their password
   // via Supabase Auth directly — see CONTEXT.md onboarding section.
-  mustChangePassword Boolean @default(false) @map("must_change_password")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  deletedAt        DateTime? @map("deleted_at")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  // Presence & Status (module 4 of 6) — `lastSeenAt` is bumped by every
+  // `presence.heartbeat` call; `presenceStatus` is a nullable *explicit*
+  // override ("away"/"busy") the user can set, which always wins over the
+  // derived-from-`lastSeenAt` status when present. Both null until a client
+  // ever calls `presence.heartbeat` — no backfill, same "lazy, not batch
+  // provisioned" precedent as LeaveBalance.
+  lastSeenAt         DateTime? @map("last_seen_at")
+  presenceStatus     String?   @map("presence_status")
+  // Enterprise SSO — set true only by SSO JIT provisioning (never by
+  // signup/user.invite). Informational only, never consulted for
+  // authorization: lets support/admin tooling (and a later swap to native
+  // Supabase Enterprise SSO) tell SSO-provisioned users apart from
+  // invited/self-signup ones, which nothing before this could do.
+  ssoProvisioned     Boolean   @default(false) @map("sso_provisioned")
+  // Proactive Digests (AI Assistant Phase E) — lastDigestSentAt is the UTC
+  // instant a digest was last actually delivered, only written when a
+  // real, non-empty digest is sent (never for an empty day — see
+  // digest-processor.service.ts). digestOptOut defaults false: every user
+  // gets digests unless they explicitly turn them off via
+  // user.updateDigestPreference. Both untouched until the processor or the
+  // user themself first touches them — same lazy-provisioning precedent as
+  // presenceStatus/LeaveBalance.
+  lastDigestSentAt   DateTime? @map("last_digest_sent_at")
+  digestOptOut       Boolean   @default(false) @map("digest_opt_out")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
 
   @@index([tenantId])
   @@index([tenantId, departmentId])
